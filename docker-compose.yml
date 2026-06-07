@@ -9,3 +9,6 @@ services:
       - POE_CONTACT=REDACTED-USER
     ports:
       - "17777:17777"
+    volumes:
+      - ./server.js:/app/server.js:ro
+      - ./index.html:/app/index.html:ro
