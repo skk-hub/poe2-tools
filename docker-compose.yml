@@ -1,0 +1,11 @@
+services:
+  poe-tools:
+    build: .
+    container_name: poe-tools
+    restart: unless-stopped
+    environment:
+      - POE2_NO_OPEN=1
+      - HOST=0.0.0.0
+      - POE_CONTACT=your-email-or-discord-here
+    ports:
+      - "17777:17777"

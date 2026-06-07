@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PoE Tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:oklch(8.5% 0.030 40);
+  --s1:oklch(11% 0.028 40);
+  --s2:oklch(14.5% 0.026 40);
+  --s3:oklch(18% 0.024 40);
+  --bd:oklch(27% 0.022 40);
+  --bd2:oklch(42% 0.020 40);
+  --gd:oklch(80% 0.15 74);
+  --gd-a:oklch(80% 0.15 74 / 0.10);
+  --tx:oklch(82% 0.014 50);
+  --mu:oklch(44% 0.010 50);
+  --gr:oklch(67% 0.14 148);
+  --rd:oklch(60% 0.14 20);
+  --cy:oklch(68% 0.11 210);
+  --pu:oklch(66% 0.11 300);
+  --ff-display:'Cinzel',Georgia,serif;
+  --ff-ui:'Inter',system-ui,sans-serif;
+  --ff-mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font-family:var(--ff-ui);font-size:13px;min-height:100vh;-webkit-font-smoothing:antialiased}
+a{color:var(--cy);text-decoration:none}
+a:hover{text-decoration:underline}
+button,.navbtn,.toolbtn{border:1px solid var(--bd);background:var(--s2);color:var(--tx);border-radius:2px;font:inherit;height:32px;cursor:pointer;padding:0 13px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:border-color 120ms,background 120ms,color 120ms}
+button:hover,.toolbtn:hover{border-color:var(--bd2);background:var(--s3)}
+button:disabled{opacity:.35;cursor:default}
+input{border:1px solid var(--bd);background:var(--s2);color:var(--tx);border-radius:2px;font:inherit;height:32px;width:190px;padding:0 10px;transition:border-color 120ms}
+input:focus{outline:none;border-color:var(--bd2)}
+
+/* App bar */
+.appbar{position:sticky;top:0;z-index:100;background:var(--s3);border-bottom:1px solid var(--bd);box-shadow:0 1px 0 var(--bd),0 4px 24px oklch(0 0 0 / 0.7)}
+.appbarin{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 24px;max-width:1440px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}
+.mark{width:30px;height:30px;border:1px solid oklch(80% 0.15 74 / 0.55);background:oklch(80% 0.15 74 / 0.06);color:var(--gd);border-radius:2px;display:flex;align-items:center;justify-content:center;font-family:var(--ff-display);font-weight:700;font-size:13px;letter-spacing:.05em;box-shadow:0 0 14px oklch(80% 0.15 74 / 0.2),inset 0 1px 0 oklch(80% 0.15 74 / 0.15)}
+.brandtext{min-width:0}
+.brandname{font-family:var(--ff-display);color:var(--gd);font-size:15px;font-weight:700;letter-spacing:.08em;line-height:1.1}
+.brandmeta{color:var(--mu);font-size:10px;margin-top:3px;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap;justify-content:flex-end}
+.navbtn{height:28px;font-size:11px;font-weight:500;color:var(--mu);border-color:transparent;background:transparent;padding:0 11px;letter-spacing:.02em}
+.navbtn:hover{color:var(--tx);background:var(--s2);border-color:var(--bd)}
+.navbtn.active{color:var(--gd);background:var(--gd-a);border-color:oklch(80% 0.15 74 / 0.35)}
+
+/* Shell */
+.shell{padding:26px 24px 44px;max-width:1440px;margin:0 auto}
+.view{display:none}
+.view.active{display:block}
+
+/* Home */
+.homehead{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:16px;align-items:stretch;margin-bottom:22px}
+.hero{background:var(--s1);border:1px solid var(--bd);border-radius:0;padding:30px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 4px 32px oklch(0 0 0 / 0.5)}
+h1{font-family:var(--ff-display);color:var(--gd);font-size:34px;font-weight:700;line-height:1.1;letter-spacing:.04em;text-wrap:balance}
+.lead{color:var(--tx);font-size:13px;line-height:1.65;max-width:65ch;margin-top:12px}
+.heroactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:24px}
+.primary{background:var(--gd-a);border-color:oklch(80% 0.15 74 / 0.5);color:var(--gd);font-weight:700}
+.primary:hover{background:oklch(80% 0.15 74 / 0.18);border-color:var(--gd)}
+.secondary{color:var(--mu)}
+.quick{display:flex;flex-direction:column;gap:6px}
+.metric{background:var(--s1);border:1px solid var(--bd);border-radius:0;padding:12px 14px;display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.metric b{font-family:var(--ff-mono);font-size:18px;font-weight:600;color:var(--gd);white-space:nowrap}
+.metric span{color:var(--mu);font-size:10px;line-height:1.4;text-align:right}
+
+/* Tool cards */
+.toolsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.toolcard{background:var(--s1);border:1px solid var(--bd);min-height:160px;display:flex;flex-direction:column;justify-content:space-between;padding:18px;transition:background 150ms,border-color 150ms}
+.toolcard:hover{background:var(--s2);border-color:var(--bd2)}
+.toolcard.ready{border-color:oklch(80% 0.15 74 / 0.35)}
+.tooltop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.tooltitle{font-family:var(--ff-display);color:var(--gd);font-size:13px;font-weight:700;line-height:1.3;letter-spacing:.04em}
+.tag{font-size:9px;text-transform:uppercase;letter-spacing:.5px;border:1px solid var(--bd);border-radius:0;padding:2px 6px;color:var(--mu);white-space:nowrap;font-weight:600}
+.tag.live{color:var(--gr);border-color:oklch(67% 0.14 148 / 0.45);background:oklch(67% 0.14 148 / 0.07)}
+.tooldesc{color:var(--mu);font-size:12px;line-height:1.55;margin-top:10px}
+.toolfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:18px}
+.toolbtn{height:28px;font-size:11px;border-radius:2px}
+
+/* Page head */
+.pagehead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px}
+.pagehead h1{font-size:22px;margin-bottom:0}
+.sub{color:var(--mu);font-size:11px;margin-top:5px;line-height:1.5}
+.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.status{color:var(--mu);font-size:11px;min-height:16px;text-align:right;width:100%;font-family:var(--ff-mono)}
+.status.ok{color:var(--gr)}
+.status.err{color:var(--rd)}
+#refresh,#checkRunes{background:var(--gd-a);border-color:oklch(80% 0.15 74 / 0.5);color:var(--gd)}
+#refresh:hover,#checkRunes:hover{background:oklch(80% 0.15 74 / 0.18);border-color:var(--gd)}
+
+/* Rune picker */
+.toolpanel{background:var(--s1);border:1px solid var(--bd);border-radius:0;overflow:hidden}
+.toolbar{background:var(--s2);border-bottom:1px solid var(--bd);padding:12px 14px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.toolbody{padding:14px}
+textarea{width:100%;min-height:210px;resize:vertical;border:1px solid var(--bd);background:oklch(9.5% 0.028 40);color:var(--tx);border-radius:0;font:inherit;line-height:1.5;padding:10px;transition:border-color 120ms}
+textarea:focus{outline:none;border-color:var(--bd2)}
+.split{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr);gap:14px;align-items:start}
+.bestbox{background:oklch(67% 0.14 148 / 0.06);border:1px solid oklch(67% 0.14 148 / 0.3);border-radius:0;padding:12px;margin-bottom:12px;color:var(--gr)}
+.bestbox.empty{background:var(--s2);border-color:var(--bd);color:var(--mu)}
+.bestbox b{display:block;color:var(--gd);font-size:14px;margin-bottom:4px;font-weight:700}
+.tablewrap{overflow:auto;border:1px solid var(--bd);border-radius:0}
+table{width:100%;border-collapse:collapse;min-width:720px;background:var(--s1)}
+th,td{padding:7px 10px;border-bottom:1px solid oklch(14% 0.026 40);text-align:left;vertical-align:top}
+th{background:var(--s2);color:var(--mu);font-size:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+td.num{text-align:right;white-space:nowrap;font-family:var(--ff-mono)}
+.muted{color:var(--mu)}
+.sample{margin-top:8px;color:var(--mu);font-size:11px;line-height:1.5}
+
+/* Craft cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:1px;background:var(--bd);border:1px solid var(--bd);margin-top:2px}
+.card{background:var(--s1);border:none;overflow:hidden;box-shadow:none;transition:background 150ms}
+.card:hover{background:oklch(12.5% 0.027 40)}
+.ch{background:var(--s2);border-bottom:2px solid var(--gd);padding:13px 18px}
+.ct{font-family:var(--ff-display);color:var(--gd);font-size:12px;font-weight:700;line-height:1.35;letter-spacing:.06em;text-transform:uppercase}
+.cd{color:var(--mu);font-size:11px;line-height:1.5;margin-top:5px}
+.row{display:flex;align-items:flex-start;padding:7px 18px;border-bottom:1px solid oklch(14% 0.026 40);gap:10px;transition:background 100ms}
+.row:last-child{border-bottom:none}
+.row:hover{background:var(--s2)}
+.row.opt{opacity:.45}
+.il{flex:1;min-width:0}
+.in{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.lbl{color:var(--tx)}
+.opt .lbl{color:var(--mu)}
+.bdg{font-size:9px;padding:1px 5px;border-radius:0;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.bc{background:oklch(80% 0.15 74 / 0.08);color:oklch(80% 0.15 74 / 0.9);border:1px solid oklch(80% 0.15 74 / 0.2)}
+.be{background:oklch(68% 0.11 210 / 0.08);color:oklch(68% 0.11 210 / 0.9);border:1px solid oklch(68% 0.11 210 / 0.2)}
+.bo{background:oklch(66% 0.11 300 / 0.08);color:oklch(66% 0.11 300 / 0.9);border:1px solid oklch(66% 0.11 300 / 0.2)}
+.bk{background:oklch(68% 0.10 170 / 0.08);color:oklch(68% 0.10 170 / 0.9);border:1px solid oklch(68% 0.10 170 / 0.2)}
+.ot{font-size:10px;color:var(--mu);font-style:italic}
+.nt{color:var(--mu);font-size:10px;margin-top:3px;line-height:1.35}
+.ip{text-align:right;white-space:nowrap;min-width:90px;flex-shrink:0}
+.pc{font-family:var(--ff-mono);font-size:15px;font-weight:600;color:var(--gd)}
+.pd{font-family:var(--ff-mono);color:var(--gr);font-size:10px;font-weight:500;margin-top:2px}
+.pm{font-family:var(--ff-mono);color:var(--mu);font-size:11px;font-style:italic}
+
+/* Card footer */
+.cf{background:oklch(10% 0.028 40);border-top:1px solid var(--bd);padding:11px 18px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.fl{color:var(--mu);font-size:10px;letter-spacing:.03em;text-transform:uppercase}
+.ft{font-family:var(--ff-mono);font-weight:600;font-size:20px;color:var(--gd);letter-spacing:-.01em}
+.fd{font-family:var(--ff-mono);font-size:11px;color:var(--gr);margin-left:10px;font-weight:500}
+
+@media(max-width:820px){.appbarin{display:block}.nav{justify-content:flex-start;margin-top:10px}.homehead{grid-template-columns:1fr}.pagehead{display:block}.controls{justify-content:flex-start;margin-top:12px}.status{text-align:left}.split{grid-template-columns:1fr}}
+@media(max-width:560px){.shell{padding:14px 12px}.appbarin{padding:10px 14px}.navbtn{flex:1}.hero{padding:20px}h1{font-size:26px}.toolsgrid,.grid{grid-template-columns:1fr}.row{padding:7px 14px}.ch,.cf{padding:10px 14px}input{width:100%}.toolfoot{display:block}.toolbtn{width:100%;margin-top:10px}}
+</style>
+</head>
+<body>
+<header class="appbar">
+  <div class="appbarin">
+    <a class="brand" href="#home" data-view-link="home">
+      <span class="mark">P</span>
+      <span class="brandtext">
+        <span class="brandname">PoE Tools</span>
+        <span class="brandmeta">Path of Exile 2 &middot; Runes of Aldur</span>
+      </span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a class="navbtn" href="#home" data-view-link="home">Home</a>
+      <a class="navbtn" href="#craft-pricer" data-view-link="craft-pricer">Craft Pricer</a>
+      <a class="navbtn" href="#rune-picker" data-view-link="rune-picker">Rune Picker</a>
+      <a class="navbtn" href="#coming-soon" data-view-link="coming-soon">More Tools</a>
+    </nav>
+  </div>
+</header>
+<main class="shell">
+  <section id="home" class="view active" data-view="home">
+    <div class="homehead">
+      <div class="hero">
+        <div>
+          <h1>PoE Tools</h1>
+          <p class="lead">Live poe.ninja prices for crafting materials. Six routes with required floors and full optional costs. Runs local, no login, no delay.</p>
+          <div class="heroactions">
+            <a class="toolbtn primary" href="#craft-pricer" data-view-link="craft-pricer">Open Craft Pricer</a>
+            <a class="toolbtn secondary" href="#coming-soon" data-view-link="coming-soon">More Tools</a>
+          </div>
+        </div>
+      </div>
+      <div class="quick" aria-label="Project status">
+        <div class="metric"><b id="homeToolCount">2</b><span>tools connected to poe.ninja</span></div>
+        <div class="metric"><b id="homeCraftCount">6</b><span>craft routes tracked</span></div>
+        <div class="metric"><b id="homePriceStatus">Ready</b><span>open craft pricer to load prices</span></div>
+      </div>
+    </div>
+    <div class="toolsgrid">
+      <article class="toolcard ready">
+        <div>
+          <div class="tooltop">
+            <div class="tooltitle">Craft Price Checker</div>
+            <span class="tag live">Live</span>
+          </div>
+          <p class="tooldesc">Material costs for bow, quiver, amulet, and helmet routes. Required floors and full optional totals per route.</p>
+        </div>
+        <div class="toolfoot">
+          <span class="sub">poe.ninja economy data.</span>
+          <a class="toolbtn primary" href="#craft-pricer" data-view-link="craft-pricer">Open</a>
+        </div>
+      </article>
+      <article class="toolcard">
+        <div>
+          <div class="tooltop">
+            <div class="tooltitle">Rune Picker</div>
+            <span class="tag live">Live</span>
+          </div>
+          <p class="tooldesc">Paste rune or reward choices, price each poe.ninja match, highlight the highest-value pick.</p>
+        </div>
+        <div class="toolfoot">
+          <span class="sub">Ported from open-poe-runes.ps1.</span>
+          <a class="toolbtn primary" href="#rune-picker" data-view-link="rune-picker">Open</a>
+        </div>
+      </article>
+      <article class="toolcard">
+        <div>
+          <div class="tooltop">
+            <div class="tooltitle">Farming Notes</div>
+            <span class="tag">Planned</span>
+          </div>
+          <p class="tooldesc">League farming plans, target drops, and expected returns alongside the tools that price them.</p>
+        </div>
+        <div class="toolfoot"><span class="sub">Ready for expansion.</span></div>
+      </article>
+    </div>
+  </section>
+
+  <section id="craft-pricer" class="view" data-view="craft-pricer">
+    <div class="pagehead">
+      <div>
+        <h1>Craft Price Checker</h1>
+        <p class="sub">
+          Live poe.ninja prices for the current league.
+          Backup: <a href="poe2-craft-pricer.snapshot.html">snapshot</a> &middot; <a href="poe2-craft-pricer.ps1">PowerShell generator</a>.
+        </p>
+      </div>
+      <div class="controls">
+        <input id="league" value="Runes of Aldur" aria-label="League">
+        <button id="refresh" type="button">Refresh prices</button>
+        <div id="status" class="status">No prices loaded yet.</div>
+      </div>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section id="rune-picker" class="view" data-view="rune-picker">
+    <div class="pagehead">
+      <div>
+        <h1>Rune Picker</h1>
+        <p class="sub">Paste reward lines or item choices. The server prices poe.ninja matches and ranks the best pick.</p>
+      </div>
+      <div class="controls">
+        <input id="runeLeague" value="Runes of Aldur" aria-label="Rune picker league">
+        <button id="pasteRunes" type="button">Paste clipboard</button>
+        <button id="checkRunes" type="button">Check picks</button>
+        <div id="runeStatus" class="status">Paste item names to begin.</div>
+      </div>
+    </div>
+    <div class="split">
+      <div class="toolpanel">
+        <div class="toolbar">
+          <div>
+            <div class="tooltitle">Input</div>
+            <p class="sub">One choice per line. Quantities like 3x Rune Name are supported.</p>
+          </div>
+        </div>
+        <div class="toolbody">
+          <textarea id="runeInput" spellcheck="false" placeholder="Example:&#10;3x Desert Rune&#10;Soul Core of Tacati&#10;Greater Essence of Enhancement"></textarea>
+          <p class="sample">The web version does not read your clipboard automatically on load. Use Paste clipboard or paste manually.</p>
+        </div>
+      </div>
+      <div class="toolpanel">
+        <div class="toolbar">
+          <div>
+            <div class="tooltitle">Results</div>
+            <p class="sub">Sorted by total exalted value.</p>
+          </div>
+        </div>
+        <div class="toolbody">
+          <div id="runeBest" class="bestbox empty">No priced picks yet.</div>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Qty</th><th>Name</th><th>Category</th><th>Each</th><th>Total</th><th>Source</th><th>7d</th></tr></thead>
+              <tbody id="runeRows"><tr><td colspan="7" class="muted">Paste choices and run a check.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="coming-soon" class="view" data-view="coming-soon">
+    <div class="pagehead">
+      <div>
+        <h1>More Tools</h1>
+        <p class="sub">Placeholder pages for tools in progress.</p>
+      </div>
+    </div>
+    <div class="toolsgrid">
+      <article class="toolcard"><div><div class="tooltitle">Currency Watchlist</div><p class="tooldesc">A saved list of market items with chaos and divine equivalents.</p></div><span class="tag">Planned</span></article>
+      <article class="toolcard"><div><div class="tooltitle">Craft Planner</div><p class="tooldesc">Step-by-step material planning with quantities, failure cases, and expected rerolls.</p></div><span class="tag">Planned</span></article>
+      <article class="toolcard"><div><div class="tooltitle">Profit Notes</div><p class="tooldesc">Farming methods, costs, sale targets, and quick league notes.</p></div><span class="tag">Planned</span></article>
+    </div>
+  </section>
+</main>
+<script>
+let P={};
+let DV=0;
+
+const CRAFTS=[
+{T:"Crit Bow - ilvl 75",D:"Base: Obliterator Bow or Warmonger Bow with high %phys. Aug the base before step 1.",I:[
+  {l:"Greater Essence of Seeking",id:"greater-essence-of-seeking",c:"e",n:"Step 1 - grants T3 Crit"},
+  {l:"Sinistral Necromancy",id:"omen-of-sinistral-necromancy",c:"o",n:"Step 2 - unveil a prefix slot"},
+  {l:"Jawbone",id:"gnawed-jawbone",c:"b",n:"Step 2 - bone used with Sinistral Necromancy (cheapest tier)"},
+  {l:"Ancient Jawbone",id:"ancient-jawbone",c:"b",n:"Step 2 - guide says cheap at league start (currently expensive)",opt:1},
+  {l:"Abyssal Echoes",id:"omen-of-abyssal-echoes",c:"o",n:"Step 2 - alternative to Sinistral Necro combo depending on prices",opt:1},
+  {l:"Omen of Greater Exaltation",id:"omen-of-greater-exaltation",c:"o",n:"Step 3 - pair with exalt to fill last 2 affixes"},
+  {l:"Greater Exalted Orb",id:"greater-exalted-orb",c:"b",n:"Step 3 - cheaper exalt option"},
+  {l:"Perfect Exalted Orb",id:"perfect-exalted-orb",c:"b",n:"Step 3 - better exalt option",opt:1}
+]},
+{T:"Quiver - ilvl 75 (Budget / Main)",D:"RNG-heavy. Target: flat dmg or inc bow dmg prefix + +1 / crit / atk spd suffix.",I:[
+  {l:"Perfect Orb of Transmutation",id:"perfect-orb-of-transmutation",c:"b",n:"Step 1 - trans the base"},
+  {l:"Perfect Orb of Augmentation",id:"perfect-orb-of-augmentation",c:"b",n:"Step 1 - aug after trans"},
+  {l:"Perfect Regal Orb",id:"perfect-regal-orb",c:"b",n:"Step 2 - regal for 3rd affix"},
+  {l:"Greater Chaos Orb",id:"greater-chaos-orb",c:"b",n:"Step 3 - replace bad affix (2/3 brick risk)",opt:1},
+  {l:"Dextral Necromancy",id:"omen-of-dextral-necromancy",c:"o",n:"Step 4 - jawbone the suffix"},
+  {l:"Jawbone",id:"gnawed-jawbone",c:"b",n:"Step 4 - bone used with Dextral Necromancy"},
+  {l:"Abyssal Echoes",id:"omen-of-abyssal-echoes",c:"o",n:"Step 4 - use if you land 3 GG mods",opt:1},
+  {l:"Perfect Exalted Orb",id:"perfect-exalted-orb",c:"b",n:"Step 5 - finish craft if good suffix hit",opt:1},
+  {l:"Omen of Dextral Exaltation",id:"omen-of-dextral-exaltation",c:"o",n:"Step 5 - double exalt omen (suffix-targeting)",opt:1}
+]},
+{T:"Quiver - ilvl 75 (Expensive / High Ceiling)",D:"Needs +2 lvls/crit suffix + T1 flat. Fracture + dual omen combo.",I:[
+  {l:"Jawbone",id:"gnawed-jawbone",c:"b",n:"Jawbone the suffix before fracturing"},
+  {l:"Fracturing Orb",id:"fracturing-orb",c:"b",n:"1/3 to fracture flat dmg - miss = fall back to budget method"},
+  {l:"Exalted Orb",id:"exalted",c:"b",n:"Exalt 1 prefix mod after fracture"},
+  {l:"Essence of Hysteria",id:"essence-of-hysteria",c:"e",n:"Paired with Sinistral Crystallisation - 100% chance for bow dmg prefix"},
+  {l:"Omen of Sinistral Crystallisation",id:"omen-of-sinistral-crystallisation",c:"o",n:"Paired with Essence of Hysteria"},
+  {l:"Perfect Exalted Orb",id:"perfect-exalted-orb",c:"b",n:"Slam last prefix - pray for no accuracy roll"},
+  {l:"Abyssal Echoes",id:"omen-of-abyssal-echoes",c:"o",n:"Last suffix cycling - target crit or atk spd",opt:1},
+  {l:"Omen of Light",id:"omen-of-light",c:"o",n:"Last suffix cycling - target crit or atk spd",opt:1},
+  {l:"Omen of Whittling",id:"omen-of-whittling",c:"o",n:"Last suffix cycling - alternative omen",opt:1}
+]},
+{T:"Amulet - ilvl 80 / 82",D:"Mostly deterministic but expensive. ilvl 82 = T1 resists. Needs 1 fractured +3 proj base.",I:[
+  {l:"Fracturing Orb",id:"fracturing-orb",c:"b",n:"Step 1 - fracture +3 proj (or buy pre-fractured base)"},
+  {l:"Chaos Orb (spam)",id:"chaos",c:"b",n:"Step 3 - spam until T1 or T2 spirit (variable qty - budget 10-30+)"},
+  {l:"Omen of Dextral Exaltation",id:"omen-of-dextral-exaltation",c:"o",n:"Steps 4 & 7 - suffix-targeting exalt"},
+  {l:"Exalted Orb",id:"exalted",c:"b",n:"Step 4 - add 1 suffix (used with Dextral Exaltation)"},
+  {l:"Omen of Dextral Crystallisation",id:"omen-of-dextral-crystallisation",c:"o",n:"Step 5 - paired with Essence of Enhancement"},
+  {l:"Essence of Enhancement",id:"essence-of-enhancement",c:"e",n:"Step 5 - paired with Dextral Crystallisation"},
+  {l:"Tul's Catalyst (Ice Resist)",id:"tuls-catalyst",c:"k",n:"Step 6 - quality to 20% (pick your resist type)",opt:1},
+  {l:"Xoph's Catalyst (Fire Resist)",id:"xophs-catalyst",c:"k",n:"Step 6 - fire resist quality alt",opt:1},
+  {l:"Esh's Catalyst (Lightning Resist)",id:"eshs-catalyst",c:"k",n:"Step 6 - lightning resist quality alt",opt:1},
+  {l:"Collarbone",id:"gnawed-collarbone",c:"b",n:"Step 9 - remove a bad mod (cheapest tier shown)",opt:1},
+  {l:"Dextral Necromancy",id:"omen-of-dextral-necromancy",c:"o",n:"Step 9 - used with Collarbone",opt:1},
+  {l:"Omen of Light",id:"omen-of-light",c:"o",n:"Step 9 - target specific prefix to remove",opt:1}
+]},
+{T:"Helmet - ilvl 78 (Safe / Cheap)",D:"Consistent method. Start with T1 +energy shield base.",I:[
+  {l:"Greater Essence of Enhancement",id:"greater-essence-of-enhancement",c:"e",n:"Step 2 - deterministic mod"},
+  {l:"Sinistral Necromancy",id:"omen-of-sinistral-necromancy",c:"o",n:"Step 3 - unveil a prefix"},
+  {l:"Preserved Rib",id:"preserved-rib",c:"b",n:"Step 3 - bone used with Sinistral Necromancy"},
+  {l:"Greater Exalted Orb",id:"greater-exalted-orb",c:"b",n:"Step 5 - finish suffixes (hybrid %ES not T1)"},
+  {l:"Perfect Exalted Orb",id:"perfect-exalted-orb",c:"b",n:"Step 5 - use instead if hybrid was T1",opt:1},
+  {l:"Omen of Greater Exaltation",id:"omen-of-greater-exaltation",c:"o",n:"Step 5 - upgrade exalt tier",opt:1},
+  {l:"Vaal Armourer's Infuser",id:"vaal-armourers-infuser",c:"b",n:"Step 6 - corrupt without bricking (add socket first)",opt:1}
+]},
+{T:"Helmet - ilvl 78 (RNG / Triple T1 Gamble)",D:"Same cost floor, higher ceiling. Can land triple T1 prefix.",I:[
+  {l:"Perfect Orb of Transmutation",id:"perfect-orb-of-transmutation",c:"b",n:"Step 1 - trans/aug base until T1 %ES or +ES"},
+  {l:"Perfect Orb of Augmentation",id:"perfect-orb-of-augmentation",c:"b",n:"Step 1 - aug after trans"},
+  {l:"Greater Essence of Enhancement",id:"greater-essence-of-enhancement",c:"e",n:"Step 2 - use if prefix+suffix are good (resist/rarity variant)",opt:1},
+  {l:"Sinistral Necromancy",id:"omen-of-sinistral-necromancy",c:"o",n:"Step 3 - unveil a prefix"},
+  {l:"Preserved Rib",id:"preserved-rib",c:"b",n:"Step 3 - bone used with Sinistral Necromancy"},
+  {l:"Greater Exalted Orb",id:"greater-exalted-orb",c:"b",n:"Step 3 - slam a suffix"},
+  {l:"Omen of Greater Exaltation",id:"omen-of-greater-exaltation",c:"o",n:"Step 3 - pair with Greater Exalt"},
+  {l:"Abyssal Echoes",id:"omen-of-abyssal-echoes",c:"o",n:"Step 4 - try to replace a bad affix",opt:1},
+  {l:"Vaal Armourer's Infuser",id:"vaal-armourers-infuser",c:"b",n:"Step 5 - corrupt if prefixes are high tier",opt:1}
+]}
+];
+
+const BC={e:"be",o:"bo",b:"bc",k:"bk"};
+const BL={e:"essence",o:"omen",b:"currency",k:"catalyst"};
+const grid=document.getElementById("grid");
+const statusEl=document.getElementById("status");
+const refreshBtn=document.getElementById("refresh");
+const leagueInput=document.getElementById("league");
+const runeLeagueInput=document.getElementById("runeLeague");
+const runeInput=document.getElementById("runeInput");
+const runeStatus=document.getElementById("runeStatus");
+const runeRows=document.getElementById("runeRows");
+const runeBest=document.getElementById("runeBest");
+const checkRunesBtn=document.getElementById("checkRunes");
+const pasteRunesBtn=document.getElementById("pasteRunes");
+const views=[...document.querySelectorAll("[data-view]")];
+const viewLinks=[...document.querySelectorAll("[data-view-link]")];
+const homeCraftCount=document.getElementById("homeCraftCount");
+const homePriceStatus=document.getElementById("homePriceStatus");
+let hasAutoRefreshed=false;
+let tradeLimitedUntil=0;
+let tradeStatusTimer=0;
+let runeResultData=[];
+let tradeQueueRunning=false;
+
+function fc(v){return v>=10?Math.round(v)+"c":v.toFixed(1)+"c"}
+function fx(v){
+  if(typeof v!=="number"||!isFinite(v)) return esc(v||"");
+  if(v>=10) return Math.round(v)+" ex";
+  if(v>=1) return v.toFixed(2)+" ex";
+  if(v>=0.01) return v.toFixed(4)+" ex";
+  if(v>=0.0001) return v.toFixed(4)+" ex";
+  return "<0.0001 ex";
+}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]))}
+function setStatus(text,kind){statusEl.textContent=text;statusEl.className="status "+(kind||"")}
+function setRuneStatus(text,kind){runeStatus.textContent=text;runeStatus.className="status "+(kind||"")}
+
+function updateTradeLimitUi(){
+  const remaining=Math.ceil((tradeLimitedUntil-Date.now())/1000);
+  if(remaining>0){
+    const until=new Date(tradeLimitedUntil).toLocaleTimeString();
+    setRuneStatus("Trade2 limited until "+until+". Trade queue waits "+remaining+"s; poe.ninja checks still work.", "err");
+    return true;
+  }
+  tradeLimitedUntil=0;
+  return false;
+}
+
+function setTradeLimit(iso){
+  tradeLimitedUntil=iso?new Date(iso).getTime():0;
+  clearInterval(tradeStatusTimer);
+  if(updateTradeLimitUi()){
+    tradeStatusTimer=setInterval(()=>{
+      if(!updateTradeLimitUi()){
+        clearInterval(tradeStatusTimer);
+        setRuneStatus("Trade2 cooldown cleared. You can check picks again.", "ok");
+      }
+    },1000);
+  }
+}
+
+async function refreshTradeStatus(){
+  try{
+    const r=await fetch("/api/trade-status");
+    if(!r.ok) return false;
+    const data=await r.json();
+    setTradeLimit(data.tradeLimitedUntil||"");
+    return Boolean(data.limited);
+  }catch{
+    return false;
+  }
+}
+
+function currentView(){
+  const key=(location.hash||"#home").slice(1);
+  return views.some(v=>v.dataset.view===key)?key:"home";
+}
+
+function showView(){
+  const key=currentView();
+  for(const view of views) view.classList.toggle("active",view.dataset.view===key);
+  for(const link of viewLinks) link.classList.toggle("active",link.dataset.viewLink===key);
+  if(key==="rune-picker") refreshTradeStatus();
+  if(key==="craft-pricer"&&!hasAutoRefreshed){
+    hasAutoRefreshed=true;
+    refreshPrices();
+  }
+}
+
+function render(){
+  grid.innerHTML="";
+  for(const craft of CRAFTS){
+    let tot=0,all=0;
+    let rows="";
+    for(const item of craft.I){
+      const f=P[item.id];
+      let price;
+      if(f){
+        price='<div class="pc">'+fc(f.c)+'</div>';
+        if(DV>0) price+='<div class="pd">'+(f.c/DV).toFixed(2)+'d</div>';
+        if(!item.opt) tot+=f.c;
+        all+=f.c;
+      }else{
+        price='<div class="pm">'+(DV?"not found":"refresh needed")+'</div>';
+      }
+      rows+='<div class="row'+(item.opt?" opt":"")+'"><div class="il"><div class="in"><span class="lbl">'+esc(item.l)+'</span><span class="bdg '+BC[item.c]+'">'+BL[item.c]+'</span>'+(item.opt?'<span class="ot">optional</span>':'')+'</div><div class="nt">'+esc(item.n)+'</div></div><div class="ip">'+price+'</div></div>';
+    }
+    const dv=DV>0?'<span class="fd">/ '+(tot/DV).toFixed(2)+'d</span>':"";
+    const allDv=DV>0?'<span class="fd">/ '+(all/DV).toFixed(2)+'d</span>':"";
+    const hasOpt=craft.I.some(i=>i.opt);
+    const optLine=hasOpt?'<div class="cf" style="border-top:none;padding-top:0;opacity:.65"><span class="fl">With all optionals</span><span><span class="ft">'+(DV?Math.round(all)+"c":"--")+'</span>'+allDv+'</span></div>':"";
+    const card=document.createElement("div");
+    card.className="card";
+    card.innerHTML='<div class="ch"><div class="ct">'+esc(craft.T)+'</div><div class="cd">'+esc(craft.D)+'</div></div><div>'+rows+'</div><div class="cf"><span class="fl">Required floor</span><span><span class="ft">'+(DV?Math.round(tot)+"c":"--")+'</span>'+dv+'</span></div>'+optLine;
+    grid.appendChild(card);
+  }
+}
+
+function renderRuneResults(data){
+  runeResultData=data.results||[];
+  if(!data.results||!data.results.length){
+    runeBest.className="bestbox empty";
+    runeBest.textContent="No priced picks found.";
+    runeRows.innerHTML='<tr><td colspan="7" class="muted">No results. Check the pasted text.</td></tr>';
+    return;
+  }
+
+  const best=data.best||data.results.find(item=>Number(item.total)>0);
+  if(best){
+    runeBest.className="bestbox";
+    runeBest.innerHTML='<b>Best pick: '+esc(best.qty)+'x '+esc(best.name)+'</b><span>'+fx(best.total)+' total / '+fx(best.each)+' each - '+esc(best.category)+' via '+esc(best.source)+'</span>'+(best.rawPrice?'<div class="muted">Raw listing: '+esc(best.rawPrice)+'</div>':'');
+  }else{
+    runeBest.className="bestbox empty";
+    runeBest.textContent="No priced pick was available.";
+  }
+
+  runeRows.innerHTML=data.results.map((item,index)=>{
+    const missing=!item.total;
+    return '<tr id="rune-row-'+index+'">'+
+      '<td class="num">'+esc(item.qty)+'</td>'+
+      '<td>'+esc(item.name)+'</td>'+
+      '<td>'+esc(item.category||"")+'</td>'+
+      '<td class="num">'+(missing?"":fx(item.each))+'</td>'+
+      '<td class="num">'+(missing?"":fx(item.total))+'</td>'+
+      '<td>'+esc(item.source||"")+(item.rawPrice?'<div class="muted">'+esc(item.rawPrice)+'</div>':'')+'</td>'+
+      '<td class="num">'+esc(item.change7d||"")+'</td>'+
+    '</tr>';
+  }).join("");
+}
+
+function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+
+function bestFromResults(results){
+  return results.filter(item=>Number(item.total)>0).sort((a,b)=>Number(b.total)-Number(a.total))[0]||null;
+}
+
+async function waitForTradeCooldown(){
+  while(await refreshTradeStatus()){
+    const waitMs=Math.max(1000,tradeLimitedUntil-Date.now()+500);
+    await sleep(waitMs);
+  }
+}
+
+async function processTradeQueue(results,league){
+  if(tradeQueueRunning) return;
+  tradeQueueRunning=true;
+  try{
+    const queued=results.map((item,index)=>({item,index})).filter(entry=>entry.item.category==="TRADE QUEUED");
+    for(let q=0;q<queued.length;q++){
+      const {item}=queued[q];
+      await waitForTradeCooldown();
+      setRuneStatus("Checking trade row "+(q+1)+" of "+queued.length+": "+item.name, "");
+      const r=await fetch("/api/trade-price",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({league,name:item.name,qty:item.qty})
+      });
+      if(!r.ok) throw new Error("trade endpoint returned HTTP "+r.status);
+      const data=await r.json();
+      if(data.limited){
+        setTradeLimit(data.tradeLimitedUntil);
+        q--;
+        continue;
+      }
+      if(data.found){
+        Object.assign(item,data);
+      }else{
+        Object.assign(item,{category:"NOT FOUND",each:"",total:"",source:"trade2",rawPrice:""});
+      }
+      results.sort((a,b)=>(Number(b.total)||-1)-(Number(a.total)||-1));
+      renderRuneResults({results,best:bestFromResults(results)});
+    }
+    setRuneStatus("Checked "+results.length+" picks. Trade queue complete.", "ok");
+  }catch(err){
+    setRuneStatus("Trade queue stopped: "+err.message, "err");
+  }finally{
+    tradeQueueRunning=false;
+  }
+}
+
+async function checkRunes(){
+  await refreshTradeStatus();
+  if(tradeQueueRunning){
+    setRuneStatus("Trade queue is already running. Wait for it to finish or refresh to start over.", "err");
+    return;
+  }
+  const text=runeInput.value.trim();
+  const league=runeLeagueInput.value.trim()||"Runes of Aldur";
+  if(!text){
+    setRuneStatus("Paste item names first.", "err");
+    return;
+  }
+  checkRunesBtn.disabled=true;
+  pasteRunesBtn.disabled=true;
+  setRuneStatus("Pricing pasted choices...", "");
+  try{
+    const r=await fetch("/api/rune-prices",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({text,league})
+    });
+    if(!r.ok) throw new Error("local server returned HTTP "+r.status);
+    const data=await r.json();
+    renderRuneResults(data);
+    const queued=(data.results||[]).filter(item=>item.category==="TRADE QUEUED").length;
+    const limited=data.tradeLimitedUntil?" Trade2 limited until "+new Date(data.tradeLimitedUntil).toLocaleTimeString()+".":"";
+    setRuneStatus("Checked "+data.count+" picks"+(queued?"; "+queued+" trade rows queued":"")+(data.truncated?" (first 30 lines only)":"")+"."+limited, data.tradeLimitedUntil?"err":"ok");
+    if(data.tradeLimitedUntil) setTradeLimit(data.tradeLimitedUntil);
+    if(queued) processTradeQueue(data.results,league);
+  }catch(err){
+    setRuneStatus("Rune check failed: "+err.message, "err");
+  }finally{
+    checkRunesBtn.disabled=false;
+    pasteRunesBtn.disabled=false;
+  }
+}
+
+async function pasteRunes(){
+  try{
+    if(!navigator.clipboard||!navigator.clipboard.readText) throw new Error("clipboard permission is unavailable");
+    runeInput.value=await navigator.clipboard.readText();
+    setRuneStatus("Clipboard pasted. Run a check when ready.", "ok");
+  }catch(err){
+    setRuneStatus("Paste manually: "+err.message, "err");
+    runeInput.focus();
+  }
+}
+
+async function refreshPrices(){
+  const league=leagueInput.value.trim()||"Runes of Aldur";
+  if(location.protocol==="file:"){
+    setStatus("Live refresh needs Start PoE2 Craft Pricer.cmd so the page can use localhost.", "err");
+    return;
+  }
+  refreshBtn.disabled=true;
+  setStatus("Fetching poe.ninja prices...", "");
+  try{
+    const r=await fetch("/api/prices?league="+encodeURIComponent(league));
+    if(!r.ok) throw new Error("local server returned HTTP "+r.status);
+    const data=await r.json();
+    if(!data.count) throw new Error("No price data loaded. Check the league name.");
+    P=data.prices;
+    DV=data.divineRate;
+    render();
+    const stamp=new Date().toLocaleString();
+    setStatus("Updated "+stamp+" - 1 divine = "+Math.round(DV)+"c", "ok");
+    if(homePriceStatus) homePriceStatus.textContent=Math.round(DV)+"c divine";
+  }catch(err){
+    setStatus("Refresh failed: "+err.message+". Open the snapshot link if your browser blocks direct API calls.", "err");
+  }finally{
+    refreshBtn.disabled=false;
+  }
+}
+
+refreshBtn.addEventListener("click",refreshPrices);
+checkRunesBtn.addEventListener("click",checkRunes);
+pasteRunesBtn.addEventListener("click",pasteRunes);
+window.addEventListener("hashchange",showView);
+refreshTradeStatus();
+if(homeCraftCount) homeCraftCount.textContent=String(CRAFTS.length);
+render();
+showView();
+</script>
+</body>
+</html>
