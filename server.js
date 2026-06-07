@@ -453,7 +453,8 @@ async function fetchRunePrices(text, league) {
       .replace(/\s+/g, " ")
       .trim();
 
-    if (cleanName.length < 3 || !/[A-Za-z]/.test(cleanName) || /^Uncut (Skill|Spirit|Support) Gem$/i.test(cleanName)) continue;
+    const looksLikeBareGem = /^Uncut (Skill|Spirit|Support) Gem/i.test(cleanName) && !/\d/.test(cleanName);
+    if (cleanName.length < 3 || !/[A-Za-z]{3,}/.test(cleanName) || looksLikeBareGem) continue;
 
     const norm = normalizeName(cleanName);
     if (seenCleanNames.has(norm)) continue;
