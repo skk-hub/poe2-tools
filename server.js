@@ -651,7 +651,7 @@ const server = http.createServer(async (req, res) => {
           await fs.promises.copyFile(tmpIn, path.join(os.tmpdir(), "poe-ocr-debug-in." + ext)).catch(() => {});
         }
         await new Promise((resolve, reject) =>
-          exec(`magick "${tmpIn}" -gravity West -chop 40%x0 -colorspace gray -auto-threshold otsu "${tmpProc}"`,
+          exec(`magick "${tmpIn}" -gravity West -chop 40%x0 "${tmpProc}"`,
             (err, _, stderr) => err ? reject(new Error(stderr || err.message)) : resolve())
         );
         if (process.env.OCR_DEBUG) {
