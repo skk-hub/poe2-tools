@@ -647,10 +647,16 @@ const server = http.createServer(async (req, res) => {
       const cleanup = () => { for (const f of [tmpIn, tmpProc, tmpBase + ".txt"]) fs.unlink(f, () => {}); };
       try {
         await fs.promises.writeFile(tmpIn, buf);
+        if (process.env.OCR_DEBUG) {
+          await fs.promises.copyFile(tmpIn, path.join(os.tmpdir(), "poe-ocr-debug-in." + ext)).catch(() => {});
+        }
         await new Promise((resolve, reject) =>
           exec(`magick "${tmpIn}" -gravity West -chop 40%x0 -colorspace gray -auto-threshold otsu "${tmpProc}"`,
             (err, _, stderr) => err ? reject(new Error(stderr || err.message)) : resolve())
         );
+        if (process.env.OCR_DEBUG) {
+          await fs.promises.copyFile(tmpProc, path.join(os.tmpdir(), "poe-ocr-debug-proc.png")).catch(() => {});
+        }
         const text = await new Promise((resolve, reject) =>
           exec(`tesseract "${tmpProc}" "${tmpBase}" --psm 6 -c preserve_interword_spaces=1`,
             (err, _, stderr) => {
