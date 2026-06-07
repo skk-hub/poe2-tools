@@ -648,11 +648,11 @@ const server = http.createServer(async (req, res) => {
       try {
         await fs.promises.writeFile(tmpIn, buf);
         await new Promise((resolve, reject) =>
-          exec(`convert "${tmpIn}" -gravity West -chop 40%x0 -resize 400% -colorspace gray -threshold 50% -bordercolor white -border 20x20 "${tmpProc}"`,
+          exec(`magick "${tmpIn}" -gravity West -chop 40%x0 -colorspace gray -auto-threshold otsu "${tmpProc}"`,
             (err, _, stderr) => err ? reject(new Error(stderr || err.message)) : resolve())
         );
         const text = await new Promise((resolve, reject) =>
-          exec(`tesseract "${tmpProc}" "${tmpBase}" --oem 1 --psm 6 -c preserve_interword_spaces=1`,
+          exec(`tesseract "${tmpProc}" "${tmpBase}" --psm 6 -c preserve_interword_spaces=1`,
             (err, _, stderr) => {
               if (err) return reject(new Error(stderr || err.message));
               fs.readFile(tmpBase + ".txt", "utf8", (e, d) => e ? reject(e) : resolve(d || ""));
