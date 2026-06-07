@@ -6,6 +6,6 @@ services:
     environment:
       - POE2_NO_OPEN=1
       - HOST=0.0.0.0
-      - POE_CONTACT=your-email-or-discord-here
+      - POE_CONTACT=REDACTED-USER
     ports:
       - "17777:17777"

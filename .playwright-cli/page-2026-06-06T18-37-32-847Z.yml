@@ -1,0 +1,66 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "P PoE Tools Path of Exile 2 planning utilities" [ref=e4] [cursor=pointer]:
+        - /url: "#home"
+        - generic [ref=e5]: P
+        - generic [ref=e6]: PoE Tools Path of Exile 2 planning utilities
+      - navigation "Primary" [ref=e7]:
+        - link "Home" [ref=e8] [cursor=pointer]:
+          - /url: "#home"
+        - link "Craft Pricer" [ref=e9] [cursor=pointer]:
+          - /url: "#craft-pricer"
+        - link "Rune Picker" [ref=e10] [cursor=pointer]:
+          - /url: "#rune-picker"
+        - link "More Tools" [ref=e11] [cursor=pointer]:
+          - /url: "#coming-soon"
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: Local toolkit
+          - heading "PoE Tools" [level=1] [ref=e18]
+          - paragraph [ref=e19]: A focused dashboard for Path of Exile 2 utilities. Start with live crafting cost checks, then expand into build, trade, and farming calculators without leaving this local app.
+          - generic [ref=e20]:
+            - link "Open Craft Pricer" [ref=e21] [cursor=pointer]:
+              - /url: "#craft-pricer"
+            - link "View Tool Roadmap" [ref=e22] [cursor=pointer]:
+              - /url: "#coming-soon"
+        - generic "Project status" [ref=e23]:
+          - generic [ref=e24]:
+            - generic [ref=e25]: "2"
+            - generic [ref=e26]: live tools connected to poe.ninja through the local server
+          - generic [ref=e27]:
+            - generic [ref=e28]: "6"
+            - generic [ref=e29]: crafting paths tracked with required and optional material costs
+          - generic [ref=e30]:
+            - generic [ref=e31]: Ready
+            - generic [ref=e32]: open the craft pricer to refresh current league prices
+      - generic [ref=e33]:
+        - article [ref=e34]:
+          - generic [ref=e35]:
+            - generic [ref=e36]:
+              - generic [ref=e37]: Craft Price Checker
+              - generic [ref=e38]: Live
+            - paragraph [ref=e39]: Check current material prices for bow, quiver, amulet, and helmet crafting routes. Required floors exclude optional upgrades.
+          - generic [ref=e40]:
+            - generic [ref=e41]: Uses poe.ninja economy data.
+            - link "Open" [ref=e42] [cursor=pointer]:
+              - /url: "#craft-pricer"
+        - article [ref=e43]:
+          - generic [ref=e44]:
+            - generic [ref=e45]:
+              - generic [ref=e46]: Rune Picker
+              - generic [ref=e47]: Live
+            - paragraph [ref=e48]: Paste rune or reward choices, price each line, and highlight the highest-value pick.
+          - generic [ref=e49]:
+            - generic [ref=e50]: Ported from open-poe-runes.ps1.
+            - link "Open" [ref=e51] [cursor=pointer]:
+              - /url: "#rune-picker"
+        - article [ref=e52]:
+          - generic [ref=e53]:
+            - generic [ref=e54]:
+              - generic [ref=e55]: Farming Notes
+              - generic [ref=e56]: Planned
+            - paragraph [ref=e57]: Keep league-specific farming plans, target drops, and expected returns near the tools that price them.
+          - generic [ref=e59]: Ready for expansion.

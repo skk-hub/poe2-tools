@@ -1,5 +1,6 @@
 const http = require("http");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { exec } = require("child_process");
 
@@ -142,6 +143,20 @@ function readJson(req) {
         reject(new Error("Invalid JSON body"));
       }
     });
+    req.on("error", reject);
+  });
+}
+
+function readRawBody(req, maxBytes = 10 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) { reject(new Error("Request body too large")); req.destroy(); return; }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
 }
@@ -613,6 +628,42 @@ const server = http.createServer(async (req, res) => {
         source: "trade2",
         rawPrice: price.rawAmount + " " + price.rawCurrency,
       }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/ocr" && req.method === "POST") {
+      const ct = (req.headers["content-type"] || "").toLowerCase().split(";")[0].trim();
+      const allowed = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp"];
+      if (!allowed.includes(ct)) {
+        send(res, 400, JSON.stringify({ error: "Expected an image/* content-type" }), "application/json; charset=utf-8");
+        return;
+      }
+      const buf = await readRawBody(req);
+      const tid = Date.now() + "-" + Math.random().toString(36).slice(2);
+      const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : ct.includes("gif") ? "gif" : "jpg";
+      const tmpIn   = path.join(os.tmpdir(), "poe-ocr-" + tid + "." + ext);
+      const tmpProc = path.join(os.tmpdir(), "poe-ocr-" + tid + "-proc.png");
+      const tmpBase = path.join(os.tmpdir(), "poe-ocr-" + tid + "-out");
+      const cleanup = () => { for (const f of [tmpIn, tmpProc, tmpBase + ".txt"]) fs.unlink(f, () => {}); };
+      try {
+        await fs.promises.writeFile(tmpIn, buf);
+        await new Promise((resolve, reject) =>
+          exec(`convert "${tmpIn}" -colorspace gray -negate -threshold 40% -resize 200% "${tmpProc}"`,
+            (err, _, stderr) => err ? reject(new Error(stderr || err.message)) : resolve())
+        );
+        const text = await new Promise((resolve, reject) =>
+          exec(`tesseract "${tmpProc}" "${tmpBase}" --psm 6`,
+            (err, _, stderr) => {
+              if (err) return reject(new Error(stderr || err.message));
+              fs.readFile(tmpBase + ".txt", "utf8", (e, d) => e ? reject(e) : resolve(d || ""));
+            })
+        );
+        send(res, 200, JSON.stringify({ text: text.trim() }), "application/json; charset=utf-8");
+      } catch (err) {
+        send(res, 500, JSON.stringify({ error: "OCR failed: " + err.message }), "application/json; charset=utf-8");
+      } finally {
+        cleanup();
+      }
       return;
     }
 

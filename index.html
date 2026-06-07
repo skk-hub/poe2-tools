@@ -99,6 +99,13 @@ h1{font-family:var(--ff-display);color:var(--gd);font-size:34px;font-weight:700;
 .toolbody{padding:14px}
 textarea{width:100%;min-height:210px;resize:vertical;border:1px solid var(--bd);background:oklch(9.5% 0.028 40);color:var(--tx);border-radius:0;font:inherit;line-height:1.5;padding:10px;transition:border-color 120ms}
 textarea:focus{outline:none;border-color:var(--bd2)}
+.paste-zone{border:1px dashed var(--bd2);padding:12px 14px;text-align:center;color:var(--mu);font-size:11px;cursor:pointer;transition:border-color 150ms,background 150ms,color 150ms;margin-bottom:10px;display:flex;flex-direction:column;align-items:center;gap:8px;user-select:none}
+.paste-zone:hover{border-color:var(--gd);color:var(--tx)}
+.paste-zone.drag-over{border-color:var(--gd);background:var(--gd-a)}
+.paste-zone.ocr-running{border-color:var(--cy);color:var(--cy)}
+.paste-zone.ocr-ok{border-color:var(--gr);color:var(--gr)}
+.paste-zone.ocr-err{border-color:var(--rd);color:var(--rd)}
+#pastePreview{display:none;max-height:72px;max-width:100%;object-fit:contain;opacity:.75}
 .split{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr);gap:14px;align-items:start}
 .bestbox{background:oklch(67% 0.14 148 / 0.06);border:1px solid oklch(67% 0.14 148 / 0.3);border-radius:0;padding:12px;margin-bottom:12px;color:var(--gr)}
 .bestbox.empty{background:var(--s2);border-color:var(--bd);color:var(--mu)}
@@ -265,8 +272,12 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--ff-mono)}
           </div>
         </div>
         <div class="toolbody">
+          <div id="pasteZone" class="paste-zone" title="Click to browse, or drag and drop an image file">
+            <span id="pasteZoneLabel">Paste screenshot (Ctrl+V) or drop image — OCR runs server-side</span>
+            <img id="pastePreview" alt="">
+          </div>
           <textarea id="runeInput" spellcheck="false" placeholder="Example:&#10;3x Desert Rune&#10;Soul Core of Tacati&#10;Greater Essence of Enhancement"></textarea>
-          <p class="sample">The web version does not read your clipboard automatically on load. Use Paste clipboard or paste manually.</p>
+          <p class="sample">Paste a screenshot with Ctrl+V anywhere on the page, drop an image into the box above, or type item names manually.</p>
         </div>
       </div>
       <div class="toolpanel">
@@ -622,6 +633,65 @@ async function pasteRunes(){
     runeInput.focus();
   }
 }
+
+const pasteZoneEl=document.getElementById("pasteZone");
+const pasteZoneLabelEl=document.getElementById("pasteZoneLabel");
+const pastePreviewEl=document.getElementById("pastePreview");
+
+function setPasteZoneState(state, label){
+  pasteZoneEl.className="paste-zone"+(state?" "+state:"");
+  if(label) pasteZoneLabelEl.textContent=label;
+}
+
+async function ocrImage(blob){
+  const url=URL.createObjectURL(blob);
+  pastePreviewEl.src=url;
+  pastePreviewEl.style.display="block";
+  setPasteZoneState("ocr-running","Running OCR...");
+  setRuneStatus("Running OCR on screenshot...", "");
+  try{
+    const r=await fetch("/api/ocr",{method:"POST",headers:{"Content-Type":blob.type||"image/png"},body:blob});
+    if(!r.ok){
+      const j=await r.json().catch(()=>({error:"OCR request failed (HTTP "+r.status+")"}));
+      throw new Error(j.error||"OCR failed");
+    }
+    const data=await r.json();
+    if(!data.text) throw new Error("No text found in image");
+    runeInput.value=data.text;
+    setPasteZoneState("ocr-ok","OCR done — review text then hit Check picks");
+    setRuneStatus("Text extracted. Review the lines and click Check picks.", "ok");
+  }catch(err){
+    setPasteZoneState("ocr-err","OCR failed: "+err.message);
+    setRuneStatus("OCR failed: "+err.message, "err");
+  }
+}
+
+function handleImageFile(file){
+  if(!file||!file.type.startsWith("image/")) return;
+  ocrImage(file);
+}
+
+document.addEventListener("paste",(e)=>{
+  const items=[...(e.clipboardData?.items||[])];
+  const img=items.find(i=>i.type.startsWith("image/"));
+  if(img){e.preventDefault();handleImageFile(img.getAsFile());}
+});
+
+pasteZoneEl.addEventListener("dragover",(e)=>{e.preventDefault();pasteZoneEl.classList.add("drag-over");});
+pasteZoneEl.addEventListener("dragleave",()=>pasteZoneEl.classList.remove("drag-over"));
+pasteZoneEl.addEventListener("drop",(e)=>{
+  e.preventDefault();
+  pasteZoneEl.classList.remove("drag-over");
+  const file=e.dataTransfer?.files[0];
+  if(file) handleImageFile(file);
+});
+
+pasteZoneEl.addEventListener("click",()=>{
+  const inp=document.createElement("input");
+  inp.type="file";inp.accept="image/*";
+  inp.onchange=()=>{if(inp.files[0]) handleImageFile(inp.files[0]);};
+  inp.click();
+});
 
 async function refreshPrices(){
   const league=leagueInput.value.trim()||"Runes of Aldur";
