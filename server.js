@@ -648,7 +648,7 @@ const server = http.createServer(async (req, res) => {
       try {
         await fs.promises.writeFile(tmpIn, buf);
         await new Promise((resolve, reject) =>
-          exec(`convert "${tmpIn}" -colorspace gray -normalize -threshold 55% -negate -morphology Dilate Disk:1 -resize 300% "${tmpProc}"`,
+          exec(`convert "${tmpIn}" -resize 300% -colorspace gray -negate "${tmpProc}"`,
             (err, _, stderr) => err ? reject(new Error(stderr || err.message)) : resolve())
         );
         const text = await new Promise((resolve, reject) =>
