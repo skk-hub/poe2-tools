@@ -115,6 +115,11 @@ table{width:100%;border-collapse:collapse;min-width:720px;background:var(--s1)}
 th,td{padding:7px 10px;border-bottom:1px solid oklch(14% 0.026 40);text-align:left;vertical-align:top}
 th{background:var(--s2);color:var(--mu);font-size:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
 td.num{text-align:right;white-space:nowrap;font-family:var(--ff-mono)}
+.conf{display:inline-block;font:600 10px/1 var(--ff-mono);text-transform:uppercase;letter-spacing:.04em;padding:3px 6px;border:1px solid var(--bd2);border-radius:0;white-space:nowrap;cursor:default}
+.conf-hi{color:var(--gr);border-color:oklch(67% 0.14 148 / .5)}
+.conf-md{color:var(--gd);border-color:oklch(80% 0.15 74 / .5)}
+.conf-lo{color:var(--rd);border-color:oklch(60% 0.14 20 / .5)}
+.conf-no,.conf-unk{color:var(--mu);border-color:var(--bd)}
 .muted{color:var(--mu)}
 .sample{margin-top:8px;color:var(--mu);font-size:11px;line-height:1.5}
 
@@ -284,15 +289,15 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--ff-mono)}
         <div class="toolbar">
           <div>
             <div class="tooltitle">Results</div>
-            <p class="sub">Sorted by total exalted value.</p>
+            <p class="sub">Sorted by total exalted value. Conf = poe.ninja trade volume: <span class="conf conf-hi">High</span> ≥30, <span class="conf conf-md">Med</span> 10-29, <span class="conf conf-lo">Low</span> &lt;10 (thin market, price unreliable).</p>
           </div>
         </div>
         <div class="toolbody">
           <div id="runeBest" class="bestbox empty">No priced picks yet.</div>
           <div class="tablewrap">
             <table>
-              <thead><tr><th>Qty</th><th>Name</th><th>Category</th><th>Each</th><th>Total</th><th>Source</th><th>7d</th></tr></thead>
-              <tbody id="runeRows"><tr><td colspan="7" class="muted">Paste choices and run a check.</td></tr></tbody>
+              <thead><tr><th>Qty</th><th>Name</th><th>Category</th><th>Each</th><th>Total</th><th>Conf</th><th>Source</th><th>7d</th></tr></thead>
+              <tbody id="runeRows"><tr><td colspan="8" class="muted">Paste choices and run a check.</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -420,6 +425,13 @@ function fx(v){
   return "<0.0001 ex";
 }
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]))}
+function confBadge(item){
+  const hasVol=typeof item.volume==="number"&&item.volume>=0;
+  const tip=hasVol?"poe.ninja 7d volume: "+item.volume:"No poe.ninja volume data";
+  const map={high:["conf-hi","High"],medium:["conf-md","Med"],low:["conf-lo","Low"],none:["conf-no","None"]};
+  const m=map[item.confidence]||["conf-unk","—"];
+  return '<span class="conf '+m[0]+'" title="'+esc(tip)+'">'+m[1]+(hasVol?' '+item.volume:'')+'</span>';
+}
 function setStatus(text,kind){statusEl.textContent=text;statusEl.className="status "+(kind||"")}
 function setRuneStatus(text,kind){runeStatus.textContent=text;runeStatus.className="status "+(kind||"")}
 
@@ -509,7 +521,7 @@ function renderRuneResults(data){
   if(!data.results||!data.results.length){
     runeBest.className="bestbox empty";
     runeBest.textContent="No priced picks found.";
-    runeRows.innerHTML='<tr><td colspan="7" class="muted">No results. Check the pasted text.</td></tr>';
+    runeRows.innerHTML='<tr><td colspan="8" class="muted">No results. Check the pasted text.</td></tr>';
     return;
   }
 
@@ -530,6 +542,7 @@ function renderRuneResults(data){
       '<td>'+esc(item.category||"")+'</td>'+
       '<td class="num">'+(missing?"":fx(item.each))+'</td>'+
       '<td class="num">'+(missing?"":fx(item.total))+'</td>'+
+      '<td>'+confBadge(item)+'</td>'+
       '<td>'+esc(item.source||"")+(item.rawPrice?'<div class="muted">'+esc(item.rawPrice)+'</div>':'')+'</td>'+
       '<td class="num">'+esc(item.change7d||"")+'</td>'+
     '</tr>';

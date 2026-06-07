@@ -194,6 +194,15 @@ function getLineVolume(line) {
   return -1;
 }
 
+function priceConfidence(volume, change7d) {
+  if (!Number.isFinite(volume) || volume < 0) return "unknown";
+  if (volume === 0) return "none";
+  let tier = volume >= 30 ? "high" : volume >= 10 ? "medium" : "low";
+  const swing = Math.abs(parseFloat(change7d) || 0);
+  if (swing >= 150 && tier !== "low") tier = tier === "high" ? "medium" : "low";
+  return tier;
+}
+
 function getDisplayPriceExalted(line, currencyRates) {
   const rate = Number(line && line.maxVolumeRate);
   if (rate) {
@@ -493,14 +502,14 @@ async function fetchRunePrices(text, league) {
         }
       }
       if (!(match.price > 0)) {
-        results.push({ qty: parsed.qty, name: match.name, category: match.category + " (no price)", each: "", total: "", currency: "", source: "poe.ninja", rawPrice: "", change7d: match.change7d });
+        results.push({ qty: parsed.qty, name: match.name, category: match.category + " (no price)", each: "", total: "", currency: "", source: "poe.ninja", rawPrice: "", change7d: match.change7d, confidence: "none", volume: match.volume });
         continue;
       }
       const total = roundPriceExalted(match.price * parsed.qty);
       results.push({
         qty: parsed.qty,
         name: match.name,
-        category: lowVolume ? match.category + " (low vol)" : match.category,
+        category: match.category,
         each: match.price,
         total,
         currency: "exalted",
@@ -508,6 +517,8 @@ async function fetchRunePrices(text, league) {
         rawPrice: "",
         divineValue: match.divineValue,
         change7d: match.change7d,
+        confidence: priceConfidence(match.volume, match.change7d),
+        volume: match.volume,
       });
       continue;
     }
