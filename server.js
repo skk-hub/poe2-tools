@@ -194,20 +194,20 @@ function getLineVolume(line) {
   return -1;
 }
 
-// poe.ninja exposes no trade count. Use the divergence between spot price
-// (primaryValue) and volume-weighted price (volumePrimaryValue) as a liquidity
-// proxy: tight agreement = real trading; large gap = thin/unreliable market.
-function liquidityRatio(line) {
+// poe.ninja exposes no trade count, but volumePrimaryValue is total turnover
+// (in divine) and primaryValue is the unit price, so their quotient is the
+// number of units traded in the window. More units = deeper, more reliable price.
+function unitsTraded(line) {
   const pv = Number(line && line.primaryValue) || 0;
   const vv = Number(line && line.volumePrimaryValue) || 0;
-  if (pv <= 0 || vv <= 0) return Infinity;
-  return Math.max(pv, vv) / Math.min(pv, vv);
+  if (pv <= 0 || vv <= 0) return -1;
+  return vv / pv;
 }
 
-function priceConfidence(ratio) {
-  if (!Number.isFinite(ratio)) return "unknown";
-  if (ratio <= 3) return "high";
-  if (ratio <= 12) return "medium";
+function priceConfidence(units) {
+  if (!Number.isFinite(units) || units < 0) return "unknown";
+  if (units >= 300) return "high";
+  if (units >= 30) return "medium";
   return "low";
 }
 
@@ -449,7 +449,7 @@ async function fetchRunePrices(text, league) {
         slug: category.slug,
         price: getDisplayPriceExalted(line, currencyRates),
         volume: getLineVolume(line),
-        liquidityRatio: liquidityRatio(line),
+        units: unitsTraded(line),
         divineValue: Math.round((Number(line.primaryValue) || 0) * 10000) / 10000,
         change7d: line.sparkline && line.sparkline.totalChange ? String(line.sparkline.totalChange) + "%" : "",
       });
@@ -511,7 +511,7 @@ async function fetchRunePrices(text, league) {
         }
       }
       if (!(match.price > 0)) {
-        results.push({ qty: parsed.qty, name: match.name, category: match.category + " (no price)", each: "", total: "", currency: "", source: "poe.ninja", rawPrice: "", change7d: match.change7d, confidence: "none", ratio: null });
+        results.push({ qty: parsed.qty, name: match.name, category: match.category + " (no price)", each: "", total: "", currency: "", source: "poe.ninja", rawPrice: "", change7d: match.change7d, confidence: "none", units: null });
         continue;
       }
       const total = roundPriceExalted(match.price * parsed.qty);
@@ -526,8 +526,8 @@ async function fetchRunePrices(text, league) {
         rawPrice: "",
         divineValue: match.divineValue,
         change7d: match.change7d,
-        confidence: priceConfidence(match.liquidityRatio),
-        ratio: Number.isFinite(match.liquidityRatio) ? Math.round(match.liquidityRatio * 10) / 10 : null,
+        confidence: priceConfidence(match.units),
+        units: Number.isFinite(match.units) && match.units >= 0 ? Math.round(match.units) : null,
       });
       continue;
     }
