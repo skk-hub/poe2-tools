@@ -289,7 +289,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--ff-mono)}
         <div class="toolbar">
           <div>
             <div class="tooltitle">Results</div>
-            <p class="sub">Sorted by total exalted value. Conf = poe.ninja trade volume: <span class="conf conf-hi">High</span> ≥30, <span class="conf conf-md">Med</span> 10-29, <span class="conf conf-lo">Low</span> &lt;10 (thin market, price unreliable).</p>
+            <p class="sub">Sorted by total exalted value. Conf = price reliability (spot vs volume-weighted divergence): <span class="conf conf-hi">High</span> liquid, <span class="conf conf-md">Med</span> some spread, <span class="conf conf-lo">Low</span> thin market, few real trades, price unreliable.</p>
           </div>
         </div>
         <div class="toolbody">
@@ -426,11 +426,14 @@ function fx(v){
 }
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]))}
 function confBadge(item){
-  const hasVol=typeof item.volume==="number"&&item.volume>=0;
-  const tip=hasVol?"poe.ninja 7d volume: "+item.volume:"No poe.ninja volume data";
   const map={high:["conf-hi","High"],medium:["conf-md","Med"],low:["conf-lo","Low"],none:["conf-no","None"]};
   const m=map[item.confidence]||["conf-unk","—"];
-  return '<span class="conf '+m[0]+'" title="'+esc(tip)+'">'+m[1]+(hasVol?' '+item.volume:'')+'</span>';
+  const r=(typeof item.ratio==="number")?item.ratio:null;
+  const tip=r!=null
+    ?"Spot vs volume-weighted price diverge "+r+"x. Near 1x = liquid/reliable; large = thin market, few real trades."
+    :"No liquidity data from poe.ninja.";
+  const suffix=(r!=null&&item.confidence!=="high")?" "+r+"x":"";
+  return '<span class="conf '+m[0]+'" title="'+esc(tip)+'">'+m[1]+suffix+'</span>';
 }
 function setStatus(text,kind){statusEl.textContent=text;statusEl.className="status "+(kind||"")}
 function setRuneStatus(text,kind){runeStatus.textContent=text;runeStatus.className="status "+(kind||"")}
