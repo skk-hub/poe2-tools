@@ -1,4 +1,7 @@
 .trade-status.json
+.poe-oauth.json
+.poe-oauth-state.json
+.upgrade-trade-cache.json
 *.env
 node_modules/
 

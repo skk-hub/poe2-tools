@@ -2,12 +2,15 @@ const http = require("http");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const crypto = require("crypto");
 const { exec } = require("child_process");
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = 17777;
 const ROOT = __dirname;
 const TRADE_STATUS_FILE = path.join(ROOT, ".trade-status.json");
+const POE_OAUTH_FILE = path.join(ROOT, ".poe-oauth.json");
+const POE_OAUTH_STATE_FILE = path.join(ROOT, ".poe-oauth-state.json");
 const TYPES = ["Currency", "Essences", "Ritual", "Abyss", "Breach"];
 const RUNE_CATEGORIES = [
   { type: "Currency", slug: "currency" },
@@ -36,8 +39,249 @@ const TRADE_TIMEOUT_MS = 3500;
 const MAX_RUNE_LINES = 30;
 const MAX_TRADE_FALLBACKS = 0;
 const MAX_SKILL_TRADE_FALLBACKS = 1;
+const OPTIMIZER_ITERATIONS = 10000;
+const MIN_TARGET_SALE_EX = 50;
+const COMPARABLE_CACHE_MS = 5 * 60 * 1000;
+const QUIVER_CATEGORY = "armour.quiver";
+const STAT = {
+  projectileLevels: "explicit.stat_1202301673",
+  attackCrit: "explicit.stat_2194114101",
+  flatPhysAttack: "explicit.stat_3032590688",
+  attackSpeed: "explicit.stat_681332047",
+  bowDamage: "explicit.stat_1241625305",
+  projectileSpeed: "explicit.stat_3759663284",
+  twoProjMoving: "explicit.stat_3932115504",
+};
+const QUIVER_MOD_POOL = {
+  projectileLevels: 45,
+  attackCrit: 750,
+  flatPhysAttack: 850,
+  attackSpeed: 750,
+  bowDamage: 900,
+  projectileSpeed: 1000,
+  twoProjMoving: 60,
+  fillerPrefix: 5200,
+  fillerSuffix: 5200,
+};
+const QUIVER_TARGETS = [
+  {
+    id: "proj-crit-flat",
+    name: "+2 Projectile / Crit / Flat Phys Quiver Market",
+    family: "quiver",
+    notes: "Bow quiver package. Comparable search requires +2 projectile, attack crit, and flat physical attack damage.",
+    tradeStats: [
+      { id: STAT.projectileLevels, value: { min: 2 } },
+      { id: STAT.attackCrit, value: { min: 20 } },
+      { id: STAT.flatPhysAttack },
+    ],
+    fallbackTradeStats: [
+      { id: STAT.projectileLevels, value: { min: 1 } },
+      { id: STAT.attackCrit, value: { min: 20 } },
+      { id: STAT.flatPhysAttack },
+    ],
+    routes: ["self-fracture-flat-greater", "self-fracture-flat", "buy-fractured-flat-greater", "buy-fractured-flat", "transmute-regal-gamble"],
+  },
+  {
+    id: "proj-speed-bow",
+    name: "+2 Projectile / Attack Speed / Bow Damage Quiver Market",
+    family: "quiver",
+    notes: "Speed-focused attack package. Comparable search requires +2 projectile, attack speed, and bow skill damage.",
+    tradeStats: [
+      { id: STAT.projectileLevels, value: { min: 2 } },
+      { id: STAT.attackSpeed, value: { min: 8 } },
+      { id: STAT.bowDamage, value: { min: 35 } },
+    ],
+    fallbackTradeStats: [
+      { id: STAT.projectileLevels, value: { min: 1 } },
+      { id: STAT.attackSpeed, value: { min: 8 } },
+      { id: STAT.bowDamage, value: { min: 35 } },
+    ],
+    routes: ["buy-fractured-projectile-greater", "buy-fractured-projectile", "transmute-regal-gamble"],
+  },
+  {
+    id: "extra-projectile-premium",
+    name: "Extra Projectile Chance / Projectile Speed / Bow Damage Quiver",
+    family: "quiver",
+    notes: "Premium projectile behavior package. Comparable search uses projectile speed and bow skill damage, then treats extra-projectile rolling as the craft upside.",
+    tradeStats: [
+      { id: STAT.projectileSpeed, value: { min: 34 } },
+      { id: STAT.bowDamage, value: { min: 35 } },
+    ],
+    routes: ["self-fracture-extra-projectile-greater", "self-fracture-extra-projectile", "buy-fractured-projectile-greater", "buy-fractured-projectile"],
+  },
+];
+const QUIVER_ROUTES = {
+  "self-fracture-flat": {
+    id: "self-fracture-flat",
+    name: "Self-fracture flat phys, finish with omen/essence",
+    baseCostEx: 0.25,
+    salvageEx: 0.08,
+    materials: [
+      { id: "fracturing-orb", qty: 1 },
+      { id: "gnawed-jawbone", qty: 1 },
+      { id: "omen-of-dextral-necromancy", qty: 1 },
+      { id: "perfect-exalted-orb", qty: 1 },
+    ],
+    checks: [
+      { accepts: ["flatPhysAttack"] },
+      { accepts: ["projectileLevels"] },
+      { accepts: ["attackCrit", "attackSpeed"] },
+    ],
+    fractureChance: 1 / 3,
+    confidence: "medium",
+  },
+  "self-fracture-flat-greater": {
+    id: "self-fracture-flat-greater",
+    name: "Self-fracture flat phys, finish with Greater Exalted",
+    baseCostEx: 0.25,
+    salvageEx: 0.08,
+    materials: [
+      { id: "fracturing-orb", qty: 1 },
+      { id: "gnawed-jawbone", qty: 1 },
+      { id: "omen-of-dextral-necromancy", qty: 1 },
+      { id: "greater-exalted-orb", qty: 1 },
+    ],
+    checks: [
+      { accepts: ["flatPhysAttack"] },
+      { accepts: ["projectileLevels"] },
+      { accepts: ["attackCrit", "attackSpeed"] },
+    ],
+    fractureChance: 1 / 3,
+    confidence: "medium",
+  },
+  "buy-fractured-flat": {
+    id: "buy-fractured-flat",
+    name: "Buy fractured flat phys base, finish suffixes",
+    baseCostEx: 2.5,
+    salvageEx: 1.5,
+    materials: [
+      { id: "greater-essence-of-seeking", qty: 1 },
+      { id: "omen-of-dextral-necromancy", qty: 1 },
+      { id: "perfect-exalted-orb", qty: 1 },
+    ],
+    checks: [
+      { accepts: ["projectileLevels"] },
+      { accepts: ["attackCrit", "attackSpeed"] },
+    ],
+    fractureChance: 1,
+    fixedSuccessRate: 0.25,
+    confidence: "medium",
+  },
+  "buy-fractured-flat-greater": {
+    id: "buy-fractured-flat-greater",
+    name: "Buy fractured flat phys base, finish with Greater Exalted",
+    baseCostEx: 2.5,
+    salvageEx: 1.5,
+    materials: [
+      { id: "greater-essence-of-seeking", qty: 1 },
+      { id: "omen-of-dextral-necromancy", qty: 1 },
+      { id: "greater-exalted-orb", qty: 1 },
+    ],
+    checks: [
+      { accepts: ["projectileLevels"] },
+      { accepts: ["attackCrit", "attackSpeed"] },
+    ],
+    fractureChance: 1,
+    fixedSuccessRate: 0.25,
+    confidence: "medium",
+  },
+  "buy-fractured-projectile": {
+    id: "buy-fractured-projectile",
+    name: "Buy fractured projectile base, finish damage package",
+    baseCostEx: 3.5,
+    salvageEx: 2,
+    materials: [
+      { id: "essence-of-hysteria", qty: 1 },
+      { id: "omen-of-sinistral-crystallisation", qty: 1 },
+      { id: "perfect-exalted-orb", qty: 1 },
+    ],
+    checks: [
+      { accepts: ["attackSpeed", "attackCrit", "projectileSpeed"] },
+      { accepts: ["bowDamage", "flatPhysAttack"] },
+    ],
+    fractureChance: 1,
+    fixedSuccessRate: 1,
+    confidence: "medium",
+  },
+  "buy-fractured-projectile-greater": {
+    id: "buy-fractured-projectile-greater",
+    name: "Buy fractured projectile base, finish with Greater Exalted",
+    baseCostEx: 3.5,
+    salvageEx: 2,
+    materials: [
+      { id: "essence-of-hysteria", qty: 1 },
+      { id: "omen-of-sinistral-crystallisation", qty: 1 },
+      { id: "greater-exalted-orb", qty: 1 },
+    ],
+    checks: [
+      { accepts: ["attackSpeed", "attackCrit", "projectileSpeed"] },
+      { accepts: ["bowDamage", "flatPhysAttack"] },
+    ],
+    fractureChance: 1,
+    fixedSuccessRate: 1,
+    confidence: "medium",
+  },
+  "self-fracture-extra-projectile": {
+    id: "self-fracture-extra-projectile",
+    name: "Self-fracture extra projectile mod",
+    baseCostEx: 0.4,
+    salvageEx: 0.1,
+    materials: [
+      { id: "fracturing-orb", qty: 1 },
+      { id: "perfect-exalted-orb", qty: 2 },
+      { id: "omen-of-abyssal-echoes", qty: 1 },
+    ],
+    checks: [
+      { accepts: ["twoProjMoving"] },
+      { accepts: ["projectileSpeed"] },
+      { accepts: ["bowDamage"] },
+    ],
+    fractureChance: 1 / 3,
+    confidence: "low",
+  },
+  "self-fracture-extra-projectile-greater": {
+    id: "self-fracture-extra-projectile-greater",
+    name: "Self-fracture extra projectile, finish with Greater Exalted",
+    baseCostEx: 0.4,
+    salvageEx: 0.1,
+    materials: [
+      { id: "fracturing-orb", qty: 1 },
+      { id: "greater-exalted-orb", qty: 2 },
+      { id: "omen-of-abyssal-echoes", qty: 1 },
+    ],
+    checks: [
+      { accepts: ["twoProjMoving"] },
+      { accepts: ["projectileSpeed"] },
+      { accepts: ["bowDamage"] },
+    ],
+    fractureChance: 1 / 3,
+    confidence: "low",
+  },
+  "transmute-regal-gamble": {
+    id: "transmute-regal-gamble",
+    name: "Transmute / regal / exalt gamble",
+    baseCostEx: 0.15,
+    salvageEx: 0.03,
+    materials: [
+      { id: "perfect-orb-of-transmutation", qty: 1 },
+      { id: "perfect-orb-of-augmentation", qty: 1 },
+      { id: "perfect-regal-orb", qty: 1 },
+      { id: "perfect-exalted-orb", qty: 2 },
+    ],
+    checks: [
+      { accepts: ["projectileLevels", "twoProjMoving"] },
+      { accepts: ["attackCrit", "attackSpeed", "projectileSpeed"] },
+      { accepts: ["flatPhysAttack", "bowDamage"] },
+    ],
+    fractureChance: 1,
+    confidence: "low",
+  },
+};
 let lastTradeCall = 0;
 let tradeBlockedUntil = 0;
+let tradeRateLimitState = {};
+let tradeQueue = Promise.resolve();
+const comparableCache = new Map();
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -55,14 +299,16 @@ function loadTradeStatus() {
   try {
     const data = JSON.parse(fs.readFileSync(TRADE_STATUS_FILE, "utf8"));
     tradeBlockedUntil = Number(data.tradeBlockedUntil) || 0;
+    tradeRateLimitState = data.tradeRateLimitState && typeof data.tradeRateLimitState === "object" ? data.tradeRateLimitState : {};
   } catch {
     tradeBlockedUntil = 0;
+    tradeRateLimitState = {};
   }
 }
 
 function saveTradeStatus() {
   try {
-    fs.writeFileSync(TRADE_STATUS_FILE, JSON.stringify({ tradeBlockedUntil }, null, 2));
+    fs.writeFileSync(TRADE_STATUS_FILE, JSON.stringify({ tradeBlockedUntil, tradeRateLimitState }, null, 2));
   } catch {
     // A failed cache write should not break pricing.
   }
@@ -76,31 +322,33 @@ function parseRateParts(value) {
 }
 
 function updateTradeLimitFromHeaders(headers) {
+  const policy = String(headers.get("x-rate-limit-policy") || "");
   const rules = String(headers.get("x-rate-limit-rules") || "")
     .split(",")
     .map((rule) => rule.trim())
     .filter(Boolean);
-  let changed = false;
+  const nextState = { policy, rules: {}, updated: new Date().toISOString() };
+  let changed = Boolean(policy || rules.length);
 
   for (const rule of rules) {
     const limitParts = parseRateParts(headers.get("x-rate-limit-" + rule));
     const stateParts = parseRateParts(headers.get("x-rate-limit-" + rule + "-state"));
+    nextState.rules[rule] = { limits: limitParts, states: stateParts };
 
     for (let i = 0; i < Math.min(limitParts.length, stateParts.length); i++) {
-      const [maxHits, periodSeconds] = limitParts[i];
-      const [currentHits, , activeTimeout] = stateParts[i];
+      const [, , activeTimeout] = stateParts[i];
 
       if (activeTimeout > 0) {
         tradeBlockedUntil = Math.max(tradeBlockedUntil, Date.now() + activeTimeout * 1000);
-        changed = true;
-      } else if (currentHits >= maxHits - 1) {
-        tradeBlockedUntil = Math.max(tradeBlockedUntil, Date.now() + periodSeconds * 1000);
         changed = true;
       }
     }
   }
 
-  if (changed) saveTradeStatus();
+  if (changed) {
+    tradeRateLimitState = nextState;
+    saveTradeStatus();
+  }
 }
 
 function tradeStatus() {
@@ -113,6 +361,7 @@ function tradeStatus() {
     limited: now < tradeBlockedUntil,
     tradeLimitedUntil: now < tradeBlockedUntil ? new Date(tradeBlockedUntil).toISOString() : "",
     secondsRemaining: now < tradeBlockedUntil ? Math.ceil((tradeBlockedUntil - now) / 1000) : 0,
+    rateLimit: tradeRateLimitState,
   };
 }
 
@@ -126,12 +375,12 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   }
 }
 
-function readJson(req) {
+function readJson(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 1024 * 1024) {
+      if (body.length > maxBytes) {
         reject(new Error("Request body is too large"));
         req.destroy();
       }
@@ -159,6 +408,184 @@ function readRawBody(req, maxBytes = 10 * 1024 * 1024) {
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
+}
+
+function base64Url(buffer) {
+  return Buffer.from(buffer).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function oauthConfig() {
+  const clientId = process.env.POE_CLIENT_ID || "";
+  return {
+    clientId,
+    clientSecret: process.env.POE_CLIENT_SECRET || "",
+    redirectUri: process.env.POE_REDIRECT_URI || ("http://" + HOST + ":" + PORT + "/api/oauth/callback"),
+    scope: "account:profile account:characters",
+    configured: Boolean(clientId),
+  };
+}
+
+function readOauthToken() {
+  try {
+    return JSON.parse(fs.readFileSync(POE_OAUTH_FILE, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeOauthToken(token) {
+  fs.writeFileSync(POE_OAUTH_FILE, JSON.stringify({ ...token, savedAt: Date.now() }, null, 2));
+}
+
+function clearOauthToken() {
+  try { fs.unlinkSync(POE_OAUTH_FILE); } catch {}
+}
+
+function writeOauthState(state) {
+  fs.writeFileSync(POE_OAUTH_STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+function readOauthState() {
+  try {
+    return JSON.parse(fs.readFileSync(POE_OAUTH_STATE_FILE, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function oauthStatus() {
+  const cfg = oauthConfig();
+  const token = readOauthToken();
+  const expiresAt = token && token.expires_in ? Number(token.savedAt || 0) + Number(token.expires_in) * 1000 : 0;
+  return {
+    configured: cfg.configured,
+    clientId: cfg.clientId ? cfg.clientId.replace(/.(?=.{4})/g, "*") : "",
+    redirectUri: cfg.redirectUri,
+    scope: cfg.scope,
+    authenticated: Boolean(token && token.access_token && (!expiresAt || Date.now() < expiresAt)),
+    username: token && token.username ? token.username : "",
+    expiresAt: expiresAt ? new Date(expiresAt).toISOString() : "",
+  };
+}
+
+function buildOauthStartUrl() {
+  const cfg = oauthConfig();
+  if (!cfg.configured) throw new Error("Set POE_CLIENT_ID and restart the server first.");
+  const codeVerifier = base64Url(crypto.randomBytes(32));
+  const codeChallenge = base64Url(crypto.createHash("sha256").update(codeVerifier).digest());
+  const state = base64Url(crypto.randomBytes(24));
+  writeOauthState({ state, codeVerifier, createdAt: Date.now() });
+  const params = new URLSearchParams({
+    client_id: cfg.clientId,
+    response_type: "code",
+    scope: cfg.scope,
+    state,
+    redirect_uri: cfg.redirectUri,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+  });
+  return "https://www.pathofexile.com/oauth/authorize?" + params.toString();
+}
+
+async function exchangeOauthCode(code, returnedState) {
+  const cfg = oauthConfig();
+  const saved = readOauthState();
+  if (!cfg.configured) throw new Error("OAuth client is not configured.");
+  if (!saved || saved.state !== returnedState) throw new Error("OAuth state mismatch.");
+  if (Date.now() - Number(saved.createdAt || 0) > 5 * 60 * 1000) throw new Error("OAuth state expired.");
+  const params = new URLSearchParams({
+    client_id: cfg.clientId,
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: cfg.redirectUri,
+    scope: cfg.scope,
+    code_verifier: saved.codeVerifier,
+  });
+  if (cfg.clientSecret) params.set("client_secret", cfg.clientSecret);
+  const response = await fetchWithTimeout("https://www.pathofexile.com/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": TRADE_HEADERS["User-Agent"] },
+    body: params.toString(),
+  }, 12000);
+  const text = await response.text();
+  if (!response.ok) throw new Error("OAuth token exchange failed: " + text.slice(0, 500));
+  const token = JSON.parse(text);
+  writeOauthToken(token);
+  try { fs.unlinkSync(POE_OAUTH_STATE_FILE); } catch {}
+  return token;
+}
+
+async function poeApiRequest(pathname, token) {
+  const response = await fetchWithTimeout("https://api.pathofexile.com" + pathname, {
+    headers: {
+      "Authorization": "Bearer " + token.access_token,
+      "User-Agent": TRADE_HEADERS["User-Agent"],
+    },
+  }, 12000);
+  const text = await response.text();
+  if (!response.ok) throw new Error("PoE API returned HTTP " + response.status + ": " + text.slice(0, 500));
+  return JSON.parse(text);
+}
+
+function itemToPseudoCopyText(item) {
+  const lines = [
+    "Item Class: " + guessItemClass(item),
+    "Rarity: " + (item.rarity || "Rare"),
+    item.name || item.typeLine || "Imported Item",
+  ];
+  if (item.name && item.typeLine) lines.push(item.typeLine);
+  lines.push("--------");
+  const groups = [
+    ["implicitMods", "Implicit"],
+    ["explicitMods", "Explicit"],
+    ["craftedMods", "Crafted"],
+    ["fracturedMods", "Fractured"],
+    ["enchantMods", "Enchant"],
+    ["runeMods", "Rune"],
+    ["desecratedMods", "Desecrated"],
+  ];
+  for (const [group, label] of groups) {
+    for (const mod of item[group] || []) lines.push(label + ": " + normalizePoeMarkup(mod));
+  }
+  if (item.properties) {
+    for (const prop of item.properties) {
+      const values = (prop.values || []).map((entry) => Array.isArray(entry) ? entry[0] : entry).join(" ");
+      if (prop.name && values) lines.push(normalizePoeMarkup(prop.name) + ": " + values);
+    }
+  }
+  return lines.join("\n");
+}
+
+function guessItemClass(item) {
+  const category = item && item.inventoryId ? String(item.inventoryId).toLowerCase() : "";
+  const type = String((item && item.typeLine) || "");
+  if (category.includes("weapon")) return "Bows";
+  if (/bow/i.test(type)) return "Bows";
+  if (/quiver/i.test(type) || category.includes("offhand")) return "Quivers";
+  if (/amulet/i.test(type) || category.includes("amulet")) return "Amulets";
+  if (/ring/i.test(type) || category.includes("ring")) return "Rings";
+  if (/belt/i.test(type) || category.includes("belt")) return "Belts";
+  if (/boots/i.test(type) || category.includes("boots")) return "Boots";
+  if (/gloves/i.test(type) || category.includes("gloves")) return "Gloves";
+  if (/helmet|cap|hood|helm/i.test(type) || category.includes("helm")) return "Helmets";
+  if (/body|robe|jacket|vest|coat|armour|armor/i.test(type) || category.includes("bodyarmour")) return "Body Armours";
+  if (/jewel/i.test(type)) return "Jewels";
+  return "Unknown";
+}
+
+async function importOauthCharacter(characterName, realm = "poe2") {
+  const token = readOauthToken();
+  if (!token || !token.access_token) throw new Error("Not authenticated with Path of Exile.");
+  const data = await poeApiRequest("/character/" + encodeURIComponent(realm) + "/" + encodeURIComponent(characterName), token);
+  const character = data.character || data;
+  const items = (character.items || character.equipment || []).filter((item) => item && item.inventoryId);
+  const text = items.map(itemToPseudoCopyText).join("\n");
+  return {
+    character,
+    itemCount: items.length,
+    text,
+    analysis: analyzeUpgradeState(text),
+  };
 }
 
 function normalizeName(value) {
@@ -234,20 +661,38 @@ async function waitTradeThrottle() {
   lastTradeCall = Date.now();
 }
 
+function enqueueTradeTask(task) {
+  const run = tradeQueue.then(task, task);
+  tradeQueue = run.catch(() => {});
+  return run;
+}
+
 async function fetchTrade(url, options = {}) {
-  if (Date.now() < tradeBlockedUntil) {
-    throw new Error("trade2 rate limited");
-  }
-  const response = await fetchWithTimeout(url, { ...options, headers: { ...TRADE_HEADERS, ...(options.headers || {}) } }, TRADE_TIMEOUT_MS);
-  updateTradeLimitFromHeaders(response.headers);
-  if (response.status === 429) {
-    const retryAfter = Number(response.headers.get("retry-after")) || 60;
-    tradeBlockedUntil = Date.now() + retryAfter * 1000;
-    saveTradeStatus();
-    throw new Error("trade2 rate limited until " + new Date(tradeBlockedUntil).toISOString());
-  }
-  if (!response.ok) throw new Error("trade2 returned HTTP " + response.status);
-  return response.json();
+  return enqueueTradeTask(async () => {
+    const status = tradeStatus();
+    if (status.limited) {
+      throw new Error("trade2 rate limited until " + status.tradeLimitedUntil);
+    }
+    await waitTradeThrottle();
+    const response = await fetchWithTimeout(url, { ...options, headers: { ...TRADE_HEADERS, ...(options.headers || {}) } }, TRADE_TIMEOUT_MS);
+    updateTradeLimitFromHeaders(response.headers);
+    if (response.status === 429) {
+      const retryAfter = Number(response.headers.get("retry-after")) || tradeStatus().secondsRemaining || 60;
+      tradeBlockedUntil = Math.max(tradeBlockedUntil, Date.now() + retryAfter * 1000);
+      saveTradeStatus();
+      throw new Error("trade2 rate limited until " + new Date(tradeBlockedUntil).toISOString());
+    }
+    if (!response.ok) {
+      let detail = "";
+      try {
+        detail = await response.text();
+      } catch {
+        detail = "";
+      }
+      throw new Error("trade2 returned HTTP " + response.status + (detail ? ": " + detail.slice(0, 500) : ""));
+    }
+    return response.json();
+  });
 }
 
 async function getTradePrice(name, league, currencyRates, deadline = 0) {
@@ -361,6 +806,380 @@ async function fetchPrices(league) {
     prices,
     divineRate,
     count: Object.keys(prices).length,
+    updated: new Date().toISOString(),
+  };
+}
+
+function seededRandom(seed) {
+  let value = 2166136261;
+  for (const ch of String(seed || "poe2-optimizer")) {
+    value ^= ch.charCodeAt(0);
+    value = Math.imul(value, 16777619);
+  }
+  return () => {
+    value += 0x6D2B79F5;
+    let t = value;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function mergeWeights(overrides = {}) {
+  const weights = { ...QUIVER_MOD_POOL };
+  for (const [key, value] of Object.entries(overrides || {})) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) weights[key] = n;
+  }
+  return weights;
+}
+
+function rollWeighted(weights, random) {
+  const entries = Object.entries(weights).filter(([, value]) => Number(value) > 0);
+  const total = entries.reduce((sum, [, value]) => sum + Number(value), 0);
+  let roll = random() * total;
+  for (const [key, value] of entries) {
+    roll -= Number(value);
+    if (roll <= 0) return key;
+  }
+  return entries.length ? entries[entries.length - 1][0] : "fillerPrefix";
+}
+
+function materialCostEx(route, materials, overrides = {}) {
+  let total = Number(route.baseCostEx) || 0;
+  const lines = [{ name: "Base / setup", id: "base", qty: 1, eachEx: roundPriceExalted(total), totalEx: roundPriceExalted(total), source: "default" }];
+
+  for (const mat of route.materials || []) {
+    const override = Number(overrides[mat.id]);
+    const found = materials.byId[mat.id] || materials.byName[normalizeName(mat.id)];
+    const each = Number.isFinite(override) && override > 0 ? override : Number(found && found.priceEx) || 0;
+    const lineTotal = each * (Number(mat.qty) || 1);
+    total += lineTotal;
+    lines.push({
+      name: found && found.name ? found.name : mat.id,
+      id: mat.id,
+      qty: Number(mat.qty) || 1,
+      eachEx: roundPriceExalted(each),
+      totalEx: roundPriceExalted(lineTotal),
+      source: Number.isFinite(override) && override > 0 ? "override" : found ? found.source : "missing",
+    });
+  }
+
+  return { totalEx: roundPriceExalted(total), lines };
+}
+
+function simulateRoute(target, route, materials, options = {}) {
+  const iterations = Math.max(1000, Math.min(100000, Number(options.iterations) || OPTIMIZER_ITERATIONS));
+  const random = seededRandom((options.seed || "") + ":" + target.id + ":" + route.id);
+  const weights = mergeWeights(options.modWeightOverrides);
+  const costs = materialCostEx(route, materials, options.priceOverrides || {});
+  let successes = 0;
+
+  if (Number.isFinite(Number(route.fixedSuccessRate))) {
+    successes = Math.round(iterations * Math.max(0, Math.min(1, Number(route.fixedSuccessRate))));
+  } else {
+    for (let i = 0; i < iterations; i++) {
+      let ok = random() <= (Number(route.fractureChance) || 1);
+      for (const check of route.checks || []) {
+        if (!ok) break;
+        const hit = rollWeighted(weights, random);
+        ok = (check.accepts || []).includes(hit);
+      }
+      if (ok) successes++;
+    }
+  }
+
+  const sampledSuccessRate = successes / iterations;
+  const successRate = sampledSuccessRate > 0 ? sampledSuccessRate : 1 / (iterations + 1);
+  const failRate = 1 - successRate;
+  const failCredit = (Number(route.salvageEx) || 0) * failRate;
+  const expectedCostEx = successRate > 0
+    ? roundPriceExalted(Math.max(0, costs.totalEx - failCredit) / successRate)
+    : 0;
+  const viable = sampledSuccessRate >= 0.005 && expectedCostEx < 100000;
+
+  return {
+    routeId: route.id,
+    routeName: route.name,
+    confidence: route.confidence,
+    iterations,
+    sampledSuccesses: successes,
+    zeroHitSample: sampledSuccessRate === 0,
+    viable,
+    viabilityNote: viable ? "" : "Not viable with current sampled odds/material prices",
+    attemptCostEx: costs.totalEx,
+    expectedCostEx,
+    successRate: Math.round(successRate * 1000000) / 1000000,
+    brickRisk: Math.round(failRate * 1000000) / 1000000,
+    materialLines: costs.lines,
+  };
+}
+
+function percentile(values, pct) {
+  if (!values.length) return 0;
+  const sorted = values.slice().sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * pct)));
+  return roundPriceExalted(sorted[idx]);
+}
+
+function listingPriceEx(price, currencyRates) {
+  if (!price) return 0;
+  const amount = Number(price.amount);
+  const rate = Number(currencyRates[price.currency]);
+  if (!Number.isFinite(amount) || !Number.isFinite(rate) || amount <= 0 || rate <= 0) return 0;
+  return amount * rate;
+}
+
+function buildComparableSearch(target, tradeStats = target.tradeStats) {
+  return {
+    query: {
+      status: { option: "any" },
+      filters: {
+        type_filters: {
+          filters: {
+            category: { option: QUIVER_CATEGORY },
+            rarity: { option: "nonunique" },
+          },
+        },
+        misc_filters: {
+          filters: {
+            ilvl: { min: 75 },
+            corrupted: { option: "false" },
+          },
+        },
+      },
+      stats: [{
+        type: "and",
+        filters: tradeStats.map((stat) => {
+          const filter = { id: stat.id };
+          if (stat.value) filter.value = stat.value;
+          return filter;
+        }),
+      }],
+    },
+    sort: { price: "asc" },
+  };
+}
+
+async function fetchComparablePrices(target, league, currencyRates, fallback = false) {
+  const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
+  const cacheKey = league + "|" + target.id + "|" + (fallback ? "fallback" : "strict");
+  const cached = comparableCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < COMPARABLE_CACHE_MS) {
+    return { ...cached.value, cached: true };
+  }
+
+  const status = tradeStatus();
+  if (status.limited) {
+    if (cached) return { ...cached.value, cached: true, stale: true, limited: true, tradeLimitedUntil: status.tradeLimitedUntil };
+    return { targetId: target.id, count: 0, listings: [], quickSaleEx: 0, normalSaleEx: 0, premiumSaleEx: 0, confidence: "limited", liquidity: "unknown", limited: true, tradeLimitedUntil: status.tradeLimitedUntil };
+  }
+
+  try {
+    await waitTradeThrottle();
+    const search = await fetchTrade(searchUrl, { method: "POST", body: JSON.stringify(buildComparableSearch(target, fallback ? target.fallbackTradeStats : target.tradeStats)) });
+    const ids = (search.result || []).slice(0, 10);
+    if (!ids.length) {
+      if (!fallback && target.fallbackTradeStats) {
+        const fallbackResult = await fetchComparablePrices(target, league, currencyRates, true);
+        return {
+          ...fallbackResult,
+          fallbackUsed: true,
+          confidence: fallbackResult.confidence === "none" ? "none" : "fallback",
+          notes: "Strict target had no listings; using relaxed +1 projectile comparable baseline.",
+        };
+      }
+      const emptyResult = { targetId: target.id, count: 0, listings: [], quickSaleEx: 0, normalSaleEx: 0, premiumSaleEx: 0, confidence: "none", liquidity: "none" };
+      comparableCache.set(cacheKey, { cachedAt: Date.now(), value: emptyResult });
+      return emptyResult;
+    }
+
+    await waitTradeThrottle();
+    const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id);
+    const fetched = await fetchTrade(fetchUrl);
+    const listings = [];
+
+    for (const entry of fetched.result || []) {
+      const price = entry.listing && entry.listing.price;
+      const priceEx = listingPriceEx(price, currencyRates);
+      if (!(priceEx > 0)) continue;
+      const item = entry.item || {};
+      if (item.corrupted) continue;
+      if (item.rarity && String(item.rarity).toLowerCase() === "unique") continue;
+      listings.push({
+        id: entry.id,
+        itemName: [item.name, item.typeLine].filter(Boolean).join(" ").trim() || item.typeLine || "Quiver",
+        priceEx: roundPriceExalted(priceEx),
+        rawPrice: price.amount + " " + price.currency,
+        whisper: entry.listing && entry.listing.whisper ? entry.listing.whisper : "",
+      });
+    }
+
+    const prices = listings.map((item) => item.priceEx).sort((a, b) => a - b);
+    const confidence = prices.length >= 12 ? "high" : prices.length >= 5 ? "medium" : prices.length > 0 ? "low" : "none";
+    const liquidity = prices.length >= 15 ? "high" : prices.length >= 6 ? "medium" : prices.length > 0 ? "thin" : "none";
+
+    const result = {
+      targetId: target.id,
+      count: listings.length,
+      tradeTotal: Number(search.total) || 0,
+      listings,
+      quickSaleEx: percentile(prices, 0.2),
+      normalSaleEx: percentile(prices, 0.5),
+      premiumSaleEx: percentile(prices, 0.75),
+      confidence,
+      liquidity,
+      fallbackUsed: fallback,
+      notes: fallback ? "Strict target had no listings; using relaxed comparable baseline." : "",
+    };
+    comparableCache.set(cacheKey, { cachedAt: Date.now(), value: result });
+    return result;
+  } catch (err) {
+    if (String(err && err.message).includes("rate limited")) {
+      const status = tradeStatus();
+      if (cached) return { ...cached.value, cached: true, stale: true, limited: true, tradeLimitedUntil: status.tradeLimitedUntil };
+      return { targetId: target.id, count: 0, listings: [], quickSaleEx: 0, normalSaleEx: 0, premiumSaleEx: 0, confidence: "limited", liquidity: "unknown", limited: true, tradeLimitedUntil: status.tradeLimitedUntil };
+    }
+    return { targetId: target.id, count: 0, listings: [], quickSaleEx: 0, normalSaleEx: 0, premiumSaleEx: 0, confidence: "error", liquidity: "unknown", error: err.message };
+  }
+}
+
+async function fetchOptimizerMaterials(league) {
+  const currencyRates = await fetchCurrencyRates(league);
+  const categories = Array.from(new Set(RUNE_CATEGORIES.map((category) => category.type).concat(TYPES)));
+  const byId = {};
+  const byName = {};
+
+  const loaded = await Promise.allSettled(categories.map(async (type) => {
+    const apiUrl = "https://poe.ninja/poe2/api/economy/exchange/current/overview?league=" +
+      encodeURIComponent(league) + "&type=" + encodeURIComponent(type);
+    const response = await fetchWithTimeout(apiUrl, {}, NINJA_TIMEOUT_MS);
+    if (!response.ok) throw new Error(type + " returned HTTP " + response.status);
+    return { type, data: await response.json() };
+  }));
+
+  for (const result of loaded) {
+    if (result.status !== "fulfilled") continue;
+    const { type, data } = result.value;
+    const lineById = new Map((data.lines || []).map((line) => [line.id, line]));
+    for (const item of data.items || []) {
+      const line = lineById.get(item.id);
+      if (!line) continue;
+      const priceEx = getDisplayPriceExalted(line, currencyRates);
+      if (!(priceEx > 0)) continue;
+      const record = {
+        id: item.id,
+        name: item.name,
+        type,
+        priceEx,
+        confidence: priceConfidence(unitsTraded(line)),
+        units: Number.isFinite(unitsTraded(line)) ? Math.round(unitsTraded(line)) : null,
+        source: "poe.ninja",
+      };
+      byId[item.id] = record;
+      byName[normalizeName(item.name)] = record;
+    }
+  }
+
+  for (const [alias, target] of Object.entries({
+    exalted: "Exalted Orb",
+    divine: "Divine Orb",
+    chaos: "Chaos Orb",
+  })) {
+    const priceEx = Number(currencyRates[alias]);
+    if (priceEx > 0) byName[normalizeName(target)] = { id: alias, name: target, type: "Currency", priceEx, confidence: "high", units: null, source: "currency-rates" };
+  }
+
+  return { league, currencyRates, byId, byName, count: Object.keys(byId).length, updated: new Date().toISOString() };
+}
+
+function summarizeOpportunity(target, comparable, simulations) {
+  const rawSaleEstimateEx = comparable.normalSaleEx || comparable.quickSaleEx || 0;
+  const saleEstimateEx = comparable.fallbackUsed || rawSaleEstimateEx < MIN_TARGET_SALE_EX ? 0 : rawSaleEstimateEx;
+  const notOpportunityReason = comparable.fallbackUsed
+    ? "Strict target has no listings; relaxed baseline is not used as target value."
+    : rawSaleEstimateEx > 0 && rawSaleEstimateEx < MIN_TARGET_SALE_EX
+      ? "Median comparable is below " + MIN_TARGET_SALE_EX + " ex minimum target value."
+      : "";
+  const ranked = simulations.map((sim) => {
+    const expectedProfitEx = saleEstimateEx > 0 && sim.expectedCostEx > 0 && sim.viable ? roundPriceExalted(saleEstimateEx - sim.expectedCostEx) : 0;
+    return {
+      ...sim,
+      saleEstimateEx,
+      expectedProfitEx,
+      roi: sim.expectedCostEx > 0 ? Math.round((expectedProfitEx / sim.expectedCostEx) * 10000) / 10000 : 0,
+      capitalRequiredEx: sim.attemptCostEx,
+    };
+  }).sort((a, b) => {
+    if (a.viable !== b.viable) return a.viable ? -1 : 1;
+    return b.expectedProfitEx - a.expectedProfitEx;
+  });
+
+  const bestRoute = ranked[0] || null;
+  return {
+    targetId: target.id,
+    targetName: target.name,
+    targetFamily: target.family,
+    notes: target.notes,
+    saleEstimateEx,
+    rawSaleEstimateEx,
+    minTargetSaleEx: MIN_TARGET_SALE_EX,
+    isOpportunity: saleEstimateEx >= MIN_TARGET_SALE_EX,
+    notOpportunityReason,
+    quickSaleEx: comparable.quickSaleEx,
+    normalSaleEx: comparable.normalSaleEx,
+    premiumSaleEx: comparable.premiumSaleEx,
+    comparableCount: comparable.count,
+    tradeTotal: comparable.tradeTotal || 0,
+    liquidity: comparable.liquidity,
+    confidence: comparable.confidence,
+    comparableFallbackUsed: Boolean(comparable.fallbackUsed),
+    comparableNotes: comparable.notes || "",
+    comparableCached: Boolean(comparable.cached),
+    comparableStale: Boolean(comparable.stale),
+    limited: Boolean(comparable.limited),
+    error: comparable.error || "",
+    tradeLimitedUntil: comparable.tradeLimitedUntil || "",
+    bestRoute,
+    routes: ranked,
+    sampleListings: (comparable.listings || []).slice(0, 8),
+  };
+}
+
+async function buildOptimizerOpportunities(league, options = {}) {
+  const family = options.family || "quiver";
+  const materials = await fetchOptimizerMaterials(league);
+  const targets = QUIVER_TARGETS.filter((target) => target.family === family);
+  const opportunities = [];
+
+  for (const target of targets) {
+    const comparable = await fetchComparablePrices(target, league, materials.currencyRates);
+    const simulations = target.routes
+      .map((routeId) => QUIVER_ROUTES[routeId])
+      .filter(Boolean)
+      .map((route) => simulateRoute(target, route, materials, {
+        iterations: options.iterations,
+        seed: league,
+        priceOverrides: options.priceOverrides,
+        modWeightOverrides: options.modWeightOverrides,
+      }));
+    opportunities.push(summarizeOpportunity(target, comparable, simulations));
+  }
+
+  opportunities.sort((a, b) => {
+    const bp = b.bestRoute ? b.bestRoute.expectedProfitEx : -Infinity;
+    const ap = a.bestRoute ? a.bestRoute.expectedProfitEx : -Infinity;
+    return bp - ap;
+  });
+
+  return {
+    league,
+    family,
+    currencyRates: materials.currencyRates,
+    materialCount: materials.count,
+    opportunities,
+    targets: QUIVER_TARGETS,
+    routes: Object.values(QUIVER_ROUTES),
     updated: new Date().toISOString(),
   };
 }
@@ -583,6 +1402,976 @@ async function fetchRunePrices(text, league) {
   };
 }
 
+const UPGRADE_GUIDE_PROFILE = {
+  id: "ice-shot-deadeye-crit-hybrid",
+  name: "Mobalytics Ice Shot Deadeye - Crit Hybrid",
+  league: "Runes of Aldur",
+  source: "https://mobalytics.gg/poe-2/builds/ice-shot-deadeye",
+  hardTargets: { fireRes: 75, coldRes: 75, lightningRes: 75, chaosRes: 30, str: 40, dex: 95, int: 55, spirit: 145 },
+  softTargets: { rarity: 100 },
+  slots: {
+    bow: {
+      label: "Bow",
+      category: "weapon.bow",
+      priority: 100,
+      stats: { dps: 3.4, critChance: 2.8, attackSpeed: 1.7, flatPhys: 1.7, flatCold: 1.4, flatEle: 1.0 },
+      notes: "Crit bow is the first major guide priority.",
+    },
+    quiver: {
+      label: "Quiver",
+      category: "armour.quiver",
+      priority: 92,
+      stats: { projectileLevels: 4.2, attackCrit: 2.6, critDamage: 2.0, bowDamage: 1.7, projectileSpeed: 1.1, flatPhysAttack: 1.2, flatColdAttack: 1.1, rarity: 0.9 },
+      notes: "Crit quiver or Cadiro's Gambit style value package.",
+    },
+    amulet: {
+      label: "Amulet",
+      category: "accessory.amulet",
+      priority: 86,
+      stats: { projectileLevels: 4.6, spirit: 3.2, critChance: 1.7, critDamage: 1.5, totalAllAttributes: 1.0, resists: 0.9, rarity: 1.1 },
+      required: { spirit: 45 },
+      notes: "+projectile levels and 45+ spirit are high priority.",
+    },
+    helmet: {
+      label: "Helmet",
+      category: "armour.helmet",
+      priority: 70,
+      stats: { energyShield: 2.8, int: 0.9, life: 0.7, resists: 1.1, rarity: 0.8 },
+      target: { energyShield: 450 },
+      notes: "Hybrid setup wants a high ES helmet.",
+    },
+    chest: {
+      label: "Body Armour",
+      category: "armour.chest",
+      priority: 72,
+      stats: { evasion: 3.0, life: 0.8, resists: 1.0, rarity: 0.8 },
+      notes: "Big evasion chest is the main defensive slot.",
+    },
+    boots: {
+      label: "Boots",
+      category: "armour.boots",
+      priority: 62,
+      stats: { movementSpeed: 2.2, life: 1.0, resists: 1.3, rarity: 0.9 },
+      notes: "Movement speed, life, and resistance fixing.",
+    },
+    gloves: {
+      label: "Gloves",
+      category: "armour.gloves",
+      priority: 61,
+      stats: { flatColdAttack: 1.9, flatPhysAttack: 1.7, attackSpeed: 1.5, life: 0.8, resists: 0.9, rarity: 1.0 },
+      notes: "Attack damage on gloves, preferably cold or physical.",
+    },
+    ring: {
+      label: "Ring",
+      category: "accessory.ring",
+      priority: 58,
+      stats: { flatColdAttack: 1.8, flatPhysAttack: 1.5, life: 0.9, resists: 1.4, totalAllAttributes: 0.8, rarity: 1.2 },
+      notes: "Damage rings that keep resistance and attribute requirements stable.",
+    },
+    belt: {
+      label: "Belt",
+      category: "accessory.belt",
+      priority: 48,
+      stats: { life: 1.2, str: 1.1, resists: 1.4, rarity: 1.0 },
+      notes: "Cheap life/strength/resist belt before expensive unique upgrades.",
+    },
+    jewel: {
+      label: "Jewel",
+      category: "jewel",
+      priority: 54,
+      stats: { manaOnKill: 3.0, critChance: 1.5, attackSpeed: 1.4, projectileDamage: 1.4 },
+      notes: "Mana on kill first, then damage and speed.",
+    },
+  },
+  lockedUniques: {
+    quiver: ["Cadiro's Gambit"],
+  },
+};
+
+const UPGRADE_STAT_IDS = {
+  projectileLevels: "explicit.stat_1202301673",
+  attackCrit: "explicit.stat_2194114101",
+  flatPhysAttack: "explicit.stat_3032590688",
+  attackSpeed: "explicit.stat_681332047",
+  bowDamage: "explicit.stat_1241625305",
+  projectileSpeed: "explicit.stat_3759663284",
+  spirit: "explicit.stat_3981240776",
+  localPhysDamage: "explicit.stat_1509134228",
+  localFlatPhys: "explicit.stat_1940865751",
+  localAttackSpeed: "explicit.stat_210067635",
+  localCritChance: "explicit.stat_518292764",
+  life: "explicit.stat_3299347043",
+  totalLife: "pseudo.pseudo_total_life",
+  coldRes: "explicit.stat_4220027924",
+  lightningRes: "explicit.stat_1671376347",
+  fireRes: "explicit.stat_3372524247",
+  chaosRes: "explicit.stat_2923486259",
+  totalResistance: "pseudo.pseudo_total_resistance",
+  str: "explicit.stat_4080418644",
+  dex: "explicit.stat_3261801346",
+  int: "explicit.stat_328541901",
+  attributes: "explicit.stat_1379411836",
+  explicitAttributes: "explicit.stat_1379411836",
+  totalStr: "pseudo.pseudo_total_strength",
+  totalDex: "pseudo.pseudo_total_dexterity",
+  totalInt: "pseudo.pseudo_total_intelligence",
+  totalAllAttributes: "pseudo.pseudo_total_all_attributes",
+  totalAttributes: "pseudo.pseudo_total_attributes",
+  movementSpeed: "explicit.stat_2250533757",
+  totalMovementSpeed: "pseudo.pseudo_increased_movement_speed",
+  critChance: "explicit.stat_587431675",
+  critDamage: "explicit.stat_3556824919",
+  rarity: "explicit.stat_3917489142",
+};
+
+const UPGRADE_SEARCH_STATS = {
+  bow: [
+    { id: UPGRADE_STAT_IDS.localPhysDamage, value: { min: 100 } },
+    { id: UPGRADE_STAT_IDS.localFlatPhys },
+    { id: UPGRADE_STAT_IDS.localAttackSpeed, value: { min: 10 } },
+    { id: UPGRADE_STAT_IDS.localCritChance },
+  ],
+  quiver: [
+    { id: UPGRADE_STAT_IDS.projectileLevels, value: { min: 1 } },
+    { id: UPGRADE_STAT_IDS.attackCrit, value: { min: 20 } },
+    { id: UPGRADE_STAT_IDS.critDamage },
+  ],
+  amulet: [
+    { id: UPGRADE_STAT_IDS.projectileLevels, value: { min: 1 } },
+    { id: UPGRADE_STAT_IDS.spirit, value: { min: 40 } },
+  ],
+  helmet: [
+    { id: UPGRADE_STAT_IDS.life, value: { min: 40 } },
+    { id: UPGRADE_STAT_IDS.coldRes, value: { min: 20 } },
+    { id: UPGRADE_STAT_IDS.lightningRes, value: { min: 20 } },
+    { id: UPGRADE_STAT_IDS.chaosRes, value: { min: 10 } },
+  ],
+  chest: [
+    { id: UPGRADE_STAT_IDS.life, value: { min: 50 } },
+    { id: UPGRADE_STAT_IDS.fireRes, value: { min: 25 } },
+    { id: UPGRADE_STAT_IDS.lightningRes, value: { min: 25 } },
+  ],
+  boots: [
+    { id: UPGRADE_STAT_IDS.movementSpeed, value: { min: 30 } },
+    { id: UPGRADE_STAT_IDS.life, value: { min: 50 } },
+    { id: UPGRADE_STAT_IDS.coldRes, value: { min: 25 } },
+    { id: UPGRADE_STAT_IDS.chaosRes, value: { min: 10 } },
+  ],
+  gloves: [
+    { id: UPGRADE_STAT_IDS.attackSpeed, value: { min: 10 } },
+    { id: UPGRADE_STAT_IDS.flatPhysAttack },
+    { id: UPGRADE_STAT_IDS.fireRes, value: { min: 20 } },
+  ],
+  ring: [
+    { id: UPGRADE_STAT_IDS.life, value: { min: 50 } },
+    { id: UPGRADE_STAT_IDS.fireRes, value: { min: 20 } },
+    { id: UPGRADE_STAT_IDS.coldRes, value: { min: 20 } },
+    { id: UPGRADE_STAT_IDS.flatPhysAttack },
+  ],
+  belt: [
+    { id: UPGRADE_STAT_IDS.life, value: { min: 80 } },
+    { id: UPGRADE_STAT_IDS.str, value: { min: 20 } },
+    { id: UPGRADE_STAT_IDS.coldRes, value: { min: 20 } },
+  ],
+  jewel: [
+    { id: UPGRADE_STAT_IDS.critChance },
+    { id: UPGRADE_STAT_IDS.attackSpeed },
+  ],
+};
+
+const PRESERVE_CONTROL_STATS_BY_SLOT = {
+  bow: ["dps", "critChance", "attackSpeed", "flatPhys", "flatCold", "flatEle"],
+  quiver: ["projectileLevels", "attackCrit", "critDamage", "bowDamage", "projectileSpeed", "flatPhysAttack", "flatColdAttack", "rarity"],
+  amulet: ["projectileLevels", "spirit", "critChance", "critDamage", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "rarity"],
+  helmet: ["energyShield", "life", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  chest: ["evasion", "life", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  boots: ["movementSpeed", "life", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  gloves: ["attackSpeed", "flatPhysAttack", "flatColdAttack", "life", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  ring: ["flatColdAttack", "flatPhysAttack", "life", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  belt: ["life", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  jewel: ["manaOnKill", "critChance", "attackSpeed", "projectileDamage"],
+};
+
+const SLOT_ALIASES = [
+  [/Item Class:\s*Bows/i, "bow"],
+  [/Item Class:\s*Quivers/i, "quiver"],
+  [/Item Class:\s*Amulets/i, "amulet"],
+  [/Item Class:\s*Helmets/i, "helmet"],
+  [/Item Class:\s*Body Armours/i, "chest"],
+  [/Item Class:\s*Boots/i, "boots"],
+  [/Item Class:\s*Gloves/i, "gloves"],
+  [/Item Class:\s*Rings/i, "ring"],
+  [/Item Class:\s*Belts/i, "belt"],
+  [/Item Class:\s*Jewels/i, "jewel"],
+];
+
+function addStat(stats, key, value) {
+  const number = Number(value);
+  if (Number.isFinite(number)) stats[key] = (stats[key] || 0) + number;
+}
+
+function parseItemStats(text) {
+  const stats = {};
+  const source = normalizePoeMarkup(text);
+  const explicitSource = source.split(/\r?\n/).filter((line) => /^Explicit: /i.test(line)).join("\n");
+  const avgPair = (match) => (Number(match[1]) + Number(match[2])) / 2;
+  let weaponAverageHit = 0;
+  let weaponAps = 0;
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage to Attacks/gi)) addStat(stats, "flatPhysAttack", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage(?! to Attacks)/gi)) addStat(stats, "flatPhys", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Cold Damage to Attacks/gi)) addStat(stats, "flatColdAttack", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+(Fire|Lightning) Damage to Attacks/gi)) addStat(stats, "flatEle", avgPair(match));
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance for Attacks/gi)) addStat(stats, "attackCrit", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance/gi)) addStat(stats, "critChance", match[1]);
+  for (const match of source.matchAll(/\+(\d+(?:\.\d+)?)% to Critical Hit Chance/gi)) addStat(stats, "critChance", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Attack Speed/gi)) addStat(stats, "attackSpeed", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Damage with Bow Skills/gi)) addStat(stats, "bowDamage", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Projectile Speed/gi)) addStat(stats, "projectileSpeed", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Projectile Damage/gi)) addStat(stats, "projectileDamage", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Global Critical Damage Bonus/gi)) addStat(stats, "critDamage", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Rarity of Items found/gi)) addStat(stats, "rarity", match[1]);
+  for (const match of source.matchAll(/\+(\d+) to Level of all Projectile Skills/gi)) addStat(stats, "projectileLevels", match[1]);
+  for (const match of source.matchAll(/\+(\d+) to Spirit/gi)) addStat(stats, "spirit", match[1]);
+  for (const match of source.matchAll(/\+(\d+) to maximum Life/gi)) addStat(stats, "life", match[1]);
+  for (const match of source.matchAll(/\+(\d+) to maximum Energy Shield/gi)) addStat(stats, "energyShield", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Evasion Rating/gi)) addStat(stats, "evasion", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Movement Speed/gi)) addStat(stats, "movementSpeed", match[1]);
+  for (const match of source.matchAll(/\+(\d+)% to Fire Resistance/gi)) addStat(stats, "fireRes", match[1]);
+  for (const match of source.matchAll(/\+(\d+)% to Cold Resistance/gi)) addStat(stats, "coldRes", match[1]);
+  for (const match of source.matchAll(/\+(\d+)% to Lightning Resistance/gi)) addStat(stats, "lightningRes", match[1]);
+  for (const match of source.matchAll(/\+(\d+)% to all Elemental Resistances/gi)) {
+    addStat(stats, "fireRes", match[1]);
+    addStat(stats, "coldRes", match[1]);
+    addStat(stats, "lightningRes", match[1]);
+  }
+  for (const match of source.matchAll(/\+(\d+)% to Chaos Resistance/gi)) addStat(stats, "chaosRes", match[1]);
+  for (const match of source.matchAll(/\+(\d+) to Strength/gi)) addStat(stats, "str", match[1]);
+  for (const match of source.matchAll(/\+(\d+) to Dexterity/gi)) addStat(stats, "dex", match[1]);
+  for (const match of source.matchAll(/\+(\d+) to Intelligence/gi)) addStat(stats, "int", match[1]);
+  for (const match of explicitSource.matchAll(/\+(\d+) to all Attributes/gi)) {
+    addStat(stats, "explicitAttributes", match[1]);
+  }
+  for (const match of source.matchAll(/\+(\d+) to all Attributes/gi)) {
+    addStat(stats, "totalAllAttributes", match[1]);
+    addStat(stats, "str", match[1]);
+    addStat(stats, "dex", match[1]);
+    addStat(stats, "int", match[1]);
+  }
+  for (const match of source.matchAll(/(\d+) Mana gained on Kill/gi)) addStat(stats, "manaOnKill", match[1]);
+  for (const match of source.matchAll(/Physical DPS:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "dps", match[1]);
+  for (const match of source.matchAll(/Elemental DPS:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "dps", match[1]);
+  for (const match of source.matchAll(/Physical Damage:\s*(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)/gi)) weaponAverageHit += avgPair(match);
+  for (const match of source.matchAll(/(?:Fire|Cold|Lightning) Damage:\s*(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)/gi)) weaponAverageHit += avgPair(match);
+  for (const match of source.matchAll(/Attacks per Second:\s*(\d+(?:\.\d+)?)/gi)) weaponAps = Math.max(weaponAps, Number(match[1]) || 0);
+  if (weaponAverageHit > 0 && weaponAps > 0) addStat(stats, "dps", weaponAverageHit * weaponAps);
+  if (weaponAps > 0) addStat(stats, "attackSpeed", weaponAps * 10);
+  for (const match of source.matchAll(/Evasion Rating:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "evasion", match[1]);
+  for (const match of source.matchAll(/Energy Shield:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "energyShield", match[1]);
+  for (const match of source.matchAll(/Critical Hit Chance:\s*(\d+(?:\.\d+)?)%/gi)) addStat(stats, "critChance", match[1]);
+  return stats;
+}
+
+function normalizePoeMarkup(value) {
+  return String(value || "")
+    .replace(/\[([^\]|]+)\|([^\]]+)\]/g, "$2")
+    .replace(/\[([^\]]+)\]/g, "$1")
+    .replace(/\s+/g, " ");
+}
+
+function detectSlot(text) {
+  for (const [pattern, slot] of SLOT_ALIASES) {
+    if (pattern.test(text)) return slot;
+  }
+  return "";
+}
+
+function parsePastedItems(text) {
+  return String(text || "")
+    .split(/\r?\n(?=Item Class:)/g)
+    .map((part) => part.trim())
+    .filter((part) => /^Item Class:/i.test(part))
+    .map((raw, index) => {
+      const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      const slot = detectSlot(raw);
+      const name = lines.find((line) => !/^Item Class:|^Rarity:|^--------$|^Requirements:|^Sockets:/i.test(line)) || "Item " + (index + 1);
+      return { index, slot, name, stats: parseItemStats(raw), raw };
+    });
+}
+
+function htmlDecode(value) {
+  return String(value || "")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#34;/g, "\"")
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function collectItemLikeObjects(value, out = [], seen = new Set()) {
+  if (!value || typeof value !== "object" || seen.has(value)) return out;
+  seen.add(value);
+  if ((value.typeLine || value.name) && (Array.isArray(value.explicitMods) || Array.isArray(value.implicitMods) || value.inventoryId)) {
+    out.push(value);
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectItemLikeObjects(item, out, seen);
+  } else {
+    for (const item of Object.values(value)) {
+      if (typeof item === "string" && /typeLine|explicitMods|equipment|inventoryId/.test(item)) {
+        const parsed = tryParseJson(item);
+        if (parsed) collectItemLikeObjects(parsed, out, seen);
+      } else {
+        collectItemLikeObjects(item, out, seen);
+      }
+    }
+  }
+  return out;
+}
+
+function tryParseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function extractJsonCandidates(text) {
+  const source = htmlDecode(text);
+  const candidates = [];
+  const trimmed = source.trim();
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    candidates.push(trimmed);
+  }
+  for (const match of source.matchAll(/<script[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    candidates.push(match[1].trim());
+  }
+  for (const match of source.matchAll(/(?:data-item|data-items|data-json|data-props)=["']([^"']{20,})["']/gi)) {
+    candidates.push(htmlDecode(match[1]));
+  }
+  for (const match of source.matchAll(/(\{[^{}]*(?:"typeLine"|"explicitMods"|"inventoryId")[\s\S]{0,5000}?\})/gi)) {
+    candidates.push(match[1]);
+  }
+  return candidates;
+}
+
+function importFromBrowserExport(text) {
+  const pastedItems = parsePastedItems(text);
+  if (pastedItems.length) {
+    return { source: "item-text", itemCount: pastedItems.length, text: String(text || ""), analysis: analyzeUpgradeState(text) };
+  }
+
+  const objects = [];
+  for (const candidate of extractJsonCandidates(text)) {
+    const parsed = tryParseJson(candidate);
+    if (parsed) collectItemLikeObjects(parsed, objects);
+  }
+
+  const unique = [];
+  const seen = new Set();
+  for (const item of objects) {
+    const key = [item.inventoryId, item.name, item.typeLine, JSON.stringify(item.explicitMods || [])].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+
+  const equipped = unique.filter((item) => {
+    const inv = String(item.inventoryId || "").toLowerCase();
+    return inv && !/stash|maininventory|flask|gem|cursor/i.test(inv);
+  });
+  const chosen = equipped.length ? equipped : unique;
+  const importedText = chosen.map(itemToPseudoCopyText).join("\n");
+  return {
+    source: "browser-export",
+    itemCount: chosen.length,
+    text: importedText,
+    analysis: analyzeUpgradeState(importedText),
+  };
+}
+
+function scoreStatsForSlot(stats, slotId) {
+  const slot = UPGRADE_GUIDE_PROFILE.slots[slotId];
+  if (!slot) return 0;
+  if (slotId === "bow") {
+    return Math.round((
+      Math.min(Number(stats.dps) || 0, 1200) * 4.5 +
+      Math.min(Number(stats.critChance) || 0, 20) * 28 +
+      Math.min(Number(stats.attackSpeed) || 0, 30) * 13 +
+      Math.min(Number(stats.flatPhys) || 0, 250) * 1.2 +
+      Math.min(Number(stats.flatEle) || 0, 250) * 0.8
+    ) * 100) / 100;
+  }
+  let score = slot.priority / 10;
+  for (const [key, weight] of Object.entries(slot.stats || {})) {
+    score += Math.min(Number(stats[key]) || 0, 700) * weight;
+  }
+  return Math.round(score * 100) / 100;
+}
+
+function isGuideLockedUnique(item, slotId) {
+  if (!item || !slotId) return false;
+  const allowed = UPGRADE_GUIDE_PROFILE.lockedUniques[slotId] || [];
+  const name = normalizeName((item.name || "") + " " + (item.raw || ""));
+  return allowed.some((unique) => name.includes(normalizeName(unique)));
+}
+
+function analyzeUpgradeState(text) {
+  const items = parsePastedItems(text);
+  const equipped = {};
+  const totals = {};
+  for (const item of items) {
+    if (item.slot && !equipped[item.slot]) equipped[item.slot] = item;
+    for (const [key, value] of Object.entries(item.stats)) totals[key] = (totals[key] || 0) + value;
+  }
+  const deficits = {};
+  for (const [key, target] of Object.entries(UPGRADE_GUIDE_PROFILE.hardTargets)) {
+    const current = Number(totals[key]) || 0;
+    if (current < target) deficits[key] = Math.round((target - current) * 100) / 100;
+  }
+  const slotScores = {};
+  for (const [slotId, slot] of Object.entries(UPGRADE_GUIDE_PROFILE.slots)) {
+    const item = equipped[slotId] || null;
+    const score = item ? scoreStatsForSlot(item.stats, slotId) : 0;
+    const locked = isGuideLockedUnique(item, slotId);
+    slotScores[slotId] = { slot: slotId, label: slot.label, score, itemName: item ? item.name : "missing", notes: locked ? "Guide-approved unique equipped; ignored for upgrades." : slot.notes, locked };
+  }
+  const categories = Object.values(slotScores)
+    .filter((entry) => !entry.locked)
+    .map((entry) => ({
+      ...entry,
+      urgency: Math.round(((UPGRADE_GUIDE_PROFILE.slots[entry.slot].priority || 0) - entry.score / 10) * 100) / 100,
+    }))
+    .sort((a, b) => b.urgency - a.urgency);
+  return { profile: UPGRADE_GUIDE_PROFILE, items, equipped, totals, deficits, slotScores, categories, updated: new Date().toISOString() };
+}
+
+function replacementTotals(totals, currentStats, candidateStats) {
+  const next = { ...(totals || {}) };
+  for (const [key, value] of Object.entries(currentStats || {})) next[key] = (next[key] || 0) - value;
+  for (const [key, value] of Object.entries(candidateStats || {})) next[key] = (next[key] || 0) + value;
+  return next;
+}
+
+function hardGateResult(beforeTotals, afterTotals) {
+  const violations = [];
+  let fixScore = 0;
+  for (const [key, target] of Object.entries(UPGRADE_GUIDE_PROFILE.hardTargets)) {
+    const before = Number(beforeTotals && beforeTotals[key]) || 0;
+    const after = Number(afterTotals && afterTotals[key]) || 0;
+    if (after < target && after < before) violations.push({ key, before, after, target });
+    if (before < target && after > before) fixScore += Math.min(after - before, target - before) * 1.5;
+  }
+  return { viable: violations.length === 0, violations, fixScore: Math.round(fixScore * 100) / 100 };
+}
+
+function softGoalResult(beforeTotals, afterTotals) {
+  let fixScore = 0;
+  const changes = [];
+  for (const [key, target] of Object.entries(UPGRADE_GUIDE_PROFILE.softTargets || {})) {
+    const before = Number(beforeTotals && beforeTotals[key]) || 0;
+    const after = Number(afterTotals && afterTotals[key]) || 0;
+    const beforeProgress = Math.min(before, target);
+    const afterProgress = Math.min(after, target);
+    const improved = afterProgress - beforeProgress;
+    if (improved > 0) fixScore += improved * 1.4;
+    if (after !== before) changes.push({ key, before, after, target });
+  }
+  return { fixScore: Math.round(fixScore * 100) / 100, changes };
+}
+
+function summarizeHardLosses(beforeTotals, afterTotals) {
+  const keys = ["fireRes", "coldRes", "lightningRes", "chaosRes", "str", "dex", "int", "spirit"];
+  const losses = {};
+  for (const key of keys) {
+    const before = Number(beforeTotals && beforeTotals[key]) || 0;
+    const after = Number(afterTotals && afterTotals[key]) || 0;
+    const delta = Math.round((after - before) * 100) / 100;
+    if (delta < 0) losses[key] = delta;
+  }
+  return losses;
+}
+
+function summarizeHardStatChange(beforeTotals, afterTotals) {
+  const keys = ["fireRes", "coldRes", "lightningRes", "chaosRes", "str", "dex", "int", "spirit"];
+  const parts = [];
+  for (const key of keys) {
+    const before = Number(beforeTotals && beforeTotals[key]) || 0;
+    const after = Number(afterTotals && afterTotals[key]) || 0;
+    const delta = Math.round((after - before) * 100) / 100;
+    if (delta < 0) parts.push(key + " " + delta);
+    if (delta > 0) parts.push(key + " +" + delta);
+  }
+  return parts.length ? parts.join(", ") : "no hard stat change";
+}
+
+function statDelta(currentStats, candidateStats, key) {
+  const current = Math.round((Number(currentStats && currentStats[key]) || 0) * 100) / 100;
+  const next = Math.round((Number(candidateStats && candidateStats[key]) || 0) * 100) / 100;
+  const delta = Math.round((next - current) * 100) / 100;
+  const pct = current ? Math.round((delta / current) * 1000) / 10 : 0;
+  return { current, next, delta, pct };
+}
+
+function statDisplayRank(key) {
+  const order = [
+    "dps",
+    "projectileLevels",
+    "spirit",
+    "life",
+    "energyShield",
+    "evasion",
+    "movementSpeed",
+    "attackSpeed",
+    "critChance",
+    "attackCrit",
+    "critDamage",
+    "flatPhys",
+    "flatPhysAttack",
+    "flatColdAttack",
+    "flatEle",
+    "bowDamage",
+    "projectileSpeed",
+    "projectileDamage",
+    "fireRes",
+    "coldRes",
+    "lightningRes",
+    "chaosRes",
+    "str",
+    "dex",
+    "int",
+    "totalAllAttributes",
+    "explicitAttributes",
+    "rarity",
+    "manaOnKill",
+  ];
+  const index = order.indexOf(key);
+  return index === -1 ? order.length : index;
+}
+
+function totalResistance(stats) {
+  return ["fireRes", "coldRes", "lightningRes", "chaosRes"].reduce((total, key) => {
+    return total + (Number(stats && stats[key]) || 0);
+  }, 0);
+}
+
+function replacementResistanceBand(currentStats) {
+  const total = Math.round(totalResistance(currentStats));
+  if (total < 15) return null;
+  return {
+    total,
+    min: Math.max(0, total - 10),
+    max: total + 10,
+  };
+}
+
+function buildUpgradeExplanation(slotId, currentStats, candidateStats) {
+  const keys = Array.from(new Set([
+    ...Object.keys(currentStats || {}),
+    ...Object.keys(candidateStats || {}),
+  ]))
+    .filter((key) => (Number(currentStats && currentStats[key]) || 0) || (Number(candidateStats && candidateStats[key]) || 0))
+    .sort((a, b) => statDisplayRank(a) - statDisplayRank(b) || a.localeCompare(b));
+  const deltas = {};
+  const reasons = [];
+  for (const key of keys) {
+    const delta = statDelta(currentStats, candidateStats, key);
+    deltas[key] = delta;
+    if (delta.delta > 0) reasons.push(key + " +" + delta.delta + (delta.pct ? " (" + delta.pct + "%)" : ""));
+  }
+  return {
+    deltas,
+    reasons: reasons.slice(0, 4),
+    summary: reasons.length ? reasons.slice(0, 3).join(", ") : "Minor stat profile change",
+  };
+}
+
+function hardGateTradeFilters(totals, currentStats) {
+  const keys = ["fireRes", "coldRes", "lightningRes", "chaosRes", "str", "dex", "int", "spirit"];
+  const filters = [];
+  for (const key of keys) {
+    const statId = UPGRADE_STAT_IDS[key];
+    if (!statId) continue;
+    const target = Number(UPGRADE_GUIDE_PROFILE.hardTargets[key]) || 0;
+    const before = Number(totals && totals[key]) || 0;
+    const current = Number(currentStats && currentStats[key]) || 0;
+    const withoutCurrent = before - current;
+    const required = before < target ? current : target - withoutCurrent;
+    if (required > 0) filters.push({ id: statId, value: { min: required } });
+  }
+  return filters;
+}
+
+function buildPreserveStatFilters(preserveStats) {
+  const preserveStatIds = {
+    str: UPGRADE_STAT_IDS.totalStr,
+    dex: UPGRADE_STAT_IDS.totalDex,
+    int: UPGRADE_STAT_IDS.totalInt,
+    totalAllAttributes: UPGRADE_STAT_IDS.totalAllAttributes,
+    life: UPGRADE_STAT_IDS.totalLife,
+    movementSpeed: UPGRADE_STAT_IDS.totalMovementSpeed,
+  };
+  const filters = [];
+  for (const item of preserveStats || []) {
+    const statId = preserveStatIds[item && item.key] || UPGRADE_STAT_IDS[item && item.key];
+    if (!statId) continue;
+    const value = {};
+    const min = Number(item.min);
+    const max = Number(item.max);
+    if (Number.isFinite(min)) value.min = min;
+    if (Number.isFinite(max)) value.max = max;
+    filters.push({
+      id: statId,
+      key: item.key,
+      value: value.min === undefined && value.max === undefined ? undefined : value,
+    });
+  }
+  return filters;
+}
+
+function preserveKeys(preserveStats) {
+  const keys = new Set();
+  for (const item of preserveStats || []) {
+    const key = item && item.key;
+    if (!key) continue;
+    keys.add(key);
+    if (key === "totalAllAttributes") keys.add("attributes");
+    if (key === "explicitAttributes") keys.add("attributes");
+    if (key === "life") keys.add("totalLife");
+    if (key === "movementSpeed") keys.add("totalMovementSpeed");
+  }
+  return keys;
+}
+
+function equivalentStatKeys(key) {
+  const equivalents = {
+    attackSpeed: ["attackSpeed", "localAttackSpeed"],
+    critChance: ["critChance", "localCritChance"],
+    flatPhys: ["flatPhys", "localFlatPhys", "localPhysDamage"],
+    dps: ["dps", "localPhysDamage", "localFlatPhys", "localAttackSpeed"],
+    life: ["life", "totalLife"],
+    movementSpeed: ["movementSpeed", "totalMovementSpeed"],
+    str: ["str", "totalStr"],
+    dex: ["dex", "totalDex"],
+    int: ["int", "totalInt"],
+    attributes: ["attributes", "explicitAttributes", "totalAllAttributes", "totalAttributes"],
+    explicitAttributes: ["attributes", "explicitAttributes"],
+    totalAllAttributes: ["attributes", "totalAllAttributes", "totalAttributes"],
+    fireRes: ["fireRes", "totalResistance"],
+    coldRes: ["coldRes", "totalResistance"],
+    lightningRes: ["lightningRes", "totalResistance"],
+    chaosRes: ["chaosRes", "totalResistance"],
+  };
+  return equivalents[key] || [key];
+}
+
+function expandedStatKeySet(keys) {
+  const expanded = new Set();
+  for (const key of keys || []) {
+    for (const equivalent of equivalentStatKeys(key)) expanded.add(equivalent);
+  }
+  return expanded;
+}
+
+function buildFocusTradeQuery(slotId, item, stats, priceEx) {
+  const slot = UPGRADE_GUIDE_PROFILE.slots[slotId];
+  const filters = Object.entries(stats || {})
+    .filter(([key, value]) => UPGRADE_STAT_IDS[key] && key !== "totalResistance" && Number(value) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, 5)
+    .map(([key, value]) => ({
+      id: UPGRADE_STAT_IDS[key],
+      value: { min: Math.max(0, Math.floor(Number(value) * 0.95)) },
+    }));
+  const query = {
+    query: {
+      status: { option: "online" },
+      type: item && item.typeLine ? normalizePoeMarkup(item.typeLine) : undefined,
+      filters: {
+        type_filters: { filters: { category: { option: slot ? slot.category : undefined } } },
+        trade_filters: { filters: { price: { option: "exalted" } } },
+      },
+      stats: filters.length ? [{ type: "and", filters }] : [],
+    },
+    sort: { price: "asc" },
+  };
+  if (!query.query.type) delete query.query.type;
+  if (!slot) delete query.query.filters.type_filters;
+  if (Number(priceEx) > 0) query.query.filters.trade_filters.filters.price.max = Math.ceil(Number(priceEx) * 1.1);
+  return query;
+}
+
+function buildUpgradeStatsFilters(slotId, maxPriceEx, resistanceBand, preserveStats, excludedStats = []) {
+  const slot = UPGRADE_GUIDE_PROFILE.slots[slotId];
+  const resistanceIds = new Set([UPGRADE_STAT_IDS.fireRes, UPGRADE_STAT_IDS.coldRes, UPGRADE_STAT_IDS.lightningRes, UPGRADE_STAT_IDS.chaosRes]);
+  const preserveControlledKeys = expandedStatKeySet(PRESERVE_CONTROL_STATS_BY_SLOT[slotId] || []);
+  const keptKeys = expandedStatKeySet(preserveKeys(preserveStats));
+  const excludedKeys = expandedStatKeySet(preserveKeys((excludedStats || []).map((key) => ({ key }))));
+  let filters = UPGRADE_SEARCH_STATS[slotId] || Object.keys(slot.stats || {})
+    .filter((key) => UPGRADE_STAT_IDS[key])
+    .slice(0, 4)
+    .map((key) => ({ id: UPGRADE_STAT_IDS[key] }));
+  filters = filters.filter((filter) => {
+    const key = Object.keys(UPGRADE_STAT_IDS).find((statKey) => UPGRADE_STAT_IDS[statKey] === filter.id);
+    return !key || (!preserveControlledKeys.has(key) && !keptKeys.has(key) && !excludedKeys.has(key));
+  });
+  if (resistanceBand) {
+    filters = filters.filter((filter) => !resistanceIds.has(filter.id));
+  }
+  const statGroups = [];
+  if (filters.length) {
+    statGroups.push({ type: "count", filters, value: { min: Math.min(2, Math.max(1, filters.length)) } });
+  }
+  if (resistanceBand && !excludedKeys.has("totalResistance")) {
+    statGroups.push({
+      type: "and",
+      filters: [{
+        id: UPGRADE_STAT_IDS.totalResistance,
+        value: { min: resistanceBand.min, max: resistanceBand.max },
+      }],
+    });
+  }
+  const preserveFilters = buildPreserveStatFilters(preserveStats);
+  if (preserveFilters.length) {
+    statGroups.push({ type: "and", filters: preserveFilters.map(({ id, value }) => value ? ({ id, value }) : ({ id })) });
+  }
+  const query = {
+    query: {
+      status: { option: "online" },
+      filters: {
+        type_filters: { filters: { category: { option: slot.category } } },
+        trade_filters: { filters: { price: { option: "exalted" } } },
+      },
+      stats: statGroups,
+    },
+    sort: { price: "asc" },
+  };
+  if (slotId === "bow") {
+    query.query.filters.misc_filters = {
+      filters: {
+        ilvl: { min: 75 },
+        rarity: { option: "rare" },
+      },
+    };
+  }
+  if (Number(maxPriceEx) > 0) query.query.filters.trade_filters.filters.price.max = Number(maxPriceEx);
+  return query;
+}
+
+function itemTextFromTradeEntry(entry) {
+  const item = entry.item || {};
+  const lines = []
+    .concat(item.name || [])
+    .concat(item.typeLine || [])
+    .concat(item.utilityMods || [])
+    .concat(item.implicitMods || [])
+    .concat(item.explicitMods || [])
+    .concat(item.craftedMods || [])
+    .concat(item.runeMods || [])
+    .concat(item.desecratedMods || [])
+    .concat(item.fracturedMods || [])
+    .concat(item.enchantMods || []);
+  for (const prop of item.properties || []) {
+    const values = (prop.values || []).map((entry) => Array.isArray(entry) ? entry[0] : entry).join(" ");
+    if (prop.name && values) lines.push(prop.name + ": " + values);
+  }
+  return lines.map(normalizePoeMarkup).join("\n");
+}
+
+function normalizePreserveKey(key) {
+  if (key === "explicitAttributes") return "explicitAttributes";
+  if (key === "attributes") return "explicitAttributes";
+  return key;
+}
+
+function preserveStatsSatisfied(stats, preserveStats) {
+  const misses = [];
+  for (const item of preserveStats || []) {
+    const key = normalizePreserveKey(item && item.key);
+    if (!key) continue;
+    const value = Number(stats && stats[key]) || 0;
+    const min = Number(item.min);
+    const max = Number(item.max);
+    if (!Number.isFinite(min) && !Number.isFinite(max) && value <= 0) misses.push({ key, value, required: true });
+    if (Number.isFinite(min) && value < min) misses.push({ key, value, min });
+    if (Number.isFinite(max) && value > max) misses.push({ key, value, max });
+  }
+  return { ok: misses.length === 0, misses };
+}
+
+function listingPriceEx(entry, currencyRates) {
+  const price = entry.listing && entry.listing.price;
+  if (!price || !currencyRates[price.currency]) return null;
+  const exalted = roundPriceExalted(Number(price.amount) * currencyRates[price.currency]);
+  return { exalted, raw: price.amount + " " + price.currency };
+}
+
+function compactStats(stats, limit = 6) {
+  return Object.fromEntries(Object.entries(stats || {})
+    .filter(([, value]) => Number(value) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, limit)
+    .map(([key, value]) => [key, Math.round(Number(value) * 100) / 100]));
+}
+
+async function searchUpgradeSlot(input) {
+  const league = input.league || UPGRADE_GUIDE_PROFILE.league;
+  const slotId = input.slot || "bow";
+  const slot = UPGRADE_GUIDE_PROFILE.slots[slotId];
+  if (!slot) throw new Error("Unknown slot");
+  const status = tradeStatus();
+  if (status.limited) return { limited: true, tradeStatus: status, options: [] };
+  const current = input.current || {};
+  if (isGuideLockedUnique(current, slotId)) {
+    return {
+      league,
+      slot: slotId,
+      locked: true,
+      options: [],
+      message: "Guide-approved unique equipped; slot ignored for upgrades.",
+      tradeStatus: tradeStatus(),
+    };
+  }
+  const currentStats = current.raw ? parseItemStats(current.raw) : (current.stats || {});
+  const currentScore = scoreStatsForSlot(currentStats, slotId);
+  const currentDps = Number(currentStats.dps) || 0;
+  const currentTotals = input.totals || {};
+  const maxPriceEx = Number(input.maxPriceEx) || 0;
+  const resistanceBand = replacementResistanceBand(currentStats);
+  const preserveStats = Array.isArray(input.preserveStats) ? input.preserveStats : [];
+  const excludedStats = Array.isArray(input.excludedStats) ? input.excludedStats : [];
+  const preserveFilters = buildPreserveStatFilters(preserveStats);
+  const query = buildUpgradeStatsFilters(slotId, maxPriceEx, resistanceBand, preserveStats, excludedStats);
+  const rates = await fetchCurrencyRates(league);
+  const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
+  const search = await fetchTrade(searchUrl, { method: "POST", body: JSON.stringify(query) });
+  const resultUrl = "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(league) + "/" + search.id;
+  const allIds = search.result || [];
+  const idSet = new Set();
+  for (const index of [0, 1, 2, 3, 4, 5, 10, 15, 25, 40, 70, 100, 150, 220, 320]) {
+    if (allIds[index]) idSet.add(allIds[index]);
+  }
+  const ids = Array.from(idSet).slice(0, 15);
+  const baseDiagnostics = {
+    searched: search.total || search.result.length || 0,
+    fetched: 0,
+    hardFilters: 0,
+    noPrice: 0,
+    hardGateRejected: 0,
+    floorRejected: 0,
+    preserveRejected: 0,
+    lowScoreRejected: 0,
+    resistanceBand: resistanceBand ? resistanceBand.min + "-" + resistanceBand.max : "",
+    currentResistance: resistanceBand ? resistanceBand.total : 0,
+    preserveFilters: preserveFilters.length,
+    excludedStats,
+    preserveStats: preserveFilters.map((item) => ({
+      key: item.key,
+      id: item.id,
+      min: item.value && item.value.min,
+      max: item.value && item.value.max,
+      required: !item.value,
+    })),
+    currentScore,
+    bestRejected: null,
+    rejectSamples: [],
+  };
+  if (!ids.length) {
+    const empty = { league, slot: slotId, query, searchId: search.id, url: resultUrl, diagnostics: baseDiagnostics, options: [], updated: new Date().toISOString() };
+    return { ...empty, tradeStatus: tradeStatus() };
+  }
+  const fetchedResults = [];
+  for (let i = 0; i < ids.length; i += 5) {
+    const chunk = ids.slice(i, i + 5);
+    const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + chunk.join(",") + "?query=" + encodeURIComponent(search.id);
+    const fetched = await fetchTrade(fetchUrl);
+    fetchedResults.push(...(fetched.result || []));
+  }
+  const options = [];
+  const diagnostics = baseDiagnostics;
+  const rejected = [];
+  for (const entry of fetchedResults) {
+    diagnostics.fetched++;
+    const price = listingPriceEx(entry, rates);
+    if (!price || price.exalted <= 0) { diagnostics.noPrice++; continue; }
+    const stats = parseItemStats(itemTextFromTradeEntry(entry));
+    const preserveCheck = preserveStatsSatisfied(stats, preserveStats);
+    if (!preserveCheck.ok) {
+      diagnostics.preserveRejected++;
+      rejected.push({
+        name: [entry.item && entry.item.name, entry.item && entry.item.typeLine].filter(Boolean).join(" ") || slot.label,
+        priceEx: price.exalted,
+        rawPrice: price.raw,
+        score: scoreStatsForSlot(stats, slotId),
+        gain: 0,
+        stats: compactStats(stats),
+        preserveMisses: preserveCheck.misses,
+      });
+      continue;
+    }
+    if (slotId === "bow" && currentDps > 0 && (Number(stats.dps) || 0) < currentDps * 0.9) {
+      diagnostics.floorRejected++;
+      continue;
+    }
+    const nextTotals = replacementTotals(currentTotals, currentStats, stats);
+    const gate = hardGateResult(currentTotals, nextTotals);
+    const soft = softGoalResult(currentTotals, nextTotals);
+    const score = scoreStatsForSlot(stats, slotId);
+    const gain = Math.round((score - currentScore + gate.fixScore + soft.fixScore) * 100) / 100;
+    if (gain <= 0) {
+      diagnostics.lowScoreRejected++;
+      rejected.push({
+        name: [entry.item && entry.item.name, entry.item && entry.item.typeLine].filter(Boolean).join(" ") || slot.label,
+        priceEx: price.exalted,
+        rawPrice: price.raw,
+        score,
+        gain,
+        stats: compactStats(stats),
+      });
+      continue;
+    }
+    const explanation = buildUpgradeExplanation(slotId, currentStats, stats);
+    const focusQuery = buildFocusTradeQuery(slotId, entry.item || {}, stats, price.exalted);
+    options.push({
+      id: entry.id,
+      name: [entry.item && entry.item.name, entry.item && entry.item.typeLine].filter(Boolean).join(" ") || slot.label,
+      priceEx: price.exalted,
+      rawPrice: price.raw,
+      score,
+      gain,
+      value: Math.round((gain / price.exalted) * 100) / 100,
+      stats,
+      explanation,
+      hardFixScore: gate.fixScore,
+      softFixScore: soft.fixScore,
+      softChanges: soft.changes,
+      preserveStats: preserveFilters.map((item) => ({
+        key: item.key,
+        id: item.id,
+        min: item.value && item.value.min,
+        max: item.value && item.value.max,
+        required: !item.value,
+      })),
+      hardStatus: summarizeHardStatChange(currentTotals, nextTotals),
+      hardLosses: summarizeHardLosses(currentTotals, nextTotals),
+      hardViolations: gate.violations,
+      guideReason: slot.notes,
+      seller: entry.listing && entry.listing.account ? (entry.listing.account.name || "") : "",
+      listedAt: entry.listing ? (entry.listing.indexed || "") : "",
+      whisper: entry.listing && entry.listing.whisper,
+      url: resultUrl,
+      focusQuery,
+    });
+  }
+  options.sort((a, b) => b.value - a.value || a.priceEx - b.priceEx);
+  rejected.sort((a, b) => b.gain - a.gain || b.score - a.score);
+  diagnostics.bestRejected = rejected[0] || null;
+  diagnostics.rejectSamples = rejected.slice(0, 3);
+  const result = { league, slot: slotId, query, searchId: search.id, url: resultUrl, diagnostics, options: options.slice(0, 3), updated: new Date().toISOString() };
+  return { ...result, cached: false, tradeStatus: tradeStatus() };
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://" + HOST + ":" + PORT);
@@ -597,6 +2386,44 @@ const server = http.createServer(async (req, res) => {
       const league = url.searchParams.get("league") || "Runes of Aldur";
       const body = JSON.stringify(await fetchPrices(league));
       send(res, 200, body, "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/optimizer/materials") {
+      const league = url.searchParams.get("league") || "Runes of Aldur";
+      const materials = await fetchOptimizerMaterials(league);
+      send(res, 200, JSON.stringify({
+        league,
+        currencyRates: materials.currencyRates,
+        count: materials.count,
+        materials: Object.values(materials.byId).sort((a, b) => a.name.localeCompare(b.name)),
+        updated: materials.updated,
+      }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/optimizer/opportunities") {
+      const league = url.searchParams.get("league") || "Runes of Aldur";
+      const family = url.searchParams.get("family") || "quiver";
+      const iterations = Number(url.searchParams.get("iterations")) || OPTIMIZER_ITERATIONS;
+      const body = JSON.stringify(await buildOptimizerOpportunities(league, { family, iterations }));
+      send(res, 200, body, "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/optimizer/simulate" && req.method === "POST") {
+      const input = await readJson(req);
+      const league = input.league || "Runes of Aldur";
+      const target = QUIVER_TARGETS.find((item) => item.id === input.targetId) || QUIVER_TARGETS[0];
+      const route = QUIVER_ROUTES[input.routeId] || QUIVER_ROUTES[target.routes[0]];
+      const materials = await fetchOptimizerMaterials(league);
+      const simulation = simulateRoute(target, route, materials, {
+        iterations: input.iterations,
+        seed: input.seed || league,
+        priceOverrides: input.priceOverrides,
+        modWeightOverrides: input.modWeightOverrides,
+      });
+      send(res, 200, JSON.stringify({ league, target, route, simulation, updated: new Date().toISOString() }), "application/json; charset=utf-8");
       return;
     }
 
@@ -649,6 +2476,145 @@ const server = http.createServer(async (req, res) => {
         source: "trade2",
         rawPrice: price.rawAmount + " " + price.rawCurrency,
       }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/upgrades/profile") {
+      send(res, 200, JSON.stringify(UPGRADE_GUIDE_PROFILE), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/upgrades/currency-rates") {
+      const league = url.searchParams.get("league") || "Runes of Aldur";
+      const rates = await fetchCurrencyRates(league);
+      send(res, 200, JSON.stringify({
+        league,
+        divineToExalted: Number(rates.divine) || 0,
+        chaosToExalted: Number(rates.chaos) || 0,
+        updated: new Date().toISOString(),
+      }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/upgrades/status") {
+      send(res, 200, JSON.stringify({
+        ...tradeStatus(),
+      }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/oauth/status") {
+      send(res, 200, JSON.stringify(oauthStatus()), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/oauth/start") {
+      try {
+        send(res, 200, JSON.stringify({ url: buildOauthStartUrl(), status: oauthStatus() }), "application/json; charset=utf-8");
+      } catch (err) {
+        send(res, 400, JSON.stringify({ error: err.message, status: oauthStatus() }), "application/json; charset=utf-8");
+      }
+      return;
+    }
+
+    if (url.pathname === "/api/oauth/callback") {
+      try {
+        const code = url.searchParams.get("code") || "";
+        const state = url.searchParams.get("state") || "";
+        const error = url.searchParams.get("error") || "";
+        if (error) throw new Error(error);
+        if (!code || !state) throw new Error("Missing OAuth callback code/state.");
+        const token = await exchangeOauthCode(code, state);
+        send(res, 200, "<!doctype html><title>PoE OAuth Connected</title><body style=\"font-family:sans-serif;background:#111;color:#eee;padding:24px\"><h1>Connected</h1><p>Authenticated as " + String(token.username || "Path of Exile user") + ".</p><p>You can close this tab and return to the upgrade finder.</p></body>", "text/html; charset=utf-8");
+      } catch (err) {
+        send(res, 400, "<!doctype html><title>PoE OAuth Failed</title><body style=\"font-family:sans-serif;background:#111;color:#eee;padding:24px\"><h1>OAuth failed</h1><p>" + String(err.message).replace(/[<>&]/g, "") + "</p></body>", "text/html; charset=utf-8");
+      }
+      return;
+    }
+
+    if (url.pathname === "/api/oauth/logout" && req.method === "POST") {
+      clearOauthToken();
+      send(res, 200, JSON.stringify(oauthStatus()), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/upgrades/analyze" && req.method === "POST") {
+      const input = await readJson(req);
+      send(res, 200, JSON.stringify(analyzeUpgradeState(input.text || "")), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/upgrades/import-browser-export" && req.method === "POST") {
+      const input = await readJson(req, 8 * 1024 * 1024);
+      const result = importFromBrowserExport(input.text || "");
+      if (!result.itemCount) {
+        send(res, 400, JSON.stringify({ error: "No item objects found. Paste copied item text, character JSON, or page HTML with embedded item data." }), "application/json; charset=utf-8");
+        return;
+      }
+      send(res, 200, JSON.stringify(result), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/upgrades/search-slot" && req.method === "POST") {
+      const input = await readJson(req);
+      try {
+        send(res, 200, JSON.stringify(await searchUpgradeSlot(input)), "application/json; charset=utf-8");
+      } catch (err) {
+        if (String(err && err.message).includes("rate limited")) {
+          send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus(), options: [] }), "application/json; charset=utf-8");
+          return;
+        }
+        throw err;
+      }
+      return;
+    }
+
+    if (url.pathname === "/api/upgrades/focus-search" && req.method === "POST") {
+      const input = await readJson(req);
+      const league = input.league || UPGRADE_GUIDE_PROFILE.league;
+      const status = tradeStatus();
+      if (status.limited) {
+        send(res, 200, JSON.stringify({ limited: true, tradeStatus: status }), "application/json; charset=utf-8");
+        return;
+      }
+      const query = input.query && input.query.query ? input.query : null;
+      if (!query) {
+        send(res, 400, JSON.stringify({ error: "Missing focus query" }), "application/json; charset=utf-8");
+        return;
+      }
+      try {
+        const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
+        const search = await fetchTrade(searchUrl, { method: "POST", body: JSON.stringify(query) });
+        send(res, 200, JSON.stringify({
+          league,
+          id: search.id,
+          total: search.total || (search.result ? search.result.length : 0),
+          url: "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(league) + "/" + search.id,
+          tradeStatus: tradeStatus(),
+        }), "application/json; charset=utf-8");
+      } catch (err) {
+        if (String(err && err.message).includes("rate limited")) {
+          send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8");
+          return;
+        }
+        throw err;
+      }
+      return;
+    }
+
+    if (url.pathname === "/api/upgrades/import-character" && req.method === "POST") {
+      const input = await readJson(req);
+      const character = String(input.character || "rgnageeeen").trim();
+      const realm = String(input.realm || "poe2").trim();
+      if (!character) {
+        send(res, 400, JSON.stringify({ error: "Missing character name" }), "application/json; charset=utf-8");
+        return;
+      }
+      try {
+        send(res, 200, JSON.stringify(await importOauthCharacter(character, realm)), "application/json; charset=utf-8");
+      } catch (err) {
+        send(res, 400, JSON.stringify({ error: err.message, oauth: oauthStatus() }), "application/json; charset=utf-8");
+      }
       return;
     }
 
