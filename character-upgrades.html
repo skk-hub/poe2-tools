@@ -72,6 +72,31 @@
     .filters { display: grid; gap: 8px; }
     .filter-row { display: grid; grid-template-columns: minmax(130px, 1fr) 80px 80px 32px; gap: 8px; align-items: end; }
     .iconbtn { min-height: 36px; padding: 0; }
+    .import-shell { padding: 0; overflow: hidden; }
+    .import-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; background: var(--s2); border-bottom: 1px solid var(--bd); }
+    .import-bar h2 { margin-bottom: 3px; }
+    .import-bar .sub { margin: 0; max-width: 42ch; }
+    .import-toggle { width: 36px; min-width: 36px; padding: 0; display: inline-grid; place-items: center; font: 700 16px/1 var(--ff-ui); }
+    .import-toggle .glyph { display: inline-block; transform: translateY(-1px); }
+    .import-body { padding: 14px; display: grid; gap: 10px; }
+    .import-shell.collapsed .import-body { display: none; }
+    .locked-panel { display: grid; gap: 10px; }
+    .locked-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .locked-card, .lock-card { border: 1px solid var(--bd); background: var(--s2); }
+    .locked-card { padding: 10px; }
+    .locked-card .label, .lock-card .label { color: var(--mu); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+    .locked-card b, .lock-card b { display: block; margin-top: 4px; color: var(--gd); font: 700 18px var(--ff-mono); }
+    .locked-grid { display: grid; gap: 8px; }
+    .lock-card { padding: 10px; display: grid; gap: 8px; }
+    .lock-card-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+    .lock-title { font-weight: 800; overflow-wrap: anywhere; }
+    .lock-sub { color: var(--mu); font: 11px var(--ff-mono); }
+    .lock-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+    .lock-toggle { width: auto; min-height: 30px; padding: 0 10px; font: 700 11px var(--ff-mono); text-transform: uppercase; }
+    .lock-toggle.active { color: var(--gd); border-color: oklch(80% 0.15 74 / .5); background: var(--gd-a); }
+    .projection-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .projection-table th, .projection-table td { padding: 7px 9px; border-bottom: 1px solid var(--bd); text-align: right; font: 11px var(--ff-mono); }
+    .projection-table th:first-child, .projection-table td:first-child { text-align: left; font-family: var(--ff-ui); color: var(--mu); }
     .items { display: grid; gap: 8px; max-height: 300px; overflow: auto; }
     .item-row { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 8px; padding: 9px; border: 1px solid var(--bd); background: oklch(9.5% 0.028 40); cursor: pointer; }
     .item-row.active { border-color: var(--gd); background: var(--gd-a); }
@@ -99,6 +124,7 @@
       aside { margin-bottom: 14px; }
       .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .filter-row, .triple { grid-template-columns: 1fr; }
+      .locked-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
 </head>
@@ -129,21 +155,33 @@
 
     <main>
       <aside class="stack">
-        <section>
-          <h2>Gear Import</h2>
-          <label for="gearText">Equipped item text</label>
-          <textarea id="gearText" spellcheck="false" placeholder="Paste copied item text, character JSON, or browser export HTML"></textarea>
-          <div class="actions" style="margin-top:10px">
-            <button class="primary" id="analyzeBtn">Analyze</button>
-            <button id="importBtn">Import Export</button>
-            <button id="saveBtn">Save</button>
-            <button id="loadBtn">Load</button>
+        <section class="import-shell" id="importShell">
+          <div class="import-bar">
+            <div>
+              <h2>Gear Import</h2>
+              <div class="sub">Paste copied item text, character JSON, or browser export HTML.</div>
+            </div>
+            <button class="import-toggle" id="importToggle" type="button" aria-label="Toggle gear import" title="Toggle gear import">
+              <span class="glyph" aria-hidden="true">⌄</span>
+            </button>
+          </div>
+          <div class="import-body" id="importBody">
+            <label for="gearText">Equipped item text</label>
+            <textarea id="gearText" spellcheck="false" placeholder="Paste copied item text, character JSON, or browser export HTML"></textarea>
+            <div class="actions">
+              <button class="primary" id="analyzeBtn">Analyze</button>
+              <button id="importBtn">Import Export</button>
+              <button id="saveBtn">Save</button>
+              <button id="loadBtn">Load</button>
+            </div>
           </div>
         </section>
 
         <section>
-          <h2>Equipped Slots</h2>
-          <div class="items" id="items"><div class="empty">Analyze gear first.</div></div>
+          <h2>Locked Loadout</h2>
+          <div class="locked-panel" id="lockedPanel">
+            <div class="empty">Lock candidate items to build a projected character overview.</div>
+          </div>
         </section>
       </aside>
 
@@ -209,12 +247,16 @@
       selectedItem: null,
       slots: {},
       result: null,
+      importOpen: true,
+      lockedItems: {},
     };
 
     const els = {
+      importShell: document.getElementById("importShell"),
+      importBody: document.getElementById("importBody"),
+      importToggle: document.getElementById("importToggle"),
       gearText: document.getElementById("gearText"),
       status: document.getElementById("status"),
-      items: document.getElementById("items"),
       slotSelect: document.getElementById("slotSelect"),
       budget: document.getElementById("budget"),
       matchMode: document.getElementById("matchMode"),
@@ -222,6 +264,7 @@
       filters: document.getElementById("filters"),
       queryPreview: document.getElementById("queryPreview"),
       summary: document.getElementById("summary"),
+      lockedPanel: document.getElementById("lockedPanel"),
       results: document.getElementById("results"),
     };
 
@@ -274,24 +317,162 @@
       els.slotSelect.value = state.selectedSlot;
     }
 
-    function renderItems() {
-      if (!state.analysis || !state.analysis.items.length) {
-        els.items.innerHTML = `<div class="empty">No equipped item text found.</div>`;
+    function loadLockedItems() {
+      try {
+        return JSON.parse(localStorage.getItem("poe2.gearSearch.lockedItems") || "{}") || {};
+      } catch {
+        return {};
+      }
+    }
+
+    function saveLockedItems() {
+      localStorage.setItem("poe2.gearSearch.lockedItems", JSON.stringify(state.lockedItems || {}));
+    }
+
+    function setImportOpen(open) {
+      state.importOpen = !!open;
+      els.importShell.classList.toggle("collapsed", !state.importOpen);
+      els.importToggle.innerHTML = `<span class="glyph" aria-hidden="true">${state.importOpen ? "⌃" : "⌄"}</span>`;
+      els.importToggle.setAttribute("aria-label", state.importOpen ? "Collapse gear import" : "Expand gear import");
+      els.importToggle.title = state.importOpen ? "Collapse gear import" : "Expand gear import";
+    }
+
+    function currentDefaultFilters() {
+      const item = currentItem();
+      if (!item || !item.stats) return [];
+      const slot = state.slots[state.selectedSlot] || {};
+      return (slot.statKeys || [])
+        .map((key) => ({ key, min: item.stats[key] }))
+        .filter((filter) => Number.isFinite(Number(filter.min)));
+    }
+
+    function buildProjectedTotals() {
+      const base = { ...(state.analysis && state.analysis.totals ? state.analysis.totals : {}) };
+      for (const [slotId, locked] of Object.entries(state.lockedItems || {})) {
+        const current = (state.analysis && state.analysis.equipped && state.analysis.equipped[slotId] && state.analysis.equipped[slotId].stats) || {};
+        const candidate = locked.candidateStats || locked.stats || {};
+        const next = replacementTotals(base, current, candidate);
+        Object.keys(base).forEach((key) => delete base[key]);
+        Object.assign(base, next);
+      }
+      return base;
+    }
+
+    function replacementTotals(totals, currentStats, candidateStats) {
+      const next = { ...(totals || {}) };
+      for (const [key, value] of Object.entries(currentStats || {})) next[key] = (next[key] || 0) - value;
+      for (const [key, value] of Object.entries(candidateStats || {})) next[key] = (next[key] || 0) + value;
+      return next;
+    }
+
+    function lockListing(listing) {
+      const slotId = listing.slot || state.selectedSlot;
+      if (!slotId) return;
+      const existing = state.lockedItems[slotId];
+      if (existing && existing.id === listing.id) {
+        delete state.lockedItems[slotId];
+      } else {
+        state.lockedItems[slotId] = {
+          id: listing.id,
+          slot: slotId,
+          name: listing.name,
+          typeLine: listing.typeLine,
+          priceDiv: listing.priceDiv,
+          rawPrice: listing.rawPrice,
+          seller: listing.seller,
+          listedAt: listing.listedAt,
+          candidateStats: listing.candidateStats || listing.stats || {},
+          lockedAt: new Date().toISOString(),
+        };
+      }
+      saveLockedItems();
+      renderLockedPanel();
+      if (state.result && state.result.slot === slotId) renderResults(state.result);
+    }
+
+    function renderLockedPanel() {
+      const entries = Object.values(state.lockedItems || {}).sort((a, b) => String(a.slot).localeCompare(String(b.slot)));
+      if (!state.analysis || !entries.length) {
+        els.lockedPanel.innerHTML = `<div class="empty">Lock candidate items to build a projected character overview.</div>`;
         return;
       }
-      els.items.innerHTML = state.analysis.items.map((item) => `
-        <div class="item-row ${item.slot === state.selectedSlot ? "active" : ""}" data-slot="${escapeHtml(item.slot)}">
-          <span class="pill">${escapeHtml(item.slot || "?")}</span>
-          <div><strong>${escapeHtml(item.name)}</strong><div class="muted">${Object.keys(item.stats || {}).length} parsed stats</div></div>
+
+      const currentTotals = state.analysis.totals || {};
+      const projectedTotals = buildProjectedTotals();
+      const deltas = statComparison(currentTotals, projectedTotals)
+        .filter((stat) => stat.delta !== 0)
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.label.localeCompare(b.label));
+      const topGain = deltas.find((stat) => stat.delta > 0) || deltas[0] || null;
+      const topLoss = deltas.find((stat) => stat.delta < 0) || null;
+      const slotsLocked = entries.length;
+      const currentTotalStats = Object.keys(currentTotals).length;
+
+      const cards = entries.map((entry) => {
+        const current = (state.analysis.equipped && state.analysis.equipped[entry.slot]) || null;
+        const currentStats = current ? (current.stats || {}) : {};
+        const candidateStats = entry.candidateStats || {};
+        const compareRows = statComparison(currentStats, candidateStats, state.slots[entry.slot] ? state.slots[entry.slot].statKeys : [])
+          .filter((stat) => stat.delta !== 0)
+          .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.label.localeCompare(b.label))
+          .slice(0, 5)
+          .map((stat) => {
+            const cls = stat.delta > 0 ? "delta-pos" : "delta-neg";
+            const sign = stat.delta > 0 ? "+" : "";
+            return `<tr><td>${escapeHtml(stat.label)}</td><td>${fmt(stat.current)}</td><td>${fmt(stat.candidate)}</td><td class="${cls}">${sign}${fmt(stat.delta)}</td></tr>`;
+          }).join("");
+        return `
+          <article class="lock-card">
+            <div class="lock-card-head">
+              <div>
+                <div class="lock-title">${escapeHtml(slotLabel(entry.slot))}: ${escapeHtml(entry.name || "Locked item")}</div>
+                <div class="lock-sub">${escapeHtml(entry.rawPrice || "-")} ${entry.seller ? " / " + escapeHtml(entry.seller) : ""}${entry.listedAt ? " / " + escapeHtml(entry.listedAt) : ""}</div>
+              </div>
+              <div class="lock-actions">
+                <button class="lock-toggle active" type="button" data-lock-slot="${escapeHtml(entry.slot)}" data-lock-id="${escapeHtml(entry.id)}" title="Unlock item">
+                  <span aria-hidden="true">🔒</span> Unlock
+                </button>
+              </div>
+            </div>
+            <div class="lock-sub">${escapeHtml(current ? (current.name || "Current item") : "No current item for this slot")} → ${escapeHtml(entry.name || "Locked item")}</div>
+            <table class="comparison">
+              <thead><tr><th>Stat</th><th>Current</th><th>Locked</th><th>Delta</th></tr></thead>
+              <tbody>${compareRows || `<tr><td colspan="4" class="muted">No changed stats.</td></tr>`}</tbody>
+            </table>
+          </article>
+        `;
+      }).join("");
+
+      const overviewRows = deltas.slice(0, 8).map((stat) => {
+        const cls = stat.delta > 0 ? "delta-pos" : "delta-neg";
+        const sign = stat.delta > 0 ? "+" : "";
+        return `<tr><td>${escapeHtml(stat.label)}</td><td>${fmt(stat.current)}</td><td>${fmt(stat.candidate)}</td><td class="${cls}">${sign}${fmt(stat.delta)}</td></tr>`;
+      }).join("") || `<tr><td colspan="4" class="muted">No projected changes.</td></tr>`;
+
+      els.lockedPanel.innerHTML = `
+        <div class="locked-summary">
+          <div class="locked-card"><span class="label">Locked slots</span><b>${slotsLocked}</b></div>
+          <div class="locked-card"><span class="label">Tracked stats</span><b>${currentTotalStats}</b></div>
+          <div class="locked-card"><span class="label">Best gain</span><b>${topGain ? (topGain.delta > 0 ? "+" : "") + fmt(topGain.delta) : "-"}</b></div>
+          <div class="locked-card"><span class="label">Worst loss</span><b>${topLoss ? (topLoss.delta > 0 ? "+" : "") + fmt(topLoss.delta) : "-"}</b></div>
         </div>
-      `).join("");
-      els.items.querySelectorAll(".item-row").forEach((row) => {
-        row.addEventListener("click", () => {
-          state.selectedSlot = row.dataset.slot || state.selectedSlot;
-          els.slotSelect.value = state.selectedSlot;
-          renderItems();
-          setDefaultFilters();
-          updatePreview();
+        <table class="projection-table">
+          <thead><tr><th>Stat</th><th>Current</th><th>Projected</th><th>Delta</th></tr></thead>
+          <tbody>${overviewRows}</tbody>
+        </table>
+        <div class="locked-grid">${cards}</div>
+      `;
+
+      els.lockedPanel.querySelectorAll("[data-lock-slot]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const slotId = button.getAttribute("data-lock-slot");
+          const id = button.getAttribute("data-lock-id");
+          const entry = state.lockedItems[slotId];
+          if (entry && entry.id === id) {
+            delete state.lockedItems[slotId];
+            saveLockedItems();
+            renderLockedPanel();
+            if (state.result) renderResults(state.result);
+          }
         });
       });
     }
@@ -341,6 +522,27 @@
       return labels[key] || key;
     }
 
+    function statComparison(currentStats, candidateStats, preferredKeys = []) {
+      const keys = Array.from(new Set([
+        ...preferredKeys,
+        ...Object.keys(currentStats || {}),
+        ...Object.keys(candidateStats || {}),
+      ]))
+        .filter((key) => (Number(currentStats && currentStats[key]) || 0) || (Number(candidateStats && candidateStats[key]) || 0))
+        .sort((a, b) => a.localeCompare(b));
+      return keys.map((key) => {
+        const current = Math.round((Number(currentStats && currentStats[key]) || 0) * 100) / 100;
+        const candidate = Math.round((Number(candidateStats && candidateStats[key]) || 0) * 100) / 100;
+        return {
+          key,
+          label: statOptionLabel(key),
+          current,
+          candidate,
+          delta: Math.round((candidate - current) * 100) / 100,
+        };
+      });
+    }
+
     function addFilter(filter = {}) {
       const row = document.createElement("div");
       row.className = "filter-row";
@@ -353,15 +555,6 @@
       row.querySelector("button").addEventListener("click", () => { row.remove(); updatePreview(); });
       row.querySelectorAll("input,select").forEach((el) => el.addEventListener("input", updatePreview));
       els.filters.appendChild(row);
-    }
-
-    function currentDefaultFilters() {
-      const item = currentItem();
-      if (!item || !item.stats) return [];
-      const slot = state.slots[state.selectedSlot] || {};
-      return (slot.statKeys || [])
-        .map((key) => ({ key, min: item.stats[key] }))
-        .filter((filter) => Number.isFinite(Number(filter.min)));
     }
 
     function setDefaultFilters() {
@@ -463,6 +656,7 @@
       }
       const open = result.url ? `<a class="primary" href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">Open Trade</a>` : "";
       els.results.innerHTML = `<div class="actions">${open}</div>` + result.listings.map((item) => {
+        const isLocked = !!(state.lockedItems && state.lockedItems[item.slot] && state.lockedItems[item.slot].id === item.id);
         const rows = (item.comparison || []).map((stat) => {
           const cls = stat.delta > 0 ? "delta-pos" : stat.delta < 0 ? "delta-neg" : "";
           const sign = stat.delta > 0 ? "+" : "";
@@ -475,7 +669,12 @@
                 <div class="listing-title">${escapeHtml(item.name)}</div>
                 <div class="muted">${escapeHtml(item.seller || "unknown seller")} ${item.listedAt ? " / " + escapeHtml(item.listedAt) : ""}</div>
               </div>
-              <div class="price">${escapeHtml(item.rawPrice)}<br><span class="muted">${fmt(item.priceDiv || 0)} div</span></div>
+              <div class="lock-actions">
+                <div class="price">${escapeHtml(item.rawPrice)}<br><span class="muted">${fmt(item.priceDiv || 0)} div</span></div>
+                <button class="lock-toggle ${isLocked ? "active" : ""}" type="button" data-listing-lock="${escapeHtml(item.id)}" data-listing-slot="${escapeHtml(item.slot)}" title="${isLocked ? "Unlock item" : "Lock item"}">
+                  <span aria-hidden="true">${isLocked ? "🔒" : "🔓"}</span>${isLocked ? "Unlock" : "Lock"}
+                </button>
+              </div>
             </div>
             <table class="comparison">
               <thead><tr><th>Stat</th><th>Current</th><th>Candidate</th><th>Delta</th></tr></thead>
@@ -484,6 +683,14 @@
           </article>
         `;
       }).join("");
+      els.results.querySelectorAll("[data-listing-lock]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const slot = button.getAttribute("data-listing-slot");
+          const id = button.getAttribute("data-listing-lock");
+          const listing = (result.listings || []).find((item) => item.slot === slot && item.id === id);
+          if (listing) lockListing(listing);
+        });
+      });
     }
 
     async function analyze() {
@@ -493,8 +700,9 @@
       const firstEquipped = Object.keys(data.equipped || {})[0];
       state.selectedSlot = state.selectedSlot && data.equipped[state.selectedSlot] ? state.selectedSlot : (firstEquipped || "bow");
       renderSlots();
-      renderItems();
       setDefaultFilters();
+      renderLockedPanel();
+      setImportOpen(false);
       await updatePreview();
     }
 
@@ -505,8 +713,9 @@
       state.slots = data.analysis.slots || {};
       state.selectedSlot = Object.keys(data.analysis.equipped || {})[0] || "bow";
       renderSlots();
-      renderItems();
       setDefaultFilters();
+      renderLockedPanel();
+      setImportOpen(false);
       await updatePreview();
     }
 
@@ -518,13 +727,16 @@
       refreshStatus();
     }
 
+    state.lockedItems = loadLockedItems();
+    setImportOpen(true);
+    els.importToggle.addEventListener("click", () => setImportOpen(!state.importOpen));
     document.getElementById("analyzeBtn").addEventListener("click", () => analyze().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
     document.getElementById("importBtn").addEventListener("click", () => importExport().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
     document.getElementById("searchBtn").addEventListener("click", () => search().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
     document.getElementById("addFilterBtn").addEventListener("click", () => { addFilter(); updatePreview(); });
-    document.getElementById("saveBtn").addEventListener("click", () => localStorage.setItem("poe2.gearSearch.text", els.gearText.value || ""));
+    document.getElementById("saveBtn").addEventListener("click", () => { localStorage.setItem("poe2.gearSearch.text", els.gearText.value || ""); setImportOpen(false); });
     document.getElementById("loadBtn").addEventListener("click", async () => { els.gearText.value = localStorage.getItem("poe2.gearSearch.text") || ""; if (els.gearText.value.trim()) await analyze(); });
-    els.slotSelect.addEventListener("change", () => { state.selectedSlot = els.slotSelect.value; renderItems(); setDefaultFilters(); updatePreview(); });
+    els.slotSelect.addEventListener("change", () => { state.selectedSlot = els.slotSelect.value; setDefaultFilters(); updatePreview(); });
     [els.budget, els.matchMode, els.minMatches].forEach((el) => el.addEventListener("input", updatePreview));
 
     refreshStatus();
@@ -539,6 +751,7 @@
         state.slots = data.slots || {};
         renderSlots();
         setDefaultFilters();
+        renderLockedPanel();
         updatePreview();
       }).catch(() => {});
     }

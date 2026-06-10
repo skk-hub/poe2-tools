@@ -2342,6 +2342,7 @@ async function searchGear(input) {
     const candidateStats = parseItemStats(itemTextFromTradeEntry(entry));
     listings.push({
       id: entry.id,
+      slot: slotId,
       name: [item.name, item.typeLine].filter(Boolean).join(" ").trim() || slot.label,
       typeLine: item.typeLine || "",
       priceEx: price.exalted,
@@ -2351,6 +2352,7 @@ async function searchGear(input) {
       listedAt: entry.listing ? (entry.listing.indexed || "") : "",
       whisper: entry.listing && entry.listing.whisper ? entry.listing.whisper : "",
       stats: compactStats(candidateStats, 12),
+      candidateStats,
       comparison: statComparison(currentStats, candidateStats, preferredKeys),
     });
   }
