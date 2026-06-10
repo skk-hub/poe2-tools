@@ -3,379 +3,117 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PoE2 Character Upgrades</title>
+  <title>PoE2 Gear Search</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
   <style>
     :root {
       color-scheme: dark;
-      --bg:oklch(8.5% 0.030 40);
-      --s1:oklch(11% 0.028 40);
-      --s2:oklch(14.5% 0.026 40);
-      --s3:oklch(18% 0.024 40);
-      --bd:oklch(27% 0.022 40);
-      --bd2:oklch(42% 0.020 40);
-      --gd:oklch(80% 0.15 74);
-      --gd-a:oklch(80% 0.15 74 / 0.10);
-      --tx:oklch(82% 0.014 50);
-      --mu:oklch(44% 0.010 50);
-      --gr:oklch(67% 0.14 148);
-      --rd:oklch(60% 0.14 20);
-      --cy:oklch(68% 0.11 210);
-      --pu:oklch(66% 0.11 300);
-      --ff-display:'Cinzel',Georgia,serif;
-      --ff-ui:'Inter',system-ui,sans-serif;
-      --ff-mono:'JetBrains Mono',monospace;
+      --bg: oklch(8.5% 0.030 40);
+      --s1: oklch(11% 0.028 40);
+      --s2: oklch(14.5% 0.026 40);
+      --s3: oklch(18% 0.024 40);
+      --bd: oklch(27% 0.022 40);
+      --bd2: oklch(42% 0.020 40);
+      --gd: oklch(80% 0.15 74);
+      --gd-a: oklch(80% 0.15 74 / 0.10);
+      --tx: oklch(82% 0.014 50);
+      --mu: oklch(50% 0.010 50);
+      --gr: oklch(67% 0.14 148);
+      --rd: oklch(62% 0.14 20);
+      --cy: oklch(68% 0.11 210);
+      --ff-display: 'Cinzel', Georgia, serif;
+      --ff-ui: 'Inter', system-ui, sans-serif;
+      --ff-mono: 'JetBrains Mono', monospace;
     }
-    * { box-sizing: border-box; margin:0; padding:0; }
-    body {
-      font-family: var(--ff-ui);
-      background: var(--bg);
-      color: var(--tx);
-      font-size:13px;
-      min-height:100vh;
-      -webkit-font-smoothing:antialiased;
-    }
-    a{color:var(--cy);text-decoration:none}
-    a:hover{text-decoration:underline}
-    .appbar{position:sticky;top:0;z-index:100;background:var(--s3);border-bottom:1px solid var(--bd);box-shadow:0 1px 0 var(--bd),0 4px 24px oklch(0 0 0 / 0.7)}
-    .appbarin{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 24px;max-width:1440px;margin:0 auto}
-    .brand{display:flex;align-items:center;gap:11px;min-width:0;color:inherit}
-    .brand:hover{text-decoration:none}
-    .mark{width:30px;height:30px;border:1px solid oklch(80% 0.15 74 / 0.55);background:oklch(80% 0.15 74 / 0.06);color:var(--gd);border-radius:2px;display:flex;align-items:center;justify-content:center;font-family:var(--ff-display);font-weight:700;font-size:13px;letter-spacing:.05em;box-shadow:0 0 14px oklch(80% 0.15 74 / 0.2),inset 0 1px 0 oklch(80% 0.15 74 / 0.15)}
-    .brandname{font-family:var(--ff-display);color:var(--gd);font-size:15px;font-weight:700;letter-spacing:.08em;line-height:1.1;display:block}
-    .brandmeta{color:var(--mu);font-size:10px;margin-top:3px;letter-spacing:.02em;white-space:nowrap;display:block}
-    .nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap;justify-content:flex-end}
-    .navbtn{height:28px;font-size:11px;font-weight:500;color:var(--mu);border:1px solid transparent;background:transparent;padding:0 11px;letter-spacing:.02em;border-radius:2px;display:inline-flex;align-items:center;justify-content:center}
-    .navbtn:hover{color:var(--tx);background:var(--s2);border-color:var(--bd);text-decoration:none}
-    .navbtn.active{color:var(--gd);background:var(--gd-a);border-color:oklch(80% 0.15 74 / 0.35)}
-    h1{font-family:var(--ff-display);color:var(--gd);font-size:22px;font-weight:700;line-height:1.1;letter-spacing:.04em}
-    .sub{color:var(--mu);font-size:11px;margin-top:5px;line-height:1.5}
-    .status {
-      min-width: 260px;
-      border: 1px solid var(--bd);
-      border-radius: 0;
-      padding: 10px 12px;
-      background: var(--s1);
-      font-size: 11px;
-      font-family:var(--ff-mono);
-      color:var(--mu);
-      text-align:right;
-    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--tx); font: 13px var(--ff-ui); -webkit-font-smoothing: antialiased; }
+    a { color: var(--cy); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .appbar { position: sticky; top: 0; z-index: 20; background: var(--s3); border-bottom: 1px solid var(--bd); box-shadow: 0 4px 24px oklch(0 0 0 / .65); }
+    .appbarin { max-width: 1500px; margin: 0 auto; padding: 11px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 11px; color: inherit; min-width: 0; }
+    .brand:hover { text-decoration: none; }
+    .mark { width: 30px; height: 30px; border: 1px solid oklch(80% 0.15 74 / .55); background: var(--gd-a); color: var(--gd); display: grid; place-items: center; font: 700 13px var(--ff-display); letter-spacing: .05em; }
+    .brandname { display: block; color: var(--gd); font: 700 15px/1.1 var(--ff-display); letter-spacing: .08em; }
+    .brandmeta { display: block; margin-top: 3px; color: var(--mu); font-size: 10px; white-space: nowrap; }
+    .nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; }
+    .navbtn { min-height: 28px; padding: 0 11px; display: inline-flex; align-items: center; border: 1px solid transparent; color: var(--mu); font-size: 11px; border-radius: 2px; }
+    .navbtn:hover { color: var(--tx); background: var(--s2); border-color: var(--bd); text-decoration: none; }
+    .navbtn.active { color: var(--gd); background: var(--gd-a); border-color: oklch(80% 0.15 74 / .35); }
+    .shell { max-width: 1500px; margin: 0 auto; padding: 24px; }
+    .pagehead { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 16px; }
+    h1 { margin: 0; color: var(--gd); font: 700 22px/1.1 var(--ff-display); letter-spacing: .04em; }
+    .sub { margin-top: 6px; color: var(--mu); font-size: 11px; line-height: 1.5; }
+    .status { min-width: 300px; padding: 10px 12px; background: var(--s1); border: 1px solid var(--bd); text-align: right; color: var(--mu); font: 11px var(--ff-mono); }
     .status b { color: var(--gd); }
-    .shell{padding:26px 24px 44px;max-width:1440px;margin:0 auto}
-    .pagehead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px}
-    main {
-      display: grid;
-      grid-template-columns: minmax(340px, 430px) 1fr;
-      gap:14px;
-      align-items:start;
-    }
-    aside {
-      background: var(--s1);
-      border: 1px solid var(--bd);
-      padding: 14px;
-    }
-    section { min-width:0; }
-    textarea {
-      width: 100%;
-      min-height: 420px;
-      resize: vertical;
-      background: oklch(9.5% 0.028 40);
-      color: var(--tx);
-      border: 1px solid var(--bd);
-      border-radius: 0;
-      padding: 10px;
-      line-height: 1.5;
-      font-family: var(--ff-mono);
-      font-size: 11px;
-      transition:border-color 120ms;
-    }
-    textarea:focus,input:focus,select:focus{outline:none;border-color:var(--bd2)}
-    textarea.small {
-      min-height: 130px;
-    }
-    label { display: block; color: var(--mu); font-size: 11px; margin-bottom: 8px; }
-    .controls {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-top: 12px;
-    }
-    input, select, button {
-      min-height: 38px;
-      border-radius: 2px;
-      border: 1px solid var(--bd);
-      background: var(--s2);
-      color: var(--tx);
-      padding: 0 10px;
-      font: inherit;
-    }
-    button {
-      cursor: pointer;
-      font-weight: 600;
-      transition:border-color 120ms,background 120ms,color 120ms;
-    }
-    button:hover{border-color:var(--bd2);background:var(--s3)}
-    button.primary { background: var(--gd-a); border-color: oklch(80% 0.15 74 / 0.5); color:var(--gd); font-weight:700; }
-    button.primary:hover{background:oklch(80% 0.15 74 / 0.18);border-color:var(--gd)}
-    button:disabled { cursor: not-allowed; opacity: .55; }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-      margin-bottom: 14px;
-    }
-    .panel, .card {
-      background: var(--s1);
-      border: 1px solid var(--bd);
-      border-radius: 0;
-      padding: 14px;
-    }
-    .panel h2, .card h3 {
-      margin: 0 0 10px;
-      font-family:var(--ff-display);
-      color:var(--gd);
-      font-size: 12px;
-      letter-spacing:.06em;
-      text-transform:uppercase;
-    }
-    .metric { font-family:var(--ff-mono);font-size: 24px; font-weight: 600;color:var(--gd); }
+    main { display: grid; grid-template-columns: minmax(350px, 450px) minmax(0, 1fr); gap: 14px; align-items: start; }
+    aside, .panel { background: var(--s1); border: 1px solid var(--bd); padding: 14px; }
+    .stack { display: grid; gap: 12px; }
+    h2, h3 { margin: 0 0 10px; color: var(--gd); font: 700 12px var(--ff-display); letter-spacing: .06em; text-transform: uppercase; }
+    label { display: block; margin-bottom: 7px; color: var(--mu); font-size: 11px; }
+    textarea, input, select, button { width: 100%; border: 1px solid var(--bd); background: var(--s2); color: var(--tx); border-radius: 2px; font: inherit; }
+    textarea { min-height: 330px; resize: vertical; padding: 10px; line-height: 1.5; font: 11px var(--ff-mono); }
+    input, select, button { min-height: 36px; padding: 0 10px; }
+    textarea:focus, input:focus, select:focus { outline: none; border-color: var(--bd2); }
+    button { cursor: pointer; font-weight: 700; }
+    button:hover { border-color: var(--bd2); background: var(--s3); }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .primary { background: var(--gd-a); color: var(--gd); border-color: oklch(80% 0.15 74 / .5); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .triple { display: grid; grid-template-columns: 1fr 105px 105px; gap: 8px; align-items: end; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .actions button, .actions a { width: auto; min-height: 34px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--bd); background: var(--s2); color: var(--tx); border-radius: 2px; font-weight: 700; }
+    .actions a.primary { color: var(--gd); background: var(--gd-a); border-color: oklch(80% 0.15 74 / .5); }
     .muted { color: var(--mu); }
-    .bad { color: var(--rd); }
     .good { color: var(--gr); }
-    .warn { color: var(--gd); }
-    .import-box {
-      background: var(--s2);
-      border: 1px solid var(--bd);
-      border-radius: 0;
-      padding: 12px;
-      margin-bottom: 14px;
+    .bad { color: var(--rd); }
+    .filters { display: grid; gap: 8px; }
+    .filter-row { display: grid; grid-template-columns: minmax(130px, 1fr) 80px 80px 32px; gap: 8px; align-items: end; }
+    .iconbtn { min-height: 36px; padding: 0; }
+    .items { display: grid; gap: 8px; max-height: 300px; overflow: auto; }
+    .item-row { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 8px; padding: 9px; border: 1px solid var(--bd); background: oklch(9.5% 0.028 40); cursor: pointer; }
+    .item-row.active { border-color: var(--gd); background: var(--gd-a); }
+    .item-row strong { overflow-wrap: anywhere; }
+    .pill { display: inline-flex; align-items: center; min-height: 22px; padding: 0 7px; border: 1px solid var(--bd); color: var(--mu); font: 10px var(--ff-mono); text-transform: uppercase; }
+    pre { margin: 0; max-height: 280px; overflow: auto; padding: 10px; border: 1px solid var(--bd); background: oklch(7.5% 0.025 40); color: var(--tx); font: 10px/1.45 var(--ff-mono); white-space: pre-wrap; }
+    .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .metric { padding: 10px; border: 1px solid var(--bd); background: var(--s2); }
+    .metric b { display: block; color: var(--gd); font: 700 18px var(--ff-mono); }
+    .results { display: grid; gap: 10px; }
+    .listing { border: 1px solid var(--bd); background: var(--s1); }
+    .listing-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-bottom: 1px solid var(--bd); }
+    .listing-title { font-weight: 800; overflow-wrap: anywhere; }
+    .price { color: var(--gd); font: 700 16px var(--ff-mono); text-align: right; }
+    .comparison { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .comparison th, .comparison td { padding: 7px 9px; border-bottom: 1px solid var(--bd); text-align: right; font: 11px var(--ff-mono); }
+    .comparison th:first-child, .comparison td:first-child { text-align: left; font-family: var(--ff-ui); color: var(--mu); }
+    .comparison tr:last-child td { border-bottom: 0; }
+    .delta-pos { color: var(--gr); }
+    .delta-neg { color: var(--rd); }
+    .empty { padding: 18px; border: 1px solid var(--bd); background: var(--s1); color: var(--mu); }
+    @media (max-width: 980px) {
+      .appbarin, .pagehead, main { display: block; }
+      .nav, .status { margin-top: 10px; text-align: left; }
+      aside { margin-bottom: 14px; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .filter-row, .triple { grid-template-columns: 1fr; }
     }
-    .import-box strong{font-family:var(--ff-display);font-size:12px;letter-spacing:.05em;color:var(--gd);text-transform:uppercase}
-    .import-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-top: 10px;
-    }
-    .list {
-      display: grid;
-      gap: 10px;
-    }
-    .slot-row {
-      display: grid;
-      grid-template-columns: minmax(130px, 1fr) 82px 118px;
-      align-items: center;
-      gap: 10px;
-      padding: 10px;
-      background: #151a22;
-      border: 1px solid var(--bd);
-      border-radius: 0;
-    }
-    .slot-row strong { display: block; font-size: 14px; }
-    .slot-row small { color: var(--muted); display: block; overflow-wrap: anywhere; }
-    .preserve {
-      grid-column: 1 / -1;
-      border-top: 1px solid var(--bd);
-      padding-top: 10px;
-      display: grid;
-      gap: 8px;
-    }
-    .preserve-group {
-      display: grid;
-      gap: 6px;
-    }
-    .preserve-title {
-      color: var(--mu);
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .05em;
-    }
-    .preserve-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-      gap: 6px;
-    }
-    .preserve-stat {
-      display: grid;
-      grid-template-columns: minmax(82px, 1fr) 48px 48px;
-      gap: 6px;
-      align-items: center;
-      border: 1px solid var(--bd);
-      background: oklch(9.5% 0.028 40);
-      padding: 6px;
-    }
-    .preserve-check {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-      min-width: 0;
-      color: var(--tx);
-      font-size: 11px;
-      margin: 0;
-    }
-    .preserve-check span {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .preserve-stat input[type="number"] {
-      width: 100%;
-      min-height: 26px;
-      padding: 0 5px;
-      font-size: 11px;
-      font-family: var(--ff-mono);
-    }
-    .options {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 12px;
-      margin-top: 12px;
-    }
-    .option .top {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: start;
-    }
-    .price { color: var(--gd); font-family:var(--ff-mono);font-weight: 600; white-space: nowrap; }
-    .stats {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 10px;
-    }
-    .pill {
-      border: 1px solid var(--bd2);
-      border-radius: 0;
-      padding: 4px 8px;
-      color: var(--mu);
-      background: var(--s2);
-      font-size: 10px;
-      font-family:var(--ff-mono);
-    }
-    .compare {
-      margin-top: 12px;
-      border: 1px solid var(--bd);
-      background: oklch(9.5% 0.028 40);
-    }
-    .compare-head, .compare-row {
-      display: grid;
-      grid-template-columns: minmax(92px, 1.3fr) minmax(52px, .75fr) minmax(52px, .75fr) minmax(58px, .7fr);
-      gap: 8px;
-      align-items: center;
-      padding: 7px 9px;
-    }
-    .compare-head {
-      color: var(--mu);
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      border-bottom: 1px solid var(--bd);
-      background: var(--s2);
-    }
-    .compare-row {
-      font-family: var(--ff-mono);
-      font-size: 11px;
-      border-top: 1px solid oklch(27% 0.022 40 / .55);
-    }
-    .compare-row:first-of-type { border-top: 0; }
-    .compare-name { color: var(--tx); font-family: var(--ff-ui); font-weight: 600; }
-    .compare-old { color: var(--mu); }
-    .compare-new { color: var(--tx); }
-    .compare-delta.good { color: var(--gr); }
-    .compare-delta.bad { color: var(--rd); }
-    .raw-stats {
-      margin-top: 8px;
-      color: var(--mu);
-      font-size: 10px;
-      font-family: var(--ff-mono);
-      line-height: 1.5;
-    }
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 12px;
-    }
-    .action-link {
-      min-height: 32px;
-      border: 1px solid var(--bd);
-      border-radius: 2px;
-      background: var(--s2);
-      color: var(--tx);
-      padding: 0 10px;
-      font: inherit;
-      font-weight: 600;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .action-link.primary {
-      background: var(--gd-a);
-      border-color: oklch(80% 0.15 74 / 0.5);
-      color: var(--gd);
-    }
-    .action-link:hover {
-      border-color: var(--bd2);
-      background: var(--s3);
-      text-decoration: none;
-    }
-    .search-progress {
-      display: none;
-      margin-top: 10px;
-      border: 1px solid var(--bd);
-      background: oklch(9.5% 0.028 40);
-      padding: 9px;
-    }
-    .search-progress.active { display: block; }
-    .progress-bar {
-      height: 5px;
-      overflow: hidden;
-      background: var(--s2);
-      border: 1px solid var(--bd);
-      margin-top: 7px;
-    }
-    .progress-bar span {
-      display: block;
-      width: 38%;
-      height: 100%;
-      background: var(--gd);
-      animation: progressSlide 900ms linear infinite;
-    }
-    @keyframes progressSlide {
-      from { transform: translateX(-110%); }
-      to { transform: translateX(270%); }
-    }
-    @media (max-width: 920px) {
-      .appbarin, main, .pagehead { display: block; }
-      .status { margin-top: 12px; min-width: 0; }
-      aside { margin-bottom:14px; }
-      .grid { grid-template-columns: 1fr; }
-      .slot-row { grid-template-columns: 1fr; }
-    }
-    @media(max-width:560px){.shell{padding:14px 12px}.appbarin{padding:10px 14px}.nav{justify-content:flex-start;margin-top:10px}.navbtn{flex:1}input{width:100%}}
   </style>
 </head>
 <body>
   <header class="appbar">
     <div class="appbarin">
       <a class="brand" href="index.html">
-        <span class="mark">P</span>
-        <span>
-          <span class="brandname">PoE Tools</span>
-          <span class="brandmeta">Path of Exile 2 &middot; Runes of Aldur</span>
-        </span>
+        <span class="mark">P2</span>
+        <span><span class="brandname">POE TOOLS</span><span class="brandmeta">LOCAL TRADE WORKBENCH</span></span>
       </a>
-      <nav class="nav" aria-label="Primary">
+      <nav class="nav">
         <a class="navbtn" href="index.html#home">Home</a>
         <a class="navbtn" href="index.html#craft-pricer">Craft Pricer</a>
         <a class="navbtn" href="index.html#rune-picker">Rune Picker</a>
-        <a class="navbtn active" href="character-upgrades.html">Upgrade Finder</a>
+        <a class="navbtn active" href="character-upgrades.html">Gear Search</a>
       </nav>
     </div>
   </header>
@@ -383,578 +121,427 @@
   <div class="shell">
     <div class="pagehead">
       <div>
-        <h1>Ice Shot Deadeye Upgrades</h1>
+        <h1>Gear Search</h1>
+        <div class="sub">Import equipped gear, build slot-aware Trade2 filters, inspect the query, and compare candidate listings against your current item.</div>
       </div>
-      <div class="status" id="tradeStatus">Trade status loading...</div>
+      <div class="status" id="status">Trade queue: <b>checking</b></div>
     </div>
-  <main>
-    <aside>
-      <div class="import-box">
-        <div><strong>Import</strong></div>
-        <textarea id="browserExportText" class="small" spellcheck="false" placeholder="Character JSON or copied profile page data"></textarea>
-        <div class="controls">
-          <button id="browserImportBtn">Import</button>
-          <button id="clearExportBtn">Clear</button>
-        </div>
-      </div>
-      <label for="gearText">Equipped item text</label>
-      <textarea id="gearText" spellcheck="false" placeholder="Equipped item text"></textarea>
-      <div class="controls">
-        <button class="primary" id="analyzeBtn">Analyze Gear</button>
-        <input id="budgetInput" type="number" min="0" step="1" value="5" title="Max price in divines">
-        <button id="saveGearBtn">Save Gear</button>
-        <button id="loadGearBtn">Load Saved</button>
-      </div>
-    </aside>
 
-    <section>
-      <div class="grid">
+    <main>
+      <aside class="stack">
+        <section>
+          <h2>Gear Import</h2>
+          <label for="gearText">Equipped item text</label>
+          <textarea id="gearText" spellcheck="false" placeholder="Paste copied item text, character JSON, or browser export HTML"></textarea>
+          <div class="actions" style="margin-top:10px">
+            <button class="primary" id="analyzeBtn">Analyze</button>
+            <button id="importBtn">Import Export</button>
+            <button id="saveBtn">Save</button>
+            <button id="loadBtn">Load</button>
+          </div>
+        </section>
+
+        <section>
+          <h2>Equipped Slots</h2>
+          <div class="items" id="items"><div class="empty">Analyze gear first.</div></div>
+        </section>
+      </aside>
+
+      <section class="stack">
         <div class="panel">
-          <h2>Items</h2>
-          <div class="metric" id="itemsRead">0</div>
+          <h2>Search Controls</h2>
+          <div class="row">
+            <div>
+              <label for="slotSelect">Slot</label>
+              <select id="slotSelect"></select>
+            </div>
+            <div>
+              <label for="budget">Max price, divine</label>
+              <input id="budget" type="number" min="0" step="1" value="100">
+            </div>
+          </div>
+          <div class="triple" style="margin-top:10px">
+            <div>
+              <label for="matchMode">Match mode</label>
+              <select id="matchMode">
+                <option value="count">Count of filters</option>
+                <option value="all">All filters</option>
+              </select>
+            </div>
+            <div>
+              <label for="minMatches">Min count</label>
+              <input id="minMatches" type="number" min="1" step="1" value="2">
+            </div>
+            <div>
+              <label for="ilvlMin">Min ilvl</label>
+              <input id="ilvlMin" type="number" min="0" step="1" value="75">
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <h3>Stat Filters</h3>
+            <div class="filters" id="filters"></div>
+            <div class="actions" style="margin-top:8px">
+              <button id="addFilterBtn">Add Filter</button>
+              <button class="primary" id="searchBtn">Search Trade2</button>
+            </div>
+          </div>
         </div>
+
+        <div class="summary" id="summary">
+          <div class="metric"><span class="muted">Selected</span><b>-</b></div>
+          <div class="metric"><span class="muted">Budget</span><b>-</b></div>
+          <div class="metric"><span class="muted">Total</span><b>-</b></div>
+          <div class="metric"><span class="muted">Fetched</span><b>-</b></div>
+        </div>
+
         <div class="panel">
-          <h2>Deficits</h2>
-          <div class="metric" id="deficitCount">0</div>
+          <h2>Trade2 Query Preview</h2>
+          <pre id="queryPreview">{}</pre>
         </div>
-        <div class="panel">
-          <h2>Slot</h2>
-          <select id="slotSelect"></select>
+
+        <div class="results" id="results">
+          <div class="empty">Run a search to fetch the first 20 listings.</div>
         </div>
-      </div>
-
-      <div class="panel" style="margin-top:14px">
-        <h2>Options</h2>
-        <button class="primary" id="searchBtn" disabled>Search Slot</button>
-        <button id="clearKeepsBtn">Clear Keeps</button>
-        <span class="muted" id="searchHint" style="margin-left:10px">Analyze gear first.</span>
-        <div class="stats" id="queryPreview"></div>
-        <div class="search-progress" id="searchProgress">
-          <div class="muted" id="searchProgressText">Searching...</div>
-          <div class="progress-bar"><span></span></div>
-        </div>
-        <div class="options" id="options"></div>
-      </div>
-
-      <div class="panel" style="margin-top:14px">
-        <h2>Slots</h2>
-        <div class="list" id="categories"></div>
-      </div>
-
-      <div class="panel" style="margin-top:14px">
-        <h2>Deficits</h2>
-        <div class="stats" id="deficits"></div>
-      </div>
-    </section>
-  </main>
+      </section>
+    </main>
   </div>
 
   <script>
-    const state = { analysis: null, trade: null, divineRate: 0, options: [] };
-    const slotSelect = document.getElementById("slotSelect");
-    const searchBtn = document.getElementById("searchBtn");
-    const searchHint = document.getElementById("searchHint");
-    const browserImportBtn = document.getElementById("browserImportBtn");
-    const clearExportBtn = document.getElementById("clearExportBtn");
-    const clearKeepsBtn = document.getElementById("clearKeepsBtn");
-    const saveGearBtn = document.getElementById("saveGearBtn");
-    const loadGearBtn = document.getElementById("loadGearBtn");
-    const tradeFilterStats = new Set([
-      "projectileLevels", "attackCrit", "flatPhysAttack", "attackSpeed", "bowDamage", "projectileSpeed",
-      "spirit", "life", "coldRes", "lightningRes", "fireRes", "chaosRes", "str", "dex", "int",
-      "explicitAttributes", "totalAllAttributes", "movementSpeed", "critChance", "critDamage", "rarity"
-    ]);
-    const guideMinimums = {
-      bow: { localPhysDamage: 100, localAttackSpeed: 10 },
-      quiver: { projectileLevels: 1, attackCrit: 20 },
-      amulet: { projectileLevels: 1, spirit: 40 },
-      helmet: { life: 40, coldRes: 20, lightningRes: 20, chaosRes: 10 },
-      chest: { life: 50, fireRes: 25, lightningRes: 25 },
-      boots: { movementSpeed: 30, life: 50, coldRes: 25, chaosRes: 10 },
-      gloves: { attackSpeed: 10, fireRes: 20 },
-      ring: { life: 50, fireRes: 20, coldRes: 20 },
-      belt: { life: 80, str: 20, coldRes: 20 },
-    };
-    const manualStatsBySlot = {
-      amulet: ["projectileLevels", "spirit", "totalAllAttributes", "explicitAttributes", "int", "str", "dex", "rarity", "critChance", "critDamage"],
-      ring: ["flatColdAttack", "flatPhysAttack", "life", "totalAllAttributes", "explicitAttributes", "int", "str", "dex", "rarity", "fireRes", "coldRes", "lightningRes", "chaosRes"],
-      belt: ["life", "str", "dex", "int", "rarity", "fireRes", "coldRes", "lightningRes", "chaosRes"],
-      helmet: ["life", "energyShield", "int", "rarity", "fireRes", "coldRes", "lightningRes", "chaosRes"],
-      chest: ["life", "evasion", "rarity", "fireRes", "coldRes", "lightningRes", "chaosRes"],
-      boots: ["movementSpeed", "life", "rarity", "fireRes", "coldRes", "lightningRes", "chaosRes"],
-      gloves: ["attackSpeed", "flatPhysAttack", "flatColdAttack", "life", "rarity", "fireRes", "coldRes", "lightningRes", "chaosRes"],
-      quiver: ["projectileLevels", "attackCrit", "critDamage", "bowDamage", "projectileSpeed", "rarity", "flatPhysAttack", "flatColdAttack"],
+    const state = {
+      analysis: null,
+      selectedSlot: "bow",
+      selectedItem: null,
+      slots: {},
+      result: null,
     };
 
-    function fmt(n) {
-      if (!Number.isFinite(Number(n))) return "0";
-      return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
-    }
-
-    function statLabel(key) {
-      const labels = {
-        dps: "DPS",
-        critChance: "Crit",
-        attackSpeed: "Atk speed",
-        flatPhys: "Flat phys",
-        flatEle: "Flat ele",
-        flatPhysAttack: "Flat phys",
-        flatColdAttack: "Flat cold",
-        projectileLevels: "Projectile",
-        attackCrit: "Attack crit",
-        critDamage: "Crit dmg",
-        bowDamage: "Bow dmg",
-        projectileSpeed: "Proj speed",
-        spirit: "Spirit",
-        attributes: "All attrs explicit",
-        explicitAttributes: "All attrs explicit",
-        totalAllAttributes: "All attrs total",
-        life: "Life total",
-        energyShield: "Energy shield",
-        evasion: "Evasion",
-        movementSpeed: "Move speed total",
-        rarity: "Rarity",
-        fireRes: "Fire res",
-        coldRes: "Cold res",
-        lightningRes: "Light res",
-        chaosRes: "Chaos res",
-        str: "Strength",
-        dex: "Dexterity",
-        int: "Intelligence",
-      };
-      return labels[key] || key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
-    }
-
-    function renderCompare(deltas) {
-      const rows = Object.entries(deltas || {})
-        .filter(([, d]) => d.current || d.next || d.delta)
-        .map(([key, d]) => {
-          const deltaClass = d.delta > 0 ? "good" : d.delta < 0 ? "bad" : "";
-          const deltaText = d.delta > 0 ? "+" + fmt(d.delta) : fmt(d.delta);
-          return `<div class="compare-row">
-            <div class="compare-name">${statLabel(key)}</div>
-            <div class="compare-old">${fmt(d.current)}</div>
-            <div class="compare-new">${fmt(d.next)}</div>
-            <div class="compare-delta ${deltaClass}">${deltaText}</div>
-          </div>`;
-        }).join("");
-      if (!rows) return "";
-      return `<div class="compare">
-        <div class="compare-head"><div>Stat</div><div>Equipped</div><div>Trade</div><div>Delta</div></div>
-        ${rows}
-      </div>`;
-    }
-
-    function rangeForStat(value, guideMin) {
-      const current = Math.round((Number(value) || 0) * 10) / 10;
-      const floor = Number.isFinite(Number(guideMin)) ? Number(guideMin) : 0;
-      if (current <= 0 && floor <= 0) return { min: "", max: "" };
-      return {
-        min: Math.max(floor, Math.max(0, Math.floor(current * 0.9))),
-        max: "",
-      };
-    }
-
-    function renderPreserveStat(slot, key, value, checked, guideMin) {
-      const range = rangeForStat(value, guideMin);
-      return `<div class="preserve-stat" data-preserve-stat="${key}">
-        <label class="preserve-check">
-          <input type="checkbox" data-preserve-check="${slot}" data-key="${key}" ${checked ? "checked" : ""}>
-          <span title="${statLabel(key)}">${statLabel(key)}</span>
-        </label>
-        <input type="number" data-preserve-min="${slot}" data-key="${key}" value="${range.min}" placeholder="min">
-        <input type="number" data-preserve-max="${slot}" data-key="${key}" value="${range.max}" placeholder="max">
-      </div>`;
-    }
-
-    function renderPreserveGroup(title, slot, entries, defaultChecked) {
-      if (!entries.length) return "";
-      return `<div class="preserve-group">
-        <div class="preserve-title">${title}</div>
-        <div class="preserve-grid">${entries.map(([key, value, guideMin, checked]) => renderPreserveStat(slot, key, value, checked ?? defaultChecked, guideMin)).join("")}</div>
-      </div>`;
-    }
-
-    function renderPreserveControls(row) {
-      const slot = row.slot;
-      const current = state.analysis && state.analysis.equipped ? state.analysis.equipped[slot] : null;
-      const stats = current && current.stats ? current.stats : {};
-      const guideKeys = Object.keys((state.analysis.profile.slots[slot] && state.analysis.profile.slots[slot].stats) || {})
-        .filter((key) => tradeFilterStats.has(key));
-      const extraKeys = Object.keys(stats)
-        .filter((key) => tradeFilterStats.has(key) && Number(stats[key]) > 0 && !guideKeys.includes(key))
-        .sort((a, b) => statLabel(a).localeCompare(statLabel(b)));
-      const guideMins = guideMinimums[slot] || {};
-      const guide = guideKeys.map((key) => [key, Number(stats[key]) || Number(guideMins[key]) || 0, guideMins[key], Number.isFinite(Number(guideMins[key]))]);
-      const extra = extraKeys.map((key) => [key, stats[key]]);
-      const existing = new Set([...guideKeys, ...extraKeys]);
-      const manual = (manualStatsBySlot[slot] || [])
-        .filter((key) => tradeFilterStats.has(key) && !existing.has(key))
-        .map((key) => [key, Number(guideMins[key]) || 0, guideMins[key], false]);
-      const groups = [
-        renderPreserveGroup("Guide", slot, guide, false),
-        renderPreserveGroup("Current", slot, extra, false),
-        renderPreserveGroup("More", slot, manual, false),
-      ].filter(Boolean).join("");
-      return groups ? `<div class="preserve" data-preserve-slot="${slot}">${groups}</div>` : "";
-    }
-
-    function collectPreserveStats(slot) {
-      return Array.from(document.querySelectorAll(`[data-preserve-check="${slot}"]:checked`)).map((check) => {
-        const key = check.dataset.key;
-        const minEl = document.querySelector(`[data-preserve-min="${slot}"][data-key="${key}"]`);
-        const maxEl = document.querySelector(`[data-preserve-max="${slot}"][data-key="${key}"]`);
-        return {
-          key,
-          min: minEl && minEl.value !== "" ? Number(minEl.value) : undefined,
-          max: maxEl && maxEl.value !== "" ? Number(maxEl.value) : undefined,
-        };
-      });
-    }
-
-    function collectExcludedStats(slot) {
-      return Array.from(document.querySelectorAll(`[data-preserve-check="${slot}"]:not(:checked)`))
-        .map((check) => check.dataset.key)
-        .filter(Boolean);
-    }
-
-    function describePreserveStats(items) {
-      return (items || []).map((item) => {
-        const parts = [statLabel(item.key)];
-        if (item.min !== undefined) parts.push(">=", fmt(item.min));
-        if (item.max !== undefined) parts.push("<=", fmt(item.max));
-        if (item.min === undefined && item.max === undefined) parts.push("required");
-        return parts.join(" ");
-      }).join(" · ");
-    }
-
-    function clearKeeps() {
-      const slot = slotSelect.value || "";
-      document.querySelectorAll(`[data-preserve-check="${slot}"]`).forEach((check) => { check.checked = false; });
-      renderQueryPreview();
-    }
-
-    function setSearchProgress(active, text) {
-      const box = document.getElementById("searchProgress");
-      const label = document.getElementById("searchProgressText");
-      box.classList.toggle("active", Boolean(active));
-      if (text) label.textContent = text;
-    }
-
-    async function copyText(text) {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-        return;
-      }
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.left = "-9999px";
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
-    }
-
-    function wireTradeActions() {
-      document.querySelectorAll("[data-whisper]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          await copyText(button.dataset.whisper || "");
-          button.textContent = "Copied";
-          setTimeout(() => { button.textContent = "Copy Whisper"; }, 1400);
-        });
-      });
-      document.querySelectorAll("[data-focus-option]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          const option = state.options.find((item) => item.id === button.dataset.focusOption);
-          if (!option || !option.focusQuery) return;
-          button.disabled = true;
-          button.textContent = "Finding...";
-          try {
-            const result = await api("/api/upgrades/focus-search", {
-              league: "Runes of Aldur",
-              query: option.focusQuery,
-            });
-            if (result.limited) {
-              button.textContent = "Limited";
-              await refreshStatus();
-              return;
-            }
-            window.open(result.url, "_blank", "noopener,noreferrer");
-            button.textContent = `Focused (${fmt(result.total)})`;
-          } catch {
-            button.textContent = "Failed";
-          } finally {
-            setTimeout(() => {
-              button.disabled = false;
-              button.textContent = "Focus Search";
-            }, 1600);
-          }
-        });
-      });
-    }
-
-    function secondsText(seconds) {
-      seconds = Math.max(0, Number(seconds) || 0);
-      const m = Math.floor(seconds / 60);
-      const s = seconds % 60;
-      return m ? `${m}m ${s}s` : `${s}s`;
-    }
+    const els = {
+      gearText: document.getElementById("gearText"),
+      status: document.getElementById("status"),
+      items: document.getElementById("items"),
+      slotSelect: document.getElementById("slotSelect"),
+      budget: document.getElementById("budget"),
+      matchMode: document.getElementById("matchMode"),
+      minMatches: document.getElementById("minMatches"),
+      ilvlMin: document.getElementById("ilvlMin"),
+      filters: document.getElementById("filters"),
+      queryPreview: document.getElementById("queryPreview"),
+      summary: document.getElementById("summary"),
+      results: document.getElementById("results"),
+    };
 
     async function api(path, body) {
-      const res = await fetch(path, {
-        method: body ? "POST" : "GET",
-        headers: body ? { "Content-Type": "application/json" } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
+      const options = body === undefined ? {} : {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      };
+      const res = await fetch(path, options);
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "HTTP " + res.status);
+      return data;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[ch]));
+    }
+
+    function fmt(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "0";
+      return Math.round(number * 100) / 100;
+    }
+
+    function currentItem() {
+      if (!state.analysis) return null;
+      return state.analysis.equipped[state.selectedSlot] || null;
+    }
+
+    function slotLabel(slotId) {
+      return state.slots[slotId] ? state.slots[slotId].label : slotId;
     }
 
     async function refreshStatus() {
-      const status = await api("/api/upgrades/status");
-      state.trade = status;
-      const el = document.getElementById("tradeStatus");
-      if (status.limited) {
-        el.innerHTML = `<b class="bad">Trade limited</b><br>${secondsText(status.secondsRemaining)}`;
-      } else {
-        el.innerHTML = `<b class="good">Trade ready</b><br>fresh searches`;
-      }
-      updateSearchAvailability();
-    }
-
-    async function refreshRates() {
       try {
-        const prices = await api("/api/upgrades/currency-rates?league=Runes%20of%20Aldur");
-        state.divineRate = Number(prices.divineToExalted) || 0;
-        updateSearchAvailability();
-      } catch {
-        state.divineRate = 0;
-      }
-    }
-
-    async function importBrowserExport() {
-      browserImportBtn.disabled = true;
-      browserImportBtn.textContent = "Importing...";
-      try {
-        const text = document.getElementById("browserExportText").value;
-        const result = await api("/api/upgrades/import-browser-export", { text });
-        document.getElementById("gearText").value = result.text || "";
-        renderAnalysis(result.analysis);
-        document.getElementById("browserExportText").value = "";
+        const status = await api("/api/trade-status");
+        const q = status.queue || {};
+        els.status.innerHTML = status.limited
+          ? `Trade queue: <b>limited</b><br>${escapeHtml(status.tradeLimitedUntil)}`
+          : `Trade queue: <b>ready</b><br>${q.queued || 0} queued / ${q.active || 0} active / ${q.minGapMs || 0}ms`;
       } catch (err) {
-        document.getElementById("browserExportText").value = String(err.message);
-      } finally {
-        browserImportBtn.disabled = false;
-        browserImportBtn.textContent = "Import";
+        els.status.innerHTML = `Trade queue: <b>offline</b>`;
       }
     }
 
-    function updateSearchAvailability() {
-      const limited = state.trade && state.trade.limited;
-      searchBtn.disabled = !state.analysis || limited;
-      if (!state.analysis) searchHint.textContent = "Analyze gear first.";
-      else if (limited) searchHint.textContent = `Trade cooldown: ${secondsText(state.trade.secondsRemaining)}.`;
-      else {
-        const rate = state.divineRate ? ` 1 div = ${fmt(state.divineRate)} ex.` : "";
-        searchHint.textContent = "Ready." + rate;
-      }
-      renderQueryPreview();
+    function renderSlots() {
+      const slots = Object.keys(state.slots);
+      els.slotSelect.innerHTML = slots.map((id) => `<option value="${id}">${escapeHtml(slotLabel(id))}</option>`).join("");
+      els.slotSelect.value = state.selectedSlot;
     }
 
-    function renderQueryPreview() {
-      const el = document.getElementById("queryPreview");
-      if (!state.analysis) {
-        el.innerHTML = "";
+    function renderItems() {
+      if (!state.analysis || !state.analysis.items.length) {
+        els.items.innerHTML = `<div class="empty">No equipped item text found.</div>`;
         return;
       }
-      const budgetDiv = Number(document.getElementById("budgetInput").value) || 0;
-      const budgetEx = state.divineRate ? budgetDiv * state.divineRate : budgetDiv;
-      const slot = slotSelect.value || "none";
-      const preserveStats = collectPreserveStats(slot);
-      const limited = state.trade && state.trade.limited;
-      el.innerHTML = [
-        `<span class="pill">slot: ${slot}</span>`,
-        `<span class="pill">budget: ${fmt(budgetDiv)} div / ${fmt(budgetEx)} ex</span>`,
-        `<span class="pill">kept stats: ${preserveStats.length}</span>`,
-        `<span class="pill">${limited ? "cooldown " + secondsText(state.trade.secondsRemaining) : "trade ready"}</span>`,
-      ].join("") + (preserveStats.length ? `<div class="raw-stats">Kept: ${describePreserveStats(preserveStats)}</div>` : "");
-    }
-
-    function renderAnalysis(data) {
-      state.analysis = data;
-      document.getElementById("itemsRead").textContent = data.items.length;
-      const deficits = Object.entries(data.deficits || {});
-      document.getElementById("deficitCount").textContent = deficits.length;
-      document.getElementById("deficits").innerHTML = deficits.length
-        ? deficits.map(([k, v]) => `<span class="pill bad">${k}: need ${fmt(v)}</span>`).join("")
-        : `<span class="pill good">No deficits</span>`;
-
-      slotSelect.innerHTML = data.categories.map((row) =>
-        `<option value="${row.slot}">${row.label}</option>`
-      ).join("");
-
-      document.getElementById("categories").innerHTML = data.categories.map((row) => `
-        <div class="slot-row">
-          <div><strong>${row.label}</strong><small>${row.itemName}</small></div>
-          <div>Score<br><strong>${fmt(row.score)}</strong></div>
-          <button data-slot="${row.slot}">Search</button>
-          ${renderPreserveControls(row)}
+      els.items.innerHTML = state.analysis.items.map((item) => `
+        <div class="item-row ${item.slot === state.selectedSlot ? "active" : ""}" data-slot="${escapeHtml(item.slot)}">
+          <span class="pill">${escapeHtml(item.slot || "?")}</span>
+          <div><strong>${escapeHtml(item.name)}</strong><div class="muted">${Object.keys(item.stats || {}).length} parsed stats</div></div>
         </div>
       `).join("");
-
-      document.querySelectorAll("[data-slot]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          slotSelect.value = btn.dataset.slot;
-          searchSlot();
+      els.items.querySelectorAll(".item-row").forEach((row) => {
+        row.addEventListener("click", () => {
+          state.selectedSlot = row.dataset.slot || state.selectedSlot;
+          els.slotSelect.value = state.selectedSlot;
+          renderItems();
+          setDefaultFilters();
+          updatePreview();
         });
       });
-      document.querySelectorAll("[data-preserve-check], [data-preserve-min], [data-preserve-max]").forEach((input) => {
-        input.addEventListener("input", renderQueryPreview);
-        input.addEventListener("change", renderQueryPreview);
-      });
-      updateSearchAvailability();
-      renderQueryPreview();
     }
 
-    async function analyzeGear() {
-      document.getElementById("options").innerHTML = "";
-      const text = document.getElementById("gearText").value;
-      const data = await api("/api/upgrades/analyze", { text });
-      renderAnalysis(data);
+    function filterOptions(selected) {
+      const slot = state.slots[state.selectedSlot] || {};
+      const defaultKeys = (slot.defaultFilters || []).map((filter) => filter.key).filter(Boolean);
+      const keys = Array.from(new Set([...(slot.statKeys || []), ...defaultKeys, "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"]));
+      return keys.map((key) => `<option value="${key}" ${key === selected ? "selected" : ""}>${escapeHtml(statOptionLabel(key))}</option>`).join("");
     }
 
-    function saveGear() {
-      localStorage.setItem("poe2.upgradeFinder.gearText", document.getElementById("gearText").value || "");
-      document.getElementById("options").innerHTML = `<div class="card"><h3>Gear saved</h3><div class="muted">Saved locally in this browser.</div></div>`;
+    function statOptionLabel(key) {
+      const labels = {
+        dps: "DPS",
+        localPhysDamage: "% increased physical damage",
+        localFlatPhys: "Adds physical damage",
+        localAttackSpeed: "Local attack speed",
+        localCritChance: "Local critical chance",
+        critChance: "Critical chance",
+        attackSpeed: "Attack speed",
+        projectileLevels: "Projectile skill levels",
+        attackCrit: "Attack critical chance",
+        critDamage: "Critical damage",
+        bowDamage: "Bow skill damage",
+        projectileSpeed: "Projectile speed",
+        projectileDamage: "Projectile damage",
+        deflection: "Deflection rating",
+        flatPhysAttack: "Flat physical to attacks",
+        flatColdAttack: "Flat cold to attacks",
+        life: "Maximum life",
+        energyShield: "Energy shield",
+        evasion: "Evasion rating",
+        totalElementalRes: "Total elemental resistance",
+        fireRes: "Fire resistance",
+        coldRes: "Cold resistance",
+        lightningRes: "Lightning resistance",
+        chaosRes: "Chaos resistance",
+        totalAllAttributes: "All attributes",
+        explicitAttributes: "Explicit all attributes",
+        str: "Strength",
+        dex: "Dexterity",
+        int: "Intelligence",
+        spirit: "Spirit",
+        rarity: "Rarity",
+        movementSpeed: "Movement speed",
+        manaOnKill: "Mana on kill",
+      };
+      return labels[key] || key;
     }
 
-    async function loadGear() {
-      const text = localStorage.getItem("poe2.upgradeFinder.gearText") || "";
-      document.getElementById("gearText").value = text;
-      if (text.trim()) await analyzeGear();
+    function addFilter(filter = {}) {
+      const row = document.createElement("div");
+      row.className = "filter-row";
+      row.innerHTML = `
+        <div><label>Stat</label><select class="filter-key">${filterOptions(filter.key)}</select></div>
+        <div><label>Min</label><input class="filter-min" type="number" step="1" value="${filter.min ?? ""}"></div>
+        <div><label>Max</label><input class="filter-max" type="number" step="1" value="${filter.max ?? ""}"></div>
+        <button class="iconbtn" title="Remove filter" type="button">x</button>
+      `;
+      row.querySelector("button").addEventListener("click", () => { row.remove(); updatePreview(); });
+      row.querySelectorAll("input,select").forEach((el) => el.addEventListener("input", updatePreview));
+      els.filters.appendChild(row);
     }
 
-    function renderOptions(result) {
-      if (result.locked) {
-        document.getElementById("options").innerHTML = `<div class="card"><h3>Slot ignored</h3><div class="muted">${result.message || "Guide-approved unique equipped."}</div></div>`;
-        refreshStatus();
-        return;
+    function setDefaultFilters() {
+      els.filters.innerHTML = "";
+      const slot = state.slots[state.selectedSlot] || {};
+      for (const filter of (slot.defaultFilters || []).slice(0, 4)) {
+        const key = filter.key || Object.keys(STAT_IDS).find((item) => STAT_IDS[item] === filter.id) || "";
+        addFilter({ key, min: filter.value && filter.value.min, max: filter.value && filter.value.max });
       }
+    }
+
+    const STAT_IDS = {
+      projectileLevels: "explicit.stat_1202301673",
+      attackCrit: "explicit.stat_2194114101",
+      flatPhysAttack: "explicit.stat_3032590688",
+      flatColdAttack: "explicit.stat_4067062424",
+      attackSpeed: "explicit.stat_681332047",
+      bowDamage: "explicit.stat_1241625305",
+      projectileSpeed: "explicit.stat_3759663284",
+      projectileDamage: "explicit.stat_1839076647",
+      deflection: "explicit.stat_3040571529",
+      spirit: "explicit.stat_3981240776",
+      localPhysDamage: "explicit.stat_1509134228",
+      localFlatPhys: "explicit.stat_1940865751",
+      localAttackSpeed: "explicit.stat_210067635",
+      localCritChance: "explicit.stat_518292764",
+      life: "explicit.stat_3299347043",
+      energyShield: "pseudo.pseudo_total_energy_shield",
+      coldRes: "explicit.stat_4220027924",
+      lightningRes: "explicit.stat_1671376347",
+      fireRes: "explicit.stat_3372524247",
+      chaosRes: "explicit.stat_2923486259",
+      totalElementalRes: "pseudo.pseudo_total_elemental_resistance",
+      evasion: "explicit.stat_53045048",
+      str: "explicit.stat_4080418644",
+      dex: "explicit.stat_3261801346",
+      int: "explicit.stat_328541901",
+      totalAllAttributes: "pseudo.pseudo_total_all_attributes",
+      movementSpeed: "explicit.stat_2250533757",
+      critChance: "explicit.stat_587431675",
+      critDamage: "explicit.stat_3556824919",
+      rarity: "explicit.stat_3917489142",
+      manaOnKill: "explicit.stat_1368271171",
+    };
+
+    function collectFilters() {
+      return Array.from(els.filters.querySelectorAll(".filter-row")).map((row) => ({
+        key: row.querySelector(".filter-key").value,
+        min: row.querySelector(".filter-min").value === "" ? undefined : Number(row.querySelector(".filter-min").value),
+        max: row.querySelector(".filter-max").value === "" ? undefined : Number(row.querySelector(".filter-max").value),
+      })).filter((item) => item.key);
+    }
+
+    function requestPayload(previewOnly = false) {
+      return {
+        league: "Runes of Aldur",
+        slot: state.selectedSlot,
+        current: currentItem(),
+        maxPriceDiv: Number(els.budget.value) || 0,
+        matchMode: els.matchMode.value,
+        minMatches: Number(els.minMatches.value) || 1,
+        ilvlMin: Number(els.ilvlMin.value) || 0,
+        filters: collectFilters(),
+        previewOnly,
+      };
+    }
+
+    async function updatePreview() {
+      if (!Object.keys(state.slots).length) return;
+      try {
+        const result = await api("/api/gear-search/search", requestPayload(true));
+        const warning = result.unsupportedFilters && result.unsupportedFilters.length
+          ? "Unsupported filters not sent: " + result.unsupportedFilters.join(", ") + "\n\n"
+          : "";
+        els.queryPreview.textContent = warning + JSON.stringify(result.query, null, 2);
+        renderSummary(result);
+      } catch (err) {
+        els.queryPreview.textContent = err.message;
+      }
+    }
+
+    function renderSummary(result = state.result || {}) {
+      els.summary.innerHTML = `
+        <div class="metric"><span class="muted">Selected</span><b>${escapeHtml(slotLabel(state.selectedSlot))}</b></div>
+        <div class="metric"><span class="muted">Budget</span><b>${fmt(els.budget.value)} div</b></div>
+        <div class="metric"><span class="muted">Total</span><b>${result.total ?? "-"}</b></div>
+        <div class="metric"><span class="muted">Fetched</span><b>${result.fetched ?? "-"}</b></div>
+      `;
+    }
+
+    function renderResults(result) {
+      state.result = result;
+      renderSummary(result);
       if (result.limited) {
-        document.getElementById("options").innerHTML = `<div class="card"><h3>Trade limited</h3><div class="muted">Wait ${secondsText(result.tradeStatus.secondsRemaining)} before searching again.</div></div>`;
-        refreshStatus();
+        els.results.innerHTML = `<div class="empty">Trade2 is rate limited until ${escapeHtml(result.tradeStatus && result.tradeStatus.tradeLimitedUntil)}.</div>`;
         return;
       }
-      if (!result.options || !result.options.length) {
-        const d = result.diagnostics || {};
-        const resDiag = d.resistanceBand ? `<span class="pill">res band: ${d.resistanceBand}</span><span class="pill">current res: ${fmt(d.currentResistance)}</span>` : "";
-        const reason = !d.searched
-          ? (d.preserveFilters ? "The kept filters returned zero listings. Clear Keeps or uncheck specific kept stats." : "The trade query returned zero matching listings.")
-          : !d.fetched
-            ? "Trade returned ids, but none were fetched for scoring."
-            : d.floorRejected >= d.fetched
-              ? "Fetched listings failed the slot floor checks."
-              : d.lowScoreRejected >= d.fetched - d.noPrice - d.floorRejected
-                ? "Fetched listings scored below your equipped item."
-                : "No fetched listings beat the current slot after guide scoring.";
-        const bestRejected = d.bestRejected
-          ? `<div class="compare" style="margin-top:10px">
-              <div class="compare-head"><div>Best rejected</div><div>Score</div><div>Gain</div><div>Price</div></div>
-              <div class="compare-row"><div class="compare-name">${d.bestRejected.name}</div><div>${fmt(d.bestRejected.score)}</div><div class="compare-delta bad">${fmt(d.bestRejected.gain)}</div><div>${fmt(d.bestRejected.priceEx)} ex</div></div>
+      if (!result.listings || !result.listings.length) {
+        const link = result.url ? `<div class="actions" style="margin-top:10px"><a class="primary" href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">Open Trade</a></div>` : "";
+        els.results.innerHTML = `<div class="empty">No priced listings returned.${link}</div>`;
+        return;
+      }
+      const open = result.url ? `<a class="primary" href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">Open Trade</a>` : "";
+      els.results.innerHTML = `<div class="actions">${open}</div>` + result.listings.map((item) => {
+        const rows = (item.comparison || []).map((stat) => {
+          const cls = stat.delta > 0 ? "delta-pos" : stat.delta < 0 ? "delta-neg" : "";
+          const sign = stat.delta > 0 ? "+" : "";
+          return `<tr><td>${escapeHtml(stat.label)}</td><td>${fmt(stat.current)}</td><td>${fmt(stat.candidate)}</td><td class="${cls}">${sign}${fmt(stat.delta)}</td></tr>`;
+        }).join("");
+        return `
+          <article class="listing">
+            <div class="listing-head">
+              <div>
+                <div class="listing-title">${escapeHtml(item.name)}</div>
+                <div class="muted">${escapeHtml(item.seller || "unknown seller")} ${item.listedAt ? " / " + escapeHtml(item.listedAt) : ""}</div>
+              </div>
+              <div class="price">${escapeHtml(item.rawPrice)}<br><span class="muted">${fmt(item.priceDiv || 0)} div</span></div>
             </div>
-            <div class="raw-stats">${Object.entries(d.bestRejected.stats || {}).map(([k, v]) => `${statLabel(k)} ${fmt(v)}`).join(" · ")}</div>`
-          : "";
-        const keptList = (d.preserveStats || []).length
-          ? `<div class="raw-stats">Kept: ${(d.preserveStats || []).map((item) => `${statLabel(item.key)}${item.required ? " required" : ` >= ${fmt(item.min)}${item.max !== undefined ? ` <= ${fmt(item.max)}` : ""}`}`).join(" · ")}</div>`
-          : "";
-        const diag = Object.keys(d).length
-          ? `<div class="stats"><span class="pill">searched: ${fmt(d.searched)}</span><span class="pill">fetched: ${fmt(d.fetched)}</span>${resDiag}<span class="pill">kept filters: ${fmt(d.preserveFilters)}</span><span class="pill">current score: ${fmt(d.currentScore)}</span><span class="pill">no price: ${fmt(d.noPrice)}</span><span class="pill">keep rejects: ${fmt(d.preserveRejected)}</span><span class="pill">floor rejects: ${fmt(d.floorRejected)}</span><span class="pill">low score rejects: ${fmt(d.lowScoreRejected)}</span></div>`
-          : "";
-        const source = "live trade scan";
-        const timing = result.elapsedMs !== undefined ? ` Completed in ${fmt(result.elapsedMs)} ms.` : "";
-        const openTrade = result.url ? `<div class="actions"><a class="action-link primary" href="${result.url}" target="_blank" rel="noreferrer">Open Trade</a></div>` : "";
-        document.getElementById("options").innerHTML = `<div class="card"><h3>No upgrades found</h3><div class="muted">Source: ${source}.${timing} ${reason}</div>${diag}${keptList}${bestRejected}${openTrade}</div>`;
-        refreshStatus();
-        return;
-      }
-      state.options = result.options || [];
-      document.getElementById("options").innerHTML = result.options.map((item) => {
-        const comparison = renderCompare(item.explanation && item.explanation.deltas);
-        const kept = (item.preserveStats || []).length
-          ? `<div class="raw-stats">Kept: ${(item.preserveStats || []).map((stat) => `${statLabel(stat.key)}${stat.required ? " required" : `${stat.min !== undefined ? ` >= ${fmt(stat.min)}` : ""}${stat.max !== undefined ? ` <= ${fmt(stat.max)}` : ""}`}`).join(" · ")}</div>`
-          : "";
-        const priceDiv = state.divineRate ? item.priceEx / state.divineRate : 0;
-        const priceText = state.divineRate ? `${fmt(priceDiv)} div (${fmt(item.priceEx)} ex)` : `${fmt(item.priceEx)} ex`;
-        const whisper = String(item.whisper || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-        const seller = item.seller ? `<div class="muted" style="margin-top:6px">Seller: ${item.seller}</div>` : "";
-        return `<div class="card option">
-          <div class="top">
-            <div><h3>${item.name}</h3></div>
-            <div class="price">${priceText}</div>
-          </div>
-          <div style="margin-top:10px">Gain <b class="good">${fmt(item.gain)}</b> | Value <b>${fmt(item.value)}</b>/ex</div>
-          ${seller}
-          ${kept}
-          ${comparison}
-          <div class="actions">
-            <a class="action-link primary" href="${item.url}" target="_blank" rel="noreferrer">Open Trade</a>
-            ${item.focusQuery ? `<button data-focus-option="${item.id}">Focus Search</button>` : ""}
-            ${item.whisper ? `<button data-whisper="${whisper}">Copy Whisper</button>` : ""}
-          </div>
-        </div>`;
+            <table class="comparison">
+              <thead><tr><th>Stat</th><th>Current</th><th>Candidate</th><th>Delta</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </article>
+        `;
       }).join("");
-      wireTradeActions();
+    }
+
+    async function analyze() {
+      const data = await api("/api/gear-search/analyze", { text: els.gearText.value });
+      state.analysis = data;
+      state.slots = data.slots || {};
+      const firstEquipped = Object.keys(data.equipped || {})[0];
+      state.selectedSlot = state.selectedSlot && data.equipped[state.selectedSlot] ? state.selectedSlot : (firstEquipped || "bow");
+      renderSlots();
+      renderItems();
+      setDefaultFilters();
+      await updatePreview();
+    }
+
+    async function importExport() {
+      const data = await api("/api/gear-search/import-browser-export", { text: els.gearText.value });
+      els.gearText.value = data.text || "";
+      state.analysis = data.analysis;
+      state.slots = data.analysis.slots || {};
+      state.selectedSlot = Object.keys(data.analysis.equipped || {})[0] || "bow";
+      renderSlots();
+      renderItems();
+      setDefaultFilters();
+      await updatePreview();
+    }
+
+    async function search() {
+      els.results.innerHTML = `<div class="empty">Searching Trade2 through the shared queue...</div>`;
+      const result = await api("/api/gear-search/search", requestPayload(false));
+      els.queryPreview.textContent = JSON.stringify(result.query || {}, null, 2);
+      renderResults(result);
       refreshStatus();
     }
 
-    async function searchSlot() {
-      if (!state.analysis) return;
-      const slot = slotSelect.value;
-      const current = state.analysis.equipped[slot] || {};
-      const currentScore = state.analysis.slotScores[slot] ? state.analysis.slotScores[slot].score : 0;
-      const started = performance.now();
-      searchBtn.disabled = true;
-      searchHint.textContent = "Searching selected slot...";
-      setSearchProgress(true, "Submitting trade search...");
-      try {
-        const budgetDiv = Number(document.getElementById("budgetInput").value) || 0;
-        const budgetEx = state.divineRate ? budgetDiv * state.divineRate : budgetDiv;
-        const preserveStats = collectPreserveStats(slot);
-        const excludedStats = collectExcludedStats(slot);
-        setSearchProgress(true, `Trade search running (${preserveStats.length} kept filters)...`);
-        const result = await api("/api/upgrades/search-slot", {
-          league: "Runes of Aldur",
-          slot,
-          maxPriceEx: budgetEx,
-          current,
-          currentScore,
-          totals: state.analysis.totals,
-          preserveStats,
-          excludedStats,
-          force: true,
-        });
-        result.elapsedMs = Math.round(performance.now() - started);
-        renderOptions(result);
-      } finally {
-        setSearchProgress(false);
-        updateSearchAvailability();
-      }
-    }
+    document.getElementById("analyzeBtn").addEventListener("click", () => analyze().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
+    document.getElementById("importBtn").addEventListener("click", () => importExport().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
+    document.getElementById("searchBtn").addEventListener("click", () => search().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
+    document.getElementById("addFilterBtn").addEventListener("click", () => { addFilter(); updatePreview(); });
+    document.getElementById("saveBtn").addEventListener("click", () => localStorage.setItem("poe2.gearSearch.text", els.gearText.value || ""));
+    document.getElementById("loadBtn").addEventListener("click", async () => { els.gearText.value = localStorage.getItem("poe2.gearSearch.text") || ""; if (els.gearText.value.trim()) await analyze(); });
+    els.slotSelect.addEventListener("change", () => { state.selectedSlot = els.slotSelect.value; renderItems(); setDefaultFilters(); updatePreview(); });
+    [els.budget, els.matchMode, els.minMatches, els.ilvlMin].forEach((el) => el.addEventListener("input", updatePreview));
 
-    document.getElementById("analyzeBtn").addEventListener("click", analyzeGear);
-    searchBtn.addEventListener("click", searchSlot);
-    browserImportBtn.addEventListener("click", importBrowserExport);
-    clearExportBtn.addEventListener("click", () => { document.getElementById("browserExportText").value = ""; });
-    clearKeepsBtn.addEventListener("click", clearKeeps);
-    saveGearBtn.addEventListener("click", saveGear);
-    loadGearBtn.addEventListener("click", loadGear);
-    slotSelect.addEventListener("change", renderQueryPreview);
-    document.getElementById("budgetInput").addEventListener("input", renderQueryPreview);
     refreshStatus();
-    refreshRates();
-    setInterval(refreshStatus, 5000);
+    setInterval(refreshStatus, 15000);
+    const saved = localStorage.getItem("poe2.gearSearch.text") || localStorage.getItem("poe2.upgradeFinder.gearText") || "";
+    if (saved) {
+      els.gearText.value = saved;
+      analyze().catch(() => {});
+    } else {
+      api("/api/gear-search/analyze", { text: "" }).then((data) => {
+        state.analysis = data;
+        state.slots = data.slots || {};
+        renderSlots();
+        setDefaultFilters();
+        updatePreview();
+      }).catch(() => {});
+    }
   </script>
 </body>
 </html>

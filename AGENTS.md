@@ -45,5 +45,8 @@ Approved scope:
 - 2026-06-10: Replaced character-upgrades.html with Gear Search v1: gear import, slot-aware editable filters, budget, query preview, first-20 listing fetch, and current-vs-candidate stat comparison. Added /api/gear-search/analyze, /api/gear-search/import-browser-export, and /api/gear-search/search.
 - 2026-06-10: Updated index.html labels from Upgrade Finder to Gear Search. Dev server restarted and verified on http://127.0.0.1:17777.
 - 2026-06-10: Added Gear Search total elemental resistance filter (`totalElementalRes`) using Trade2 pseudo stat `pseudo.pseudo_total_elemental_resistance`; chaos resistance remains a separate filter/stat.
+- 2026-06-10: Audited Gear Search stat mappings across all slots. Added missing Trade2 mappings for evasion, energy shield, flat cold to attacks, projectile damage, and mana on kill. Gear Search now exposes only filterable stat keys, and preview returns `unsupportedFilters` instead of silently dropping unknown keys.
+- 2026-06-10: Moved item equipment values to Trade2 `equipment_filters` instead of stat filters where appropriate: chest evasion uses `equipment_filters.filters.ev`, helmet energy shield uses `es`, and bow DPS uses `dps`. Keep explicit/stat filters only for affixes and pseudo stats.
+- 2026-06-10: Added chest Deflection filter as Trade2 stat `explicit.stat_3040571529` (`#% increased Deflection Rating`). Gear Search price budget now uses Divine Orb (`trade_filters.price.option = "divine"`) instead of exalted.
 - Next: browser-test Gear Search with real copied gear and a live Trade2 search; tune default stat filters/categories based on real result quality.
 

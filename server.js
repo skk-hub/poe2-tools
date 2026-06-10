@@ -4,11 +4,11 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const { exec } = require("child_process");
+const { createTradeQueue } = require("./trade-queue");
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = 17777;
 const ROOT = __dirname;
-const TRADE_STATUS_FILE = path.join(ROOT, ".trade-status.json");
 const POE_OAUTH_FILE = path.join(ROOT, ".poe-oauth.json");
 const POE_OAUTH_STATE_FILE = path.join(ROOT, ".poe-oauth-state.json");
 const TYPES = ["Currency", "Essences", "Ritual", "Abyss", "Breach"];
@@ -277,10 +277,12 @@ const QUIVER_ROUTES = {
     confidence: "low",
   },
 };
-let lastTradeCall = 0;
-let tradeBlockedUntil = 0;
-let tradeRateLimitState = {};
-let tradeQueue = Promise.resolve();
+const tradeQueue = createTradeQueue({
+  statusFile: path.join(ROOT, ".trade-status.json"),
+  headers: TRADE_HEADERS,
+  minGapMs: TRADE_MIN_GAP_MS,
+  timeoutMs: TRADE_TIMEOUT_MS,
+});
 const comparableCache = new Map();
 
 const MIME = {
@@ -295,74 +297,8 @@ function send(res, status, body, type = "text/plain; charset=utf-8") {
   res.end(body);
 }
 
-function loadTradeStatus() {
-  try {
-    const data = JSON.parse(fs.readFileSync(TRADE_STATUS_FILE, "utf8"));
-    tradeBlockedUntil = Number(data.tradeBlockedUntil) || 0;
-    tradeRateLimitState = data.tradeRateLimitState && typeof data.tradeRateLimitState === "object" ? data.tradeRateLimitState : {};
-  } catch {
-    tradeBlockedUntil = 0;
-    tradeRateLimitState = {};
-  }
-}
-
-function saveTradeStatus() {
-  try {
-    fs.writeFileSync(TRADE_STATUS_FILE, JSON.stringify({ tradeBlockedUntil, tradeRateLimitState }, null, 2));
-  } catch {
-    // A failed cache write should not break pricing.
-  }
-}
-
-function parseRateParts(value) {
-  return String(value || "")
-    .split(",")
-    .map((part) => part.trim().split(":").map((n) => Number(n)))
-    .filter((part) => part.length >= 3 && part.every((n) => Number.isFinite(n)));
-}
-
-function updateTradeLimitFromHeaders(headers) {
-  const policy = String(headers.get("x-rate-limit-policy") || "");
-  const rules = String(headers.get("x-rate-limit-rules") || "")
-    .split(",")
-    .map((rule) => rule.trim())
-    .filter(Boolean);
-  const nextState = { policy, rules: {}, updated: new Date().toISOString() };
-  let changed = Boolean(policy || rules.length);
-
-  for (const rule of rules) {
-    const limitParts = parseRateParts(headers.get("x-rate-limit-" + rule));
-    const stateParts = parseRateParts(headers.get("x-rate-limit-" + rule + "-state"));
-    nextState.rules[rule] = { limits: limitParts, states: stateParts };
-
-    for (let i = 0; i < Math.min(limitParts.length, stateParts.length); i++) {
-      const [, , activeTimeout] = stateParts[i];
-
-      if (activeTimeout > 0) {
-        tradeBlockedUntil = Math.max(tradeBlockedUntil, Date.now() + activeTimeout * 1000);
-        changed = true;
-      }
-    }
-  }
-
-  if (changed) {
-    tradeRateLimitState = nextState;
-    saveTradeStatus();
-  }
-}
-
 function tradeStatus() {
-  const now = Date.now();
-  if (tradeBlockedUntil && now >= tradeBlockedUntil) {
-    tradeBlockedUntil = 0;
-    saveTradeStatus();
-  }
-  return {
-    limited: now < tradeBlockedUntil,
-    tradeLimitedUntil: now < tradeBlockedUntil ? new Date(tradeBlockedUntil).toISOString() : "",
-    secondsRemaining: now < tradeBlockedUntil ? Math.ceil((tradeBlockedUntil - now) / 1000) : 0,
-    rateLimit: tradeRateLimitState,
-  };
+  return tradeQueue.status();
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
@@ -653,46 +589,8 @@ function getDisplayPriceExalted(line, currencyRates) {
   return 0;
 }
 
-async function waitTradeThrottle() {
-  const elapsed = Date.now() - lastTradeCall;
-  if (elapsed < TRADE_MIN_GAP_MS) {
-    await new Promise((resolve) => setTimeout(resolve, TRADE_MIN_GAP_MS - elapsed));
-  }
-  lastTradeCall = Date.now();
-}
-
-function enqueueTradeTask(task) {
-  const run = tradeQueue.then(task, task);
-  tradeQueue = run.catch(() => {});
-  return run;
-}
-
 async function fetchTrade(url, options = {}) {
-  return enqueueTradeTask(async () => {
-    const status = tradeStatus();
-    if (status.limited) {
-      throw new Error("trade2 rate limited until " + status.tradeLimitedUntil);
-    }
-    await waitTradeThrottle();
-    const response = await fetchWithTimeout(url, { ...options, headers: { ...TRADE_HEADERS, ...(options.headers || {}) } }, TRADE_TIMEOUT_MS);
-    updateTradeLimitFromHeaders(response.headers);
-    if (response.status === 429) {
-      const retryAfter = Number(response.headers.get("retry-after")) || tradeStatus().secondsRemaining || 60;
-      tradeBlockedUntil = Math.max(tradeBlockedUntil, Date.now() + retryAfter * 1000);
-      saveTradeStatus();
-      throw new Error("trade2 rate limited until " + new Date(tradeBlockedUntil).toISOString());
-    }
-    if (!response.ok) {
-      let detail = "";
-      try {
-        detail = await response.text();
-      } catch {
-        detail = "";
-      }
-      throw new Error("trade2 returned HTTP " + response.status + (detail ? ": " + detail.slice(0, 500) : ""));
-    }
-    return response.json();
-  });
+  return tradeQueue.request(url, options);
 }
 
 async function getTradePrice(name, league, currencyRates, deadline = 0) {
@@ -708,7 +606,6 @@ async function getTradePrice(name, league, currencyRates, deadline = 0) {
     });
     const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
 
-    await waitTradeThrottle();
     if (deadline && Date.now() > deadline) return null;
     const search = await fetchTrade(searchUrl, { method: "POST", body });
     if (!search.result || !search.result.length) return null;
@@ -976,7 +873,6 @@ async function fetchComparablePrices(target, league, currencyRates, fallback = f
   }
 
   try {
-    await waitTradeThrottle();
     const search = await fetchTrade(searchUrl, { method: "POST", body: JSON.stringify(buildComparableSearch(target, fallback ? target.fallbackTradeStats : target.tradeStats)) });
     const ids = (search.result || []).slice(0, 10);
     if (!ids.length) {
@@ -994,7 +890,6 @@ async function fetchComparablePrices(target, league, currencyRates, fallback = f
       return emptyResult;
     }
 
-    await waitTradeThrottle();
     const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id);
     const fetched = await fetchTrade(fetchUrl);
     const listings = [];
@@ -1397,7 +1292,7 @@ async function fetchRunePrices(text, league) {
     truncated: rawLines.length > limitedRawLines.length,
     tradeFallbacks,
     skillTradeFallbacks,
-    tradeLimitedUntil: tradeBlockedUntil > Date.now() ? new Date(tradeBlockedUntil).toISOString() : "",
+    tradeLimitedUntil: tradeStatus().tradeLimitedUntil,
     updated: new Date().toISOString(),
   };
 }
@@ -1492,9 +1387,12 @@ const UPGRADE_STAT_IDS = {
   projectileLevels: "explicit.stat_1202301673",
   attackCrit: "explicit.stat_2194114101",
   flatPhysAttack: "explicit.stat_3032590688",
+  flatColdAttack: "explicit.stat_4067062424",
   attackSpeed: "explicit.stat_681332047",
   bowDamage: "explicit.stat_1241625305",
   projectileSpeed: "explicit.stat_3759663284",
+  projectileDamage: "explicit.stat_1839076647",
+  deflection: "explicit.stat_3040571529",
   spirit: "explicit.stat_3981240776",
   localPhysDamage: "explicit.stat_1509134228",
   localFlatPhys: "explicit.stat_1940865751",
@@ -1502,10 +1400,13 @@ const UPGRADE_STAT_IDS = {
   localCritChance: "explicit.stat_518292764",
   life: "explicit.stat_3299347043",
   totalLife: "pseudo.pseudo_total_life",
+  energyShield: "pseudo.pseudo_total_energy_shield",
+  evasion: "explicit.stat_53045048",
   coldRes: "explicit.stat_4220027924",
   lightningRes: "explicit.stat_1671376347",
   fireRes: "explicit.stat_3372524247",
   chaosRes: "explicit.stat_2923486259",
+  totalElementalRes: "pseudo.pseudo_total_elemental_resistance",
   totalResistance: "pseudo.pseudo_total_resistance",
   str: "explicit.stat_4080418644",
   dex: "explicit.stat_3261801346",
@@ -1522,6 +1423,13 @@ const UPGRADE_STAT_IDS = {
   critChance: "explicit.stat_587431675",
   critDamage: "explicit.stat_3556824919",
   rarity: "explicit.stat_3917489142",
+  manaOnKill: "explicit.stat_1368271171",
+};
+
+const GEAR_EQUIPMENT_FILTER_IDS = {
+  dps: "dps",
+  evasion: "ev",
+  energyShield: "es",
 };
 
 const UPGRADE_SEARCH_STATS = {
@@ -1583,12 +1491,12 @@ const PRESERVE_CONTROL_STATS_BY_SLOT = {
   bow: ["dps", "critChance", "attackSpeed", "flatPhys", "flatCold", "flatEle"],
   quiver: ["projectileLevels", "attackCrit", "critDamage", "bowDamage", "projectileSpeed", "flatPhysAttack", "flatColdAttack", "rarity"],
   amulet: ["projectileLevels", "spirit", "critChance", "critDamage", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "rarity"],
-  helmet: ["energyShield", "life", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  chest: ["evasion", "life", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  boots: ["movementSpeed", "life", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  gloves: ["attackSpeed", "flatPhysAttack", "flatColdAttack", "life", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  ring: ["flatColdAttack", "flatPhysAttack", "life", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  belt: ["life", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  helmet: ["energyShield", "life", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  chest: ["evasion", "deflection", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  boots: ["movementSpeed", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  gloves: ["attackSpeed", "flatPhysAttack", "flatColdAttack", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  ring: ["flatColdAttack", "flatPhysAttack", "life", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  belt: ["life", "str", "dex", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   jewel: ["manaOnKill", "critChance", "attackSpeed", "projectileDamage"],
 };
 
@@ -1635,6 +1543,7 @@ function parseItemStats(text) {
   for (const match of source.matchAll(/\+(\d+) to maximum Life/gi)) addStat(stats, "life", match[1]);
   for (const match of source.matchAll(/\+(\d+) to maximum Energy Shield/gi)) addStat(stats, "energyShield", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Evasion Rating/gi)) addStat(stats, "evasion", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Deflection Rating/gi)) addStat(stats, "deflection", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Movement Speed/gi)) addStat(stats, "movementSpeed", match[1]);
   for (const match of source.matchAll(/\+(\d+)% to Fire Resistance/gi)) addStat(stats, "fireRes", match[1]);
   for (const match of source.matchAll(/\+(\d+)% to Cold Resistance/gi)) addStat(stats, "coldRes", match[1]);
@@ -1668,6 +1577,8 @@ function parseItemStats(text) {
   for (const match of source.matchAll(/Evasion Rating:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "evasion", match[1]);
   for (const match of source.matchAll(/Energy Shield:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "energyShield", match[1]);
   for (const match of source.matchAll(/Critical Hit Chance:\s*(\d+(?:\.\d+)?)%/gi)) addStat(stats, "critChance", match[1]);
+  const elementalRes = (Number(stats.fireRes) || 0) + (Number(stats.coldRes) || 0) + (Number(stats.lightningRes) || 0);
+  if (elementalRes > 0) stats.totalElementalRes = elementalRes;
   return stats;
 }
 
@@ -2058,9 +1969,10 @@ function equivalentStatKeys(key) {
     attributes: ["attributes", "explicitAttributes", "totalAllAttributes", "totalAttributes"],
     explicitAttributes: ["attributes", "explicitAttributes"],
     totalAllAttributes: ["attributes", "totalAllAttributes", "totalAttributes"],
-    fireRes: ["fireRes", "totalResistance"],
-    coldRes: ["coldRes", "totalResistance"],
-    lightningRes: ["lightningRes", "totalResistance"],
+    fireRes: ["fireRes", "totalElementalRes", "totalResistance"],
+    coldRes: ["coldRes", "totalElementalRes", "totalResistance"],
+    lightningRes: ["lightningRes", "totalElementalRes", "totalResistance"],
+    totalElementalRes: ["totalElementalRes", "fireRes", "coldRes", "lightningRes"],
     chaosRes: ["chaosRes", "totalResistance"],
   };
   return equivalents[key] || [key];
@@ -2204,7 +2116,12 @@ function listingPriceEx(entry, currencyRates) {
   const price = entry.listing && entry.listing.price;
   if (!price || !currencyRates[price.currency]) return null;
   const exalted = roundPriceExalted(Number(price.amount) * currencyRates[price.currency]);
-  return { exalted, raw: price.amount + " " + price.currency };
+  const divineRate = Number(currencyRates.divine) || 0;
+  return {
+    exalted,
+    divine: divineRate > 0 ? roundPriceExalted(exalted / divineRate) : 0,
+    raw: price.amount + " " + price.currency,
+  };
 }
 
 function compactStats(stats, limit = 6) {
@@ -2213,6 +2130,248 @@ function compactStats(stats, limit = 6) {
     .sort((a, b) => Number(b[1]) - Number(a[1]))
     .slice(0, limit)
     .map(([key, value]) => [key, Math.round(Number(value) * 100) / 100]));
+}
+
+function gearSearchSlots() {
+  return Object.fromEntries(Object.entries(UPGRADE_GUIDE_PROFILE.slots).map(([id, slot]) => [id, {
+    id,
+    label: slot.label,
+    category: slot.category,
+    statKeys: (PRESERVE_CONTROL_STATS_BY_SLOT[id] || Object.keys(slot.stats || {}))
+      .filter((key) => UPGRADE_STAT_IDS[key] || GEAR_EQUIPMENT_FILTER_IDS[key]),
+    defaultFilters: (UPGRADE_SEARCH_STATS[id] || []).map((filter) => ({
+      ...filter,
+      key: Object.keys(UPGRADE_STAT_IDS).find((key) => UPGRADE_STAT_IDS[key] === filter.id) || "",
+    })),
+  }]));
+}
+
+function statLabel(key) {
+  const labels = {
+    dps: "DPS",
+    flatPhys: "Flat phys",
+    flatPhysAttack: "Flat phys to attacks",
+    flatColdAttack: "Flat cold to attacks",
+    flatEle: "Flat elemental",
+    attackSpeed: "Attack speed",
+    critChance: "Critical chance",
+    attackCrit: "Attack critical chance",
+    critDamage: "Critical damage",
+    bowDamage: "Bow skill damage",
+    projectileLevels: "Projectile skill levels",
+    projectileSpeed: "Projectile speed",
+    projectileDamage: "Projectile damage",
+    deflection: "Deflection rating",
+    life: "Life",
+    energyShield: "Energy shield",
+    evasion: "Evasion",
+    movementSpeed: "Movement speed",
+    fireRes: "Fire resistance",
+    coldRes: "Cold resistance",
+    lightningRes: "Lightning resistance",
+    totalElementalRes: "Total elemental resistance",
+    chaosRes: "Chaos resistance",
+    str: "Strength",
+    dex: "Dexterity",
+    int: "Intelligence",
+    totalAllAttributes: "All attributes",
+    explicitAttributes: "Explicit all attributes",
+    spirit: "Spirit",
+    rarity: "Rarity",
+    manaOnKill: "Mana on kill",
+  };
+  return labels[key] || key.replace(/([A-Z])/g, " $1").replace(/^./, (ch) => ch.toUpperCase());
+}
+
+function roundStatValue(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function statComparison(currentStats, candidateStats, preferredKeys = []) {
+  const keys = Array.from(new Set([
+    ...preferredKeys,
+    ...Object.keys(currentStats || {}),
+    ...Object.keys(candidateStats || {}),
+  ]))
+    .filter((key) => (Number(currentStats && currentStats[key]) || 0) || (Number(candidateStats && candidateStats[key]) || 0))
+    .sort((a, b) => statDisplayRank(a) - statDisplayRank(b) || a.localeCompare(b));
+  return keys.map((key) => {
+    const current = roundStatValue(currentStats && currentStats[key]);
+    const candidate = roundStatValue(candidateStats && candidateStats[key]);
+    return {
+      key,
+      label: statLabel(key),
+      current,
+      candidate,
+      delta: roundStatValue(candidate - current),
+    };
+  });
+}
+
+function buildGearSearchStatFilters(slotId, filters) {
+  const clean = [];
+  const equipment = [];
+  const unsupported = [];
+  for (const item of filters || []) {
+    const key = item && item.key;
+    const equipmentId = GEAR_EQUIPMENT_FILTER_IDS[key];
+    const equipmentValue = {};
+    const min = Number(item && item.min);
+    const max = Number(item && item.max);
+    if (Number.isFinite(min)) equipmentValue.min = min;
+    if (Number.isFinite(max)) equipmentValue.max = max;
+    if (equipmentId) {
+      equipment.push({ key, id: equipmentId, value: Object.keys(equipmentValue).length ? equipmentValue : undefined });
+      continue;
+    }
+
+    const id = item && item.id ? item.id : UPGRADE_STAT_IDS[key];
+    if (!id) {
+      if (key) unsupported.push(key);
+      continue;
+    }
+    const value = {};
+    const statMin = Number(item.min);
+    const statMax = Number(item.max);
+    if (Number.isFinite(statMin)) value.min = statMin;
+    if (Number.isFinite(statMax)) value.max = statMax;
+    clean.push({ key, id, value: Object.keys(value).length ? value : undefined });
+  }
+  if (clean.length || equipment.length) return { statFilters: clean, equipmentFilters: equipment, unsupported };
+  return {
+    statFilters: (UPGRADE_SEARCH_STATS[slotId] || []).map((filter) => ({ ...filter })),
+    equipmentFilters: [],
+    unsupported,
+  };
+}
+
+function buildGearSearchQuery(input, slot) {
+  const slotId = input.slot || "bow";
+  const maxPriceDiv = Number(input.maxPriceDiv ?? input.maxPriceEx) || 0;
+  const { statFilters, equipmentFilters, unsupported } = buildGearSearchStatFilters(slotId, input.filters);
+  const queryFilters = statFilters.map((filter) => filter.value ? ({ id: filter.id, value: filter.value }) : ({ id: filter.id }));
+  const equipmentQueryFilters = {};
+  for (const filter of equipmentFilters) {
+    equipmentQueryFilters[filter.id] = filter.value || {};
+  }
+  const query = {
+    query: {
+      status: { option: input.status === "any" ? "any" : "online" },
+      filters: {
+        type_filters: {
+          filters: {
+            category: { option: slot.category },
+            rarity: { option: "nonunique" },
+          },
+        },
+        misc_filters: {
+          filters: {
+            corrupted: { option: "false" },
+          },
+        },
+        equipment_filters: {
+          filters: equipmentQueryFilters,
+        },
+        trade_filters: {
+          filters: {
+            price: { option: "divine" },
+          },
+        },
+      },
+      stats: queryFilters.length ? [{
+        type: input.matchMode === "all" ? "and" : "count",
+        filters: queryFilters,
+        value: input.matchMode === "all" ? undefined : { min: Math.min(Number(input.minMatches) || 2, queryFilters.length) },
+      }] : [],
+    },
+    sort: { price: "asc" },
+  };
+  if (!Object.keys(equipmentQueryFilters).length) delete query.query.filters.equipment_filters;
+  if (Number(input.ilvlMin) > 0) query.query.filters.misc_filters.filters.ilvl = { min: Number(input.ilvlMin) };
+  if (maxPriceDiv > 0) query.query.filters.trade_filters.filters.price.max = maxPriceDiv;
+  if (query.query.stats[0] && !query.query.stats[0].value) delete query.query.stats[0].value;
+  return { query, statFilters, equipmentFilters, unsupported };
+}
+
+function analyzeGearSearch(text) {
+  const analysis = analyzeUpgradeState(text);
+  return {
+    slots: gearSearchSlots(),
+    items: analysis.items,
+    equipped: analysis.equipped,
+    totals: analysis.totals,
+    updated: analysis.updated,
+  };
+}
+
+async function searchGear(input) {
+  const league = input.league || UPGRADE_GUIDE_PROFILE.league;
+  const slotId = input.slot || "bow";
+  const slot = UPGRADE_GUIDE_PROFILE.slots[slotId];
+  if (!slot) throw new Error("Unknown slot");
+  const current = input.current || {};
+  const currentStats = current.raw ? parseItemStats(current.raw) : (current.stats || {});
+  const { query, statFilters, equipmentFilters, unsupported } = buildGearSearchQuery(input, slot);
+  const preview = {
+    league,
+    slot: slotId,
+    query,
+    statFilters,
+    equipmentFilters,
+    unsupportedFilters: unsupported,
+  };
+  if (input.previewOnly) return { ...preview, listings: [], tradeStatus: tradeStatus(), updated: new Date().toISOString() };
+
+  const status = tradeStatus();
+  if (status.limited) return { ...preview, limited: true, listings: [], tradeStatus: status, updated: new Date().toISOString() };
+
+  const rates = await fetchCurrencyRates(league);
+  const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
+  const search = await fetchTrade(searchUrl, { method: "POST", body: JSON.stringify(query) });
+  const resultUrl = "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(league) + "/" + search.id;
+  const ids = (search.result || []).slice(0, 20);
+  const fetchedResults = [];
+  for (let i = 0; i < ids.length; i += 10) {
+    const chunk = ids.slice(i, i + 10);
+    if (!chunk.length) continue;
+    const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + chunk.join(",") + "?query=" + encodeURIComponent(search.id);
+    const fetched = await fetchTrade(fetchUrl);
+    fetchedResults.push(...(fetched.result || []));
+  }
+
+  const preferredKeys = PRESERVE_CONTROL_STATS_BY_SLOT[slotId] || [];
+  const listings = [];
+  for (const entry of fetchedResults) {
+    const price = listingPriceEx(entry, rates);
+    if (!price || price.exalted <= 0) continue;
+    const item = entry.item || {};
+    const candidateStats = parseItemStats(itemTextFromTradeEntry(entry));
+    listings.push({
+      id: entry.id,
+      name: [item.name, item.typeLine].filter(Boolean).join(" ").trim() || slot.label,
+      typeLine: item.typeLine || "",
+      priceEx: price.exalted,
+      priceDiv: price.divine,
+      rawPrice: price.raw,
+      seller: entry.listing && entry.listing.account ? (entry.listing.account.name || "") : "",
+      listedAt: entry.listing ? (entry.listing.indexed || "") : "",
+      whisper: entry.listing && entry.listing.whisper ? entry.listing.whisper : "",
+      stats: compactStats(candidateStats, 12),
+      comparison: statComparison(currentStats, candidateStats, preferredKeys),
+    });
+  }
+
+  return {
+    ...preview,
+    searchId: search.id,
+    total: search.total || (search.result ? search.result.length : 0),
+    fetched: fetchedResults.length,
+    url: resultUrl,
+    currentStats: compactStats(currentStats, 20),
+    listings: listings.slice(0, 20),
+    tradeStatus: tradeStatus(),
+    updated: new Date().toISOString(),
+  };
 }
 
 async function searchUpgradeSlot(input) {
@@ -2479,6 +2638,42 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url.pathname === "/api/gear-search/analyze" && req.method === "POST") {
+      const input = await readJson(req, 8 * 1024 * 1024);
+      send(res, 200, JSON.stringify(analyzeGearSearch(input.text || "")), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/gear-search/import-browser-export" && req.method === "POST") {
+      const input = await readJson(req, 8 * 1024 * 1024);
+      const result = importFromBrowserExport(input.text || "");
+      if (!result.itemCount) {
+        send(res, 400, JSON.stringify({ error: "No item objects found. Paste copied item text, character JSON, or page HTML with embedded item data." }), "application/json; charset=utf-8");
+        return;
+      }
+      send(res, 200, JSON.stringify({
+        source: result.source,
+        itemCount: result.itemCount,
+        text: result.text,
+        analysis: analyzeGearSearch(result.text),
+      }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/gear-search/search" && req.method === "POST") {
+      const input = await readJson(req);
+      try {
+        send(res, 200, JSON.stringify(await searchGear(input)), "application/json; charset=utf-8");
+      } catch (err) {
+        if (String(err && err.message).includes("rate limited")) {
+          send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus(), listings: [] }), "application/json; charset=utf-8");
+          return;
+        }
+        throw err;
+      }
+      return;
+    }
+
     if (url.pathname === "/api/upgrades/profile") {
       send(res, 200, JSON.stringify(UPGRADE_GUIDE_PROFILE), "application/json; charset=utf-8");
       return;
@@ -2678,8 +2873,6 @@ const server = http.createServer(async (req, res) => {
     send(res, 500, err.message);
   }
 });
-
-loadTradeStatus();
 
 server.listen(PORT, HOST, () => {
   const url = "http://" + HOST + ":" + PORT + "/";
