@@ -48,5 +48,7 @@ Approved scope:
 - 2026-06-10: Audited Gear Search stat mappings across all slots. Added missing Trade2 mappings for evasion, energy shield, flat cold to attacks, projectile damage, and mana on kill. Gear Search now exposes only filterable stat keys, and preview returns `unsupportedFilters` instead of silently dropping unknown keys.
 - 2026-06-10: Moved item equipment values to Trade2 `equipment_filters` instead of stat filters where appropriate: chest evasion uses `equipment_filters.filters.ev`, helmet energy shield uses `es`, and bow DPS uses `dps`. Keep explicit/stat filters only for affixes and pseudo stats.
 - 2026-06-10: Added chest Deflection filter as Trade2 stat `explicit.stat_3040571529` (`#% increased Deflection Rating`). Gear Search price budget now uses Divine Orb (`trade_filters.price.option = "divine"`) instead of exalted.
-- Next: browser-test Gear Search with real copied gear and a live Trade2 search; tune default stat filters/categories based on real result quality.
+- 2026-06-10: Tuned Gear Search default filters to use equipment filters first where appropriate: bow DPS, helmet energy shield, and chest evasion. Default filter serialization now preserves `key` values so equipment filters survive query preview/search.
+- Blocked: browser/Node/git command execution from this Codex shell failed with Windows runner `CreateProcessAsUserW failed: 1312`, so this change was not live-browser-tested, committed, or pushed from the session.
+- Next: run `node server.js`, browser-test Gear Search with real copied gear and a live Trade2 search, verify query preview shows `equipment_filters.filters.dps/es/ev`, then commit and push.
 

@@ -1434,9 +1434,8 @@ const GEAR_EQUIPMENT_FILTER_IDS = {
 
 const UPGRADE_SEARCH_STATS = {
   bow: [
+    { key: "dps", value: { min: 600 } },
     { id: UPGRADE_STAT_IDS.localPhysDamage, value: { min: 100 } },
-    { id: UPGRADE_STAT_IDS.localFlatPhys },
-    { id: UPGRADE_STAT_IDS.localAttackSpeed, value: { min: 10 } },
     { id: UPGRADE_STAT_IDS.localCritChance },
   ],
   quiver: [
@@ -1449,15 +1448,16 @@ const UPGRADE_SEARCH_STATS = {
     { id: UPGRADE_STAT_IDS.spirit, value: { min: 40 } },
   ],
   helmet: [
+    { key: "energyShield", value: { min: 300 } },
     { id: UPGRADE_STAT_IDS.life, value: { min: 40 } },
-    { id: UPGRADE_STAT_IDS.coldRes, value: { min: 20 } },
-    { id: UPGRADE_STAT_IDS.lightningRes, value: { min: 20 } },
+    { id: UPGRADE_STAT_IDS.totalElementalRes, value: { min: 50 } },
     { id: UPGRADE_STAT_IDS.chaosRes, value: { min: 10 } },
   ],
   chest: [
+    { key: "evasion", value: { min: 1200 } },
+    { id: UPGRADE_STAT_IDS.deflection },
     { id: UPGRADE_STAT_IDS.life, value: { min: 50 } },
-    { id: UPGRADE_STAT_IDS.fireRes, value: { min: 25 } },
-    { id: UPGRADE_STAT_IDS.lightningRes, value: { min: 25 } },
+    { id: UPGRADE_STAT_IDS.totalElementalRes, value: { min: 50 } },
   ],
   boots: [
     { id: UPGRADE_STAT_IDS.movementSpeed, value: { min: 30 } },
@@ -2141,7 +2141,7 @@ function gearSearchSlots() {
       .filter((key) => UPGRADE_STAT_IDS[key] || GEAR_EQUIPMENT_FILTER_IDS[key]),
     defaultFilters: (UPGRADE_SEARCH_STATS[id] || []).map((filter) => ({
       ...filter,
-      key: Object.keys(UPGRADE_STAT_IDS).find((key) => UPGRADE_STAT_IDS[key] === filter.id) || "",
+      key: filter.key || Object.keys(UPGRADE_STAT_IDS).find((key) => UPGRADE_STAT_IDS[key] === filter.id) || "",
     })),
   }]));
 }
@@ -2238,11 +2238,10 @@ function buildGearSearchStatFilters(slotId, filters) {
     clean.push({ key, id, value: Object.keys(value).length ? value : undefined });
   }
   if (clean.length || equipment.length) return { statFilters: clean, equipmentFilters: equipment, unsupported };
-  return {
-    statFilters: (UPGRADE_SEARCH_STATS[slotId] || []).map((filter) => ({ ...filter })),
-    equipmentFilters: [],
-    unsupported,
-  };
+  const defaults = (UPGRADE_SEARCH_STATS[slotId] || []).map((filter) => ({ ...filter }));
+  if (!defaults.length) return { statFilters: [], equipmentFilters: [], unsupported };
+  const builtDefaults = buildGearSearchStatFilters(slotId, defaults);
+  return { ...builtDefaults, unsupported };
 }
 
 function buildGearSearchQuery(input, slot) {
