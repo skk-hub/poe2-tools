@@ -1,6 +1,8 @@
 ﻿# poe-tools — project context
 
 Read this first. Self-hosted Path of Exile 2 (PoE2) browser utility suite: pricing, crafting, rune/drop valuation, and an in-progress gear search. Local-first.
+> [!session-end] Before ending a session: update the **Where we left off** section below — what changed, what's done vs open, the exact next step. If code changed, commit and push so AGENTS.md and the code stay in sync. This file is the next session's starting point; keep it current.
+
 
 ## Stack
 - Zero-dependency Node.js — built-in http/fs/path/child_process only. No framework, no npm deps.
@@ -39,7 +41,9 @@ Approved scope:
 - Primary author: Codex (on Main PC).
 
 ## Where we left off (update at end of each session)
-- 2026-06-09: Planning pass for Gear Search complete; scope approved (above). No code written this pass.
-- Project moved from ~/poe2-craft-pricer-project to ~/dev/poe2-craft-pricer-project.
-- Immediate next step: implement trade-queue.js (shared adaptive queue), THEN replace the old upgrade guide page with Gear Search per approved scope.
-- Note: codex-optimizer-handoff.md is an older handoff, superseded by this section, safe to remove.
+- 2026-06-10: Implemented trade-queue.js shared persistent adaptive Trade2 queue and wired server.js Trade2 calls through it. /api/trade-status now includes queue metadata.
+- 2026-06-10: Replaced character-upgrades.html with Gear Search v1: gear import, slot-aware editable filters, budget, query preview, first-20 listing fetch, and current-vs-candidate stat comparison. Added /api/gear-search/analyze, /api/gear-search/import-browser-export, and /api/gear-search/search.
+- 2026-06-10: Updated index.html labels from Upgrade Finder to Gear Search. Dev server restarted and verified on http://127.0.0.1:17777.
+- 2026-06-10: Added Gear Search total elemental resistance filter (`totalElementalRes`) using Trade2 pseudo stat `pseudo.pseudo_total_elemental_resistance`; chaos resistance remains a separate filter/stat.
+- Next: browser-test Gear Search with real copied gear and a live Trade2 search; tune default stat filters/categories based on real result quality.
+
