@@ -160,21 +160,17 @@
               <input id="budget" type="number" min="0" step="1" value="100">
             </div>
           </div>
-          <div class="triple" style="margin-top:10px">
+          <div class="row" style="margin-top:10px">
             <div>
               <label for="matchMode">Match mode</label>
               <select id="matchMode">
                 <option value="count">Count of filters</option>
-                <option value="all">All filters</option>
+                <option value="all" selected>All filters</option>
               </select>
             </div>
             <div>
               <label for="minMatches">Min count</label>
-              <input id="minMatches" type="number" min="1" step="1" value="2">
-            </div>
-            <div>
-              <label for="ilvlMin">Min ilvl</label>
-              <input id="ilvlMin" type="number" min="0" step="1" value="75">
+              <input id="minMatches" type="number" min="1" step="1">
             </div>
           </div>
           <div style="margin-top:12px">
@@ -223,7 +219,6 @@
       budget: document.getElementById("budget"),
       matchMode: document.getElementById("matchMode"),
       minMatches: document.getElementById("minMatches"),
-      ilvlMin: document.getElementById("ilvlMin"),
       filters: document.getElementById("filters"),
       queryPreview: document.getElementById("queryPreview"),
       summary: document.getElementById("summary"),
@@ -303,8 +298,7 @@
 
     function filterOptions(selected) {
       const slot = state.slots[state.selectedSlot] || {};
-      const defaultKeys = (slot.defaultFilters || []).map((filter) => filter.key).filter(Boolean);
-      const keys = Array.from(new Set([...(slot.statKeys || []), ...defaultKeys, "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"]));
+      const keys = Array.from(new Set([...(slot.statKeys || []), "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"]));
       return keys.map((key) => `<option value="${key}" ${key === selected ? "selected" : ""}>${escapeHtml(statOptionLabel(key))}</option>`).join("");
     }
 
@@ -361,12 +355,19 @@
       els.filters.appendChild(row);
     }
 
+    function currentDefaultFilters() {
+      const item = currentItem();
+      if (!item || !item.stats) return [];
+      const slot = state.slots[state.selectedSlot] || {};
+      return (slot.statKeys || [])
+        .map((key) => ({ key, min: item.stats[key] }))
+        .filter((filter) => Number.isFinite(Number(filter.min)));
+    }
+
     function setDefaultFilters() {
       els.filters.innerHTML = "";
-      const slot = state.slots[state.selectedSlot] || {};
-      for (const filter of (slot.defaultFilters || []).slice(0, 4)) {
-        const key = filter.key || Object.keys(STAT_IDS).find((item) => STAT_IDS[item] === filter.id) || "";
-        addFilter({ key, min: filter.value && filter.value.min, max: filter.value && filter.value.max });
+      for (const filter of currentDefaultFilters()) {
+        addFilter({ key: filter.key, min: filter.min });
       }
     }
 
@@ -419,8 +420,7 @@
         current: currentItem(),
         maxPriceDiv: Number(els.budget.value) || 0,
         matchMode: els.matchMode.value,
-        minMatches: Number(els.minMatches.value) || 1,
-        ilvlMin: Number(els.ilvlMin.value) || 0,
+        minMatches: els.matchMode.value === "count" ? (Number(els.minMatches.value) || 1) : undefined,
         filters: collectFilters(),
         previewOnly,
       };
@@ -525,7 +525,7 @@
     document.getElementById("saveBtn").addEventListener("click", () => localStorage.setItem("poe2.gearSearch.text", els.gearText.value || ""));
     document.getElementById("loadBtn").addEventListener("click", async () => { els.gearText.value = localStorage.getItem("poe2.gearSearch.text") || ""; if (els.gearText.value.trim()) await analyze(); });
     els.slotSelect.addEventListener("change", () => { state.selectedSlot = els.slotSelect.value; renderItems(); setDefaultFilters(); updatePreview(); });
-    [els.budget, els.matchMode, els.minMatches, els.ilvlMin].forEach((el) => el.addEventListener("input", updatePreview));
+    [els.budget, els.matchMode, els.minMatches].forEach((el) => el.addEventListener("input", updatePreview));
 
     refreshStatus();
     setInterval(refreshStatus, 15000);

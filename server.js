@@ -2237,11 +2237,7 @@ function buildGearSearchStatFilters(slotId, filters) {
     if (Number.isFinite(statMax)) value.max = statMax;
     clean.push({ key, id, value: Object.keys(value).length ? value : undefined });
   }
-  if (clean.length || equipment.length) return { statFilters: clean, equipmentFilters: equipment, unsupported };
-  const defaults = (UPGRADE_SEARCH_STATS[slotId] || []).map((filter) => ({ ...filter }));
-  if (!defaults.length) return { statFilters: [], equipmentFilters: [], unsupported };
-  const builtDefaults = buildGearSearchStatFilters(slotId, defaults);
-  return { ...builtDefaults, unsupported };
+  return { statFilters: clean, equipmentFilters: equipment, unsupported };
 }
 
 function buildGearSearchQuery(input, slot) {
@@ -2280,13 +2276,12 @@ function buildGearSearchQuery(input, slot) {
       stats: queryFilters.length ? [{
         type: input.matchMode === "all" ? "and" : "count",
         filters: queryFilters,
-        value: input.matchMode === "all" ? undefined : { min: Math.min(Number(input.minMatches) || 2, queryFilters.length) },
+        value: input.matchMode === "all" ? undefined : { min: Math.min(Number(input.minMatches) || 1, queryFilters.length) },
       }] : [],
     },
     sort: { price: "asc" },
   };
   if (!Object.keys(equipmentQueryFilters).length) delete query.query.filters.equipment_filters;
-  if (Number(input.ilvlMin) > 0) query.query.filters.misc_filters.filters.ilvl = { min: Number(input.ilvlMin) };
   if (maxPriceDiv > 0) query.query.filters.trade_filters.filters.price.max = maxPriceDiv;
   if (query.query.stats[0] && !query.query.stats[0].value) delete query.query.stats[0].value;
   return { query, statFilters, equipmentFilters, unsupported };
