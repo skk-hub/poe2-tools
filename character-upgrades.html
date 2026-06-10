@@ -319,7 +319,13 @@
 
     function loadLockedItems() {
       try {
-        return JSON.parse(localStorage.getItem("poe2.gearSearch.lockedItems") || "{}") || {};
+        const raw = JSON.parse(localStorage.getItem("poe2.gearSearch.lockedItems") || "{}") || {};
+        const next = {};
+        for (const [slotId, entry] of Object.entries(raw)) {
+          const normalizedSlot = slotId === "ring" ? (next.ring1 ? "ring2" : "ring1") : slotId;
+          next[normalizedSlot] = { ...entry, slot: normalizedSlot };
+        }
+        return next;
       } catch {
         return {};
       }

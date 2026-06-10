@@ -469,6 +469,8 @@ function itemToPseudoCopyText(item) {
     "Rarity: " + (item.rarity || "Rare"),
     item.name || item.typeLine || "Imported Item",
   ];
+  const slotLabel = guessGearSearchSlotLabel(item);
+  if (slotLabel) lines.splice(2, 0, "Slot: " + slotLabel);
   if (item.name && item.typeLine) lines.push(item.typeLine);
   lines.push("--------");
   const groups = [
@@ -507,6 +509,14 @@ function guessItemClass(item) {
   if (/body|robe|jacket|vest|coat|armour|armor/i.test(type) || category.includes("bodyarmour")) return "Body Armours";
   if (/jewel/i.test(type)) return "Jewels";
   return "Unknown";
+}
+
+function guessGearSearchSlotLabel(item) {
+  const category = item && item.inventoryId ? String(item.inventoryId).toLowerCase() : "";
+  if (!category) return "";
+  if (category.includes("ring2") || category.includes("right")) return "Ring 2";
+  if (category.includes("ring")) return "Ring 1";
+  return "";
 }
 
 async function importOauthCharacter(characterName, realm = "poe2") {
@@ -1589,6 +1599,27 @@ function normalizePoeMarkup(value) {
     .replace(/\s+/g, " ");
 }
 
+function normalizeGearSearchSlotLabel(value) {
+  const raw = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (!raw) return "";
+  if (raw === "ring 1" || raw === "ring1" || raw === "left ring") return "ring1";
+  if (raw === "ring 2" || raw === "ring2" || raw === "right ring") return "ring2";
+  const mapped = {
+    bow: "bow",
+    quiver: "quiver",
+    amulet: "amulet",
+    helmet: "helmet",
+    "body armour": "chest",
+    "body armor": "chest",
+    boots: "boots",
+    gloves: "gloves",
+    ring: "ring1",
+    belt: "belt",
+    jewel: "jewel",
+  }[raw];
+  return mapped || "";
+}
+
 function detectSlot(text) {
   for (const [pattern, slot] of SLOT_ALIASES) {
     if (pattern.test(text)) return slot;
@@ -1603,7 +1634,8 @@ function parsePastedItems(text) {
     .filter((part) => /^Item Class:/i.test(part))
     .map((raw, index) => {
       const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-      const slot = detectSlot(raw);
+      const slotLine = lines.find((line) => /^Slot:\s*/i.test(line));
+      const slot = normalizeGearSearchSlotLabel(slotLine ? slotLine.replace(/^Slot:\s*/i, "") : "") || detectSlot(raw);
       const name = lines.find((line) => !/^Item Class:|^Rarity:|^--------$|^Requirements:|^Sockets:/i.test(line)) || "Item " + (index + 1);
       return { index, slot, name, stats: parseItemStats(raw), raw };
     });
@@ -2133,17 +2165,27 @@ function compactStats(stats, limit = 6) {
 }
 
 function gearSearchSlots() {
-  return Object.fromEntries(Object.entries(UPGRADE_GUIDE_PROFILE.slots).map(([id, slot]) => [id, {
-    id,
-    label: slot.label,
-    category: slot.category,
-    statKeys: (PRESERVE_CONTROL_STATS_BY_SLOT[id] || Object.keys(slot.stats || {}))
-      .filter((key) => UPGRADE_STAT_IDS[key] || GEAR_EQUIPMENT_FILTER_IDS[key]),
-    defaultFilters: (UPGRADE_SEARCH_STATS[id] || []).map((filter) => ({
-      ...filter,
-      key: filter.key || Object.keys(UPGRADE_STAT_IDS).find((key) => UPGRADE_STAT_IDS[key] === filter.id) || "",
-    })),
-  }]));
+  const slots = {};
+  for (const [id, slot] of Object.entries(UPGRADE_GUIDE_PROFILE.slots)) {
+    const variants = id === "ring" ? ["ring1", "ring2"] : [id];
+    for (const variant of variants) {
+      const baseId = variant === "ring1" || variant === "ring2" ? "ring" : variant;
+      const ringSuffix = variant === "ring1" ? " 1" : variant === "ring2" ? " 2" : "";
+      slots[variant] = {
+        id: variant,
+        baseId,
+        label: slot.label + ringSuffix,
+        category: slot.category,
+        statKeys: (PRESERVE_CONTROL_STATS_BY_SLOT[baseId] || Object.keys(slot.stats || {}))
+          .filter((key) => UPGRADE_STAT_IDS[key] || GEAR_EQUIPMENT_FILTER_IDS[key]),
+        defaultFilters: (UPGRADE_SEARCH_STATS[baseId] || []).map((filter) => ({
+          ...filter,
+          key: filter.key || Object.keys(UPGRADE_STAT_IDS).find((key) => UPGRADE_STAT_IDS[key] === filter.id) || "",
+        })),
+      };
+    }
+  }
+  return slots;
 }
 
 function statLabel(key) {
@@ -2289,10 +2331,22 @@ function buildGearSearchQuery(input, slot) {
 
 function analyzeGearSearch(text) {
   const analysis = analyzeUpgradeState(text);
+  const slots = gearSearchSlots();
+  const equipped = {};
+  let ringIndex = 0;
+  for (const item of analysis.items || []) {
+    if (item.slot === "ring") {
+      ringIndex += 1;
+      const ringSlot = ringIndex === 1 ? "ring1" : "ring2";
+      if (!equipped[ringSlot]) equipped[ringSlot] = { ...item, slot: ringSlot };
+      continue;
+    }
+    if (item.slot && !equipped[item.slot]) equipped[item.slot] = item;
+  }
   return {
-    slots: gearSearchSlots(),
+    slots,
     items: analysis.items,
-    equipped: analysis.equipped,
+    equipped,
     totals: analysis.totals,
     updated: analysis.updated,
   };
@@ -2301,7 +2355,8 @@ function analyzeGearSearch(text) {
 async function searchGear(input) {
   const league = input.league || UPGRADE_GUIDE_PROFILE.league;
   const slotId = input.slot || "bow";
-  const slot = UPGRADE_GUIDE_PROFILE.slots[slotId];
+  const slots = gearSearchSlots();
+  const slot = slots[slotId] || slots[slotId === "ring1" || slotId === "ring2" ? "ring1" : slotId] || UPGRADE_GUIDE_PROFILE.slots[slotId];
   if (!slot) throw new Error("Unknown slot");
   const current = input.current || {};
   const currentStats = current.raw ? parseItemStats(current.raw) : (current.stats || {});
@@ -2333,7 +2388,7 @@ async function searchGear(input) {
     fetchedResults.push(...(fetched.result || []));
   }
 
-  const preferredKeys = PRESERVE_CONTROL_STATS_BY_SLOT[slotId] || [];
+  const preferredKeys = PRESERVE_CONTROL_STATS_BY_SLOT[slot.baseId || slotId] || [];
   const listings = [];
   for (const entry of fetchedResults) {
     const price = listingPriceEx(entry, rates);
