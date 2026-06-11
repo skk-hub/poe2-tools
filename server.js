@@ -2271,7 +2271,7 @@ function statLabel(key) {
     fireRes: "Fire resistance",
     coldRes: "Cold resistance",
     lightningRes: "Lightning resistance",
-    totalElementalRes: "Total elemental resistance",
+    totalElementalRes: "Total elemental res (sum)",
     chaosRes: "Chaos resistance",
     str: "Strength",
     dex: "Dexterity",
