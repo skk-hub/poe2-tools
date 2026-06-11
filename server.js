@@ -1636,7 +1636,7 @@ function parsePastedItems(text) {
       const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
       const slotLine = lines.find((line) => /^Slot:\s*/i.test(line));
       const slot = normalizeGearSearchSlotLabel(slotLine ? slotLine.replace(/^Slot:\s*/i, "") : "") || detectSlot(raw);
-      const name = lines.find((line) => !/^Item Class:|^Rarity:|^--------$|^Requirements:|^Sockets:/i.test(line)) || "Item " + (index + 1);
+      const name = lines.find((line) => !/^Item Class:|^Rarity:|^Slot:|^--------$|^Requirements:|^Sockets:/i.test(line)) || "Item " + (index + 1);
       return { index, slot, name, stats: parseItemStats(raw), raw };
     });
 }

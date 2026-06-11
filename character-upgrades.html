@@ -80,6 +80,27 @@
     .import-toggle .glyph { display: inline-block; transform: translateY(-1px); }
     .import-body { padding: 14px; display: grid; gap: 10px; }
     .import-shell.collapsed .import-body { display: none; }
+    .import-help { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--bd); background: oklch(9.5% 0.028 40); color: var(--mu); font-size: 11px; line-height: 1.45; }
+    .import-progress { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+    .progress-track { height: 8px; border: 1px solid var(--bd); background: var(--s2); overflow: hidden; }
+    .progress-fill { height: 100%; width: 0%; background: var(--gd); transition: width 180ms cubic-bezier(0.23, 1, 0.32, 1); }
+    .progress-copy { color: var(--mu); font: 700 11px var(--ff-mono); white-space: nowrap; }
+    .slot-grid { display: grid; gap: 8px; }
+    .slot-card { border: 1px solid var(--bd); background: var(--s2); padding: 10px; display: grid; gap: 8px; }
+    .slot-card.filled { border-color: oklch(67% 0.14 148 / .55); background: oklch(67% 0.14 148 / .08); }
+    .slot-card.warn { border-color: oklch(80% 0.15 74 / .5); background: var(--gd-a); }
+    .slot-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+    .slot-title { font-weight: 800; color: var(--tx); }
+    .slot-state { font: 700 10px var(--ff-mono); color: var(--mu); text-transform: uppercase; }
+    .slot-card.filled .slot-state { color: var(--gr); }
+    .slot-card.warn .slot-state { color: var(--gd); }
+    .slot-card textarea { min-height: 64px; max-height: 140px; }
+    .slot-actions { display: grid; grid-template-columns: 1fr 74px; gap: 8px; }
+    .slot-card .hint { color: var(--mu); font-size: 10px; line-height: 1.4; }
+    .advanced-import { border-top: 1px solid var(--bd); padding-top: 10px; }
+    .advanced-import summary { cursor: pointer; color: var(--mu); font-weight: 800; }
+    .advanced-import[open] summary { color: var(--gd); }
+    .advanced-import textarea { margin-top: 10px; min-height: 180px; }
     .locked-panel { display: grid; gap: 10px; }
     .locked-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
     .locked-card, .lock-card { border: 1px solid var(--bd); background: var(--s2); }
@@ -123,7 +144,7 @@
       .nav, .status { margin-top: 10px; text-align: left; }
       aside { margin-bottom: 14px; }
       .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .filter-row, .triple { grid-template-columns: 1fr; }
+      .filter-row, .triple, .import-progress, .slot-actions { grid-template-columns: 1fr; }
       .locked-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
@@ -166,14 +187,28 @@
             </button>
           </div>
           <div class="import-body" id="importBody">
-            <label for="gearText">Equipped item text</label>
-            <textarea id="gearText" spellcheck="false" placeholder="Paste copied item text, character JSON, or browser export HTML"></textarea>
+            <div class="import-help">
+              <div>In game: hover an equipped item, press Ctrl+C, then paste it into the matching slot below.</div>
+              <div class="import-progress">
+                <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="importProgressFill"></div></div>
+                <div class="progress-copy" id="importProgressText">0 / 10 slots</div>
+              </div>
+            </div>
+            <div class="slot-grid" id="slotImportGrid"></div>
             <div class="actions">
-              <button class="primary" id="analyzeBtn">Analyze</button>
-              <button id="importBtn">Import Export</button>
+              <button class="primary" id="analyzeBtn">Analyze Gear</button>
               <button id="saveBtn">Save</button>
               <button id="loadBtn">Load</button>
             </div>
+            <details class="advanced-import" id="advancedImport">
+              <summary>Advanced raw import</summary>
+              <label for="gearText">Raw item text, character JSON, or browser export HTML</label>
+              <textarea id="gearText" spellcheck="false" placeholder="Paste copied item text, character JSON, or browser export HTML"></textarea>
+              <div class="actions" style="margin-top:10px">
+                <button id="importBtn" type="button">Import Export</button>
+                <button id="syncSlotsBtn" type="button">Fill Slots From Raw</button>
+              </div>
+            </details>
           </div>
         </section>
 
@@ -249,12 +284,29 @@
       result: null,
       importOpen: true,
       lockedItems: {},
+      slotImports: {},
     };
+
+    const IMPORT_SLOTS = [
+      { id: "bow", label: "Bow", match: /Item Class:\s*Bows/i },
+      { id: "quiver", label: "Quiver", match: /Item Class:\s*Quivers/i },
+      { id: "amulet", label: "Amulet", match: /Item Class:\s*Amulets/i },
+      { id: "helmet", label: "Helmet", match: /Item Class:\s*Helmets/i },
+      { id: "chest", label: "Body Armour", match: /Item Class:\s*Body Armours/i },
+      { id: "boots", label: "Boots", match: /Item Class:\s*Boots/i },
+      { id: "gloves", label: "Gloves", match: /Item Class:\s*Gloves/i },
+      { id: "ring1", label: "Ring 1", match: /Item Class:\s*Rings/i },
+      { id: "ring2", label: "Ring 2", match: /Item Class:\s*Rings/i },
+      { id: "belt", label: "Belt", match: /Item Class:\s*Belts/i },
+    ];
 
     const els = {
       importShell: document.getElementById("importShell"),
       importBody: document.getElementById("importBody"),
       importToggle: document.getElementById("importToggle"),
+      slotImportGrid: document.getElementById("slotImportGrid"),
+      importProgressFill: document.getElementById("importProgressFill"),
+      importProgressText: document.getElementById("importProgressText"),
       gearText: document.getElementById("gearText"),
       status: document.getElementById("status"),
       slotSelect: document.getElementById("slotSelect"),
@@ -297,6 +349,151 @@
 
     function slotLabel(slotId) {
       return state.slots[slotId] ? state.slots[slotId].label : slotId;
+    }
+
+    function importSlotLabel(slotId) {
+      const slot = IMPORT_SLOTS.find((item) => item.id === slotId);
+      return slot ? slot.label : slotLabel(slotId);
+    }
+
+    function copiedItemParts(text) {
+      return String(text || "")
+        .split(/\r?\n(?=Item Class:)/g)
+        .map((part) => part.trim())
+        .filter((part) => /^Item Class:/i.test(part));
+    }
+
+    function detectImportSlot(text) {
+      const source = String(text || "");
+      const slotMatch = source.match(/^Slot:\s*(.+)$/im);
+      if (slotMatch) {
+        const value = slotMatch[1].trim().toLowerCase().replace(/\s+/g, " ");
+        if (value === "ring 1" || value === "ring1") return "ring1";
+        if (value === "ring 2" || value === "ring2") return "ring2";
+      }
+      const slot = IMPORT_SLOTS.find((item) => item.id !== "ring2" && item.match.test(source));
+      return slot ? slot.id : "";
+    }
+
+    function slotBase(slotId) {
+      return slotId === "ring1" || slotId === "ring2" ? "ring" : slotId;
+    }
+
+    function slotLooksCompatible(text, slotId) {
+      if (!String(text || "").trim()) return { ok: false, message: "Empty" };
+      const detected = detectImportSlot(text);
+      if (!detected) return { ok: false, message: "Unknown" };
+      if (slotBase(detected) === slotBase(slotId)) return { ok: true, message: "Ready" };
+      return { ok: false, message: importSlotLabel(detected) };
+    }
+
+    function ensureSlotLine(text, slotId) {
+      const clean = String(text || "").trim().replace(/^Slot:\s*.+$/gim, "").replace(/\n{3,}/g, "\n\n").trim();
+      if (!clean) return "";
+      const slotLine = "Slot: " + importSlotLabel(slotId);
+      if (/^Rarity:/im.test(clean)) return clean.replace(/^(Rarity:\s*.+)$/im, "$1\n" + slotLine);
+      const lines = clean.split(/\r?\n/);
+      lines.splice(1, 0, slotLine);
+      return lines.join("\n");
+    }
+
+    function compiledImportText() {
+      const parts = IMPORT_SLOTS
+        .map((slot) => ensureSlotLine(state.slotImports[slot.id] || "", slot.id))
+        .filter(Boolean);
+      return parts.length ? parts.join("\n") : els.gearText.value;
+    }
+
+    function syncRawFromSlots() {
+      const text = compiledImportText();
+      els.gearText.value = text || "";
+      return els.gearText.value;
+    }
+
+    function hydrateSlotImports(text) {
+      state.slotImports = {};
+      const ringSlots = ["ring1", "ring2"];
+      let nextRing = 0;
+      for (const part of copiedItemParts(text)) {
+        let slotId = detectImportSlot(part);
+        if (slotId === "ring1" && state.slotImports.ring1 && !state.slotImports.ring2) slotId = "ring2";
+        if (slotId === "ring1" && !/^Slot:\s*Ring\s*1/im.test(part) && !/^Slot:\s*Ring\s*2/im.test(part)) {
+          slotId = ringSlots[nextRing] || "ring2";
+          nextRing += 1;
+        }
+        if (slotId && !state.slotImports[slotId]) state.slotImports[slotId] = part;
+      }
+      renderSlotImportGrid();
+    }
+
+    function updateImportProgress() {
+      const filled = IMPORT_SLOTS.filter((slot) => String(state.slotImports[slot.id] || "").trim()).length;
+      const percent = Math.round((filled / IMPORT_SLOTS.length) * 100);
+      els.importProgressFill.style.width = percent + "%";
+      els.importProgressText.textContent = filled + " / " + IMPORT_SLOTS.length + " slots";
+    }
+
+    function updateSlotCardStatus(textarea) {
+      const card = textarea.closest(".slot-card");
+      const status = slotLooksCompatible(textarea.value, textarea.getAttribute("data-slot-text"));
+      if (!card) return;
+      card.classList.toggle("filled", !!textarea.value.trim() && status.ok);
+      card.classList.toggle("warn", !!textarea.value.trim() && !status.ok);
+      const stateEl = card.querySelector(".slot-state");
+      if (stateEl) stateEl.textContent = textarea.value.trim() ? (status.ok ? "Ready" : "Check: " + status.message) : "Missing";
+    }
+
+    function renderSlotImportGrid() {
+      updateImportProgress();
+      els.slotImportGrid.innerHTML = IMPORT_SLOTS.map((slot) => {
+        const value = state.slotImports[slot.id] || "";
+        const status = slotLooksCompatible(value, slot.id);
+        const filledClass = value.trim() ? (status.ok ? "filled" : "warn") : "";
+        const stateText = value.trim() ? (status.ok ? "Ready" : "Check: " + status.message) : "Missing";
+        return `
+          <article class="slot-card ${filledClass}" data-slot-import="${escapeHtml(slot.id)}">
+            <div class="slot-head">
+              <div class="slot-title">${escapeHtml(slot.label)}</div>
+              <div class="slot-state">${escapeHtml(stateText)}</div>
+            </div>
+            <textarea spellcheck="false" data-slot-text="${escapeHtml(slot.id)}" placeholder="Paste copied ${escapeHtml(slot.label)} item here">${escapeHtml(value)}</textarea>
+            <div class="slot-actions">
+              <button type="button" data-paste-slot="${escapeHtml(slot.id)}">Paste Clipboard</button>
+              <button type="button" data-clear-slot="${escapeHtml(slot.id)}">Clear</button>
+            </div>
+            <div class="hint">${escapeHtml(slot.label)} should come from an equipped ${slot.id === "chest" ? "body armour" : slotBase(slot.id)} item.</div>
+          </article>
+        `;
+      }).join("");
+
+      els.slotImportGrid.querySelectorAll("[data-slot-text]").forEach((textarea) => {
+        textarea.addEventListener("input", () => {
+          state.slotImports[textarea.getAttribute("data-slot-text")] = textarea.value;
+          updateImportProgress();
+          updateSlotCardStatus(textarea);
+        });
+        textarea.addEventListener("blur", () => updateSlotCardStatus(textarea));
+      });
+      els.slotImportGrid.querySelectorAll("[data-clear-slot]").forEach((button) => {
+        button.addEventListener("click", () => {
+          delete state.slotImports[button.getAttribute("data-clear-slot")];
+          renderSlotImportGrid();
+        });
+      });
+      els.slotImportGrid.querySelectorAll("[data-paste-slot]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const slotId = button.getAttribute("data-paste-slot");
+          try {
+            const text = await navigator.clipboard.readText();
+            state.slotImports[slotId] = text || "";
+            renderSlotImportGrid();
+          } catch (err) {
+            const card = button.closest(".slot-card");
+            const textarea = card && card.querySelector("textarea");
+            if (textarea) textarea.focus();
+          }
+        });
+      });
     }
 
     async function refreshStatus() {
@@ -700,6 +897,7 @@
     }
 
     async function analyze() {
+      syncRawFromSlots();
       const data = await api("/api/gear-search/analyze", { text: els.gearText.value });
       state.analysis = data;
       state.slots = data.slots || {};
@@ -715,6 +913,7 @@
     async function importExport() {
       const data = await api("/api/gear-search/import-browser-export", { text: els.gearText.value });
       els.gearText.value = data.text || "";
+      hydrateSlotImports(data.text || "");
       state.analysis = data.analysis;
       state.slots = data.analysis.slots || {};
       state.selectedSlot = Object.keys(data.analysis.equipped || {})[0] || "bow";
@@ -734,14 +933,20 @@
     }
 
     state.lockedItems = loadLockedItems();
+    renderSlotImportGrid();
     setImportOpen(true);
     els.importToggle.addEventListener("click", () => setImportOpen(!state.importOpen));
     document.getElementById("analyzeBtn").addEventListener("click", () => analyze().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
     document.getElementById("importBtn").addEventListener("click", () => importExport().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
+    document.getElementById("syncSlotsBtn").addEventListener("click", () => hydrateSlotImports(els.gearText.value || ""));
     document.getElementById("searchBtn").addEventListener("click", () => search().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
     document.getElementById("addFilterBtn").addEventListener("click", () => { addFilter(); updatePreview(); });
-    document.getElementById("saveBtn").addEventListener("click", () => { localStorage.setItem("poe2.gearSearch.text", els.gearText.value || ""); setImportOpen(false); });
-    document.getElementById("loadBtn").addEventListener("click", async () => { els.gearText.value = localStorage.getItem("poe2.gearSearch.text") || ""; if (els.gearText.value.trim()) await analyze(); });
+    document.getElementById("saveBtn").addEventListener("click", () => { localStorage.setItem("poe2.gearSearch.text", syncRawFromSlots() || ""); setImportOpen(false); });
+    document.getElementById("loadBtn").addEventListener("click", async () => {
+      els.gearText.value = localStorage.getItem("poe2.gearSearch.text") || "";
+      hydrateSlotImports(els.gearText.value);
+      if (els.gearText.value.trim()) await analyze();
+    });
     els.slotSelect.addEventListener("change", () => { state.selectedSlot = els.slotSelect.value; setDefaultFilters(); updatePreview(); });
     [els.budget, els.matchMode, els.minMatches].forEach((el) => el.addEventListener("input", updatePreview));
 
@@ -750,6 +955,7 @@
     const saved = localStorage.getItem("poe2.gearSearch.text") || localStorage.getItem("poe2.upgradeFinder.gearText") || "";
     if (saved) {
       els.gearText.value = saved;
+      hydrateSlotImports(saved);
       analyze().catch(() => {});
     } else {
       api("/api/gear-search/analyze", { text: "" }).then((data) => {
