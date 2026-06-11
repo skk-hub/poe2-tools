@@ -1398,6 +1398,9 @@ const UPGRADE_STAT_IDS = {
   attackCrit: "explicit.stat_2194114101",
   flatPhysAttack: "explicit.stat_3032590688",
   flatColdAttack: "explicit.stat_4067062424",
+  flatFireAttack: "explicit.stat_1573130764",
+  flatLightningAttack: "explicit.stat_1754445556",
+  flatChaosAttack: "explicit.stat_674553446",
   attackSpeed: "explicit.stat_681332047",
   bowDamage: "explicit.stat_1241625305",
   projectileSpeed: "explicit.stat_3759663284",
@@ -1406,6 +1409,10 @@ const UPGRADE_STAT_IDS = {
   spirit: "explicit.stat_3981240776",
   localPhysDamage: "explicit.stat_1509134228",
   localFlatPhys: "explicit.stat_1940865751",
+  localFlatCold: "explicit.stat_1037193709",
+  localFlatFire: "explicit.stat_709508406",
+  localFlatLightning: "explicit.stat_3336890334",
+  localFlatChaos: "explicit.stat_2223678961",
   localAttackSpeed: "explicit.stat_210067635",
   localCritChance: "explicit.stat_518292764",
   life: "explicit.stat_3299347043",
@@ -1440,6 +1447,13 @@ const GEAR_EQUIPMENT_FILTER_IDS = {
   dps: "dps",
   evasion: "ev",
   energyShield: "es",
+};
+
+const GEAR_COMPOSITE_STAT_GROUPS = {
+  totalFlatAttack: ["flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack"],
+  totalFlatElementalAttack: ["flatColdAttack", "flatFireAttack", "flatLightningAttack"],
+  totalLocalFlat: ["localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
+  totalLocalFlatElemental: ["localFlatCold", "localFlatFire", "localFlatLightning"],
 };
 
 const UPGRADE_SEARCH_STATS = {
@@ -1498,14 +1512,14 @@ const UPGRADE_SEARCH_STATS = {
 };
 
 const PRESERVE_CONTROL_STATS_BY_SLOT = {
-  bow: ["dps", "critChance", "attackSpeed", "flatPhys", "flatCold", "flatEle"],
-  quiver: ["projectileLevels", "attackCrit", "critDamage", "bowDamage", "projectileSpeed", "flatPhysAttack", "flatColdAttack", "rarity"],
+  bow: ["dps", "critChance", "attackSpeed", "totalLocalFlat", "totalLocalFlatElemental", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
+  quiver: ["projectileLevels", "attackCrit", "critDamage", "bowDamage", "projectileSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "rarity"],
   amulet: ["projectileLevels", "spirit", "critChance", "critDamage", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "rarity"],
   helmet: ["energyShield", "life", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   chest: ["evasion", "deflection", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   boots: ["movementSpeed", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  gloves: ["attackSpeed", "flatPhysAttack", "flatColdAttack", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  ring: ["flatColdAttack", "flatPhysAttack", "life", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  gloves: ["attackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  ring: ["totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "life", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   belt: ["life", "str", "dex", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   jewel: ["manaOnKill", "critChance", "attackSpeed", "projectileDamage"],
 };
@@ -1536,9 +1550,18 @@ function parseItemStats(text) {
   let weaponAverageHit = 0;
   let weaponAps = 0;
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage to Attacks/gi)) addStat(stats, "flatPhysAttack", avgPair(match));
-  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage(?! to Attacks)/gi)) addStat(stats, "flatPhys", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage(?! to Attacks)/gi)) {
+    addStat(stats, "flatPhys", avgPair(match));
+    addStat(stats, "localFlatPhys", avgPair(match));
+  }
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Cold Damage to Attacks/gi)) addStat(stats, "flatColdAttack", avgPair(match));
-  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+(Fire|Lightning) Damage to Attacks/gi)) addStat(stats, "flatEle", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Fire Damage to Attacks/gi)) addStat(stats, "flatFireAttack", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Lightning Damage to Attacks/gi)) addStat(stats, "flatLightningAttack", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Chaos Damage to Attacks/gi)) addStat(stats, "flatChaosAttack", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Cold Damage(?! to Attacks)/gi)) addStat(stats, "localFlatCold", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Fire Damage(?! to Attacks)/gi)) addStat(stats, "localFlatFire", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Lightning Damage(?! to Attacks)/gi)) addStat(stats, "localFlatLightning", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Chaos Damage(?! to Attacks)/gi)) addStat(stats, "localFlatChaos", avgPair(match));
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance for Attacks/gi)) addStat(stats, "attackCrit", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance/gi)) addStat(stats, "critChance", match[1]);
   for (const match of source.matchAll(/\+(\d+(?:\.\d+)?)% to Critical Hit Chance/gi)) addStat(stats, "critChance", match[1]);
@@ -1587,6 +1610,15 @@ function parseItemStats(text) {
   for (const match of source.matchAll(/Evasion Rating:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "evasion", match[1]);
   for (const match of source.matchAll(/Energy Shield:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "energyShield", match[1]);
   for (const match of source.matchAll(/Critical Hit Chance:\s*(\d+(?:\.\d+)?)%/gi)) addStat(stats, "critChance", match[1]);
+  const flatElementalAttack = ["flatColdAttack", "flatFireAttack", "flatLightningAttack"].reduce((total, key) => total + (Number(stats[key]) || 0), 0);
+  const flatAttack = flatElementalAttack + (Number(stats.flatPhysAttack) || 0) + (Number(stats.flatChaosAttack) || 0);
+  const localFlatElemental = ["localFlatCold", "localFlatFire", "localFlatLightning"].reduce((total, key) => total + (Number(stats[key]) || 0), 0);
+  const localFlat = localFlatElemental + (Number(stats.localFlatPhys) || 0) + (Number(stats.localFlatChaos) || 0);
+  if (flatElementalAttack > 0) stats.totalFlatElementalAttack = flatElementalAttack;
+  if (flatAttack > 0) stats.totalFlatAttack = flatAttack;
+  if (localFlatElemental > 0) stats.totalLocalFlatElemental = localFlatElemental;
+  if (localFlat > 0) stats.totalLocalFlat = localFlat;
+  if (flatElementalAttack > 0) stats.flatEle = flatElementalAttack;
   const elementalRes = (Number(stats.fireRes) || 0) + (Number(stats.coldRes) || 0) + (Number(stats.lightningRes) || 0);
   if (elementalRes > 0) stats.totalElementalRes = elementalRes;
   return stats;
@@ -1871,8 +1903,20 @@ function statDisplayRank(key) {
     "attackCrit",
     "critDamage",
     "flatPhys",
+    "localFlatPhys",
+    "localFlatCold",
+    "localFlatFire",
+    "localFlatLightning",
+    "localFlatChaos",
+    "totalLocalFlat",
+    "totalLocalFlatElemental",
+    "totalFlatAttack",
+    "totalFlatElementalAttack",
     "flatPhysAttack",
     "flatColdAttack",
+    "flatFireAttack",
+    "flatLightningAttack",
+    "flatChaosAttack",
     "flatEle",
     "bowDamage",
     "projectileSpeed",
@@ -1992,6 +2036,10 @@ function equivalentStatKeys(key) {
     attackSpeed: ["attackSpeed", "localAttackSpeed"],
     critChance: ["critChance", "localCritChance"],
     flatPhys: ["flatPhys", "localFlatPhys", "localPhysDamage"],
+    totalLocalFlat: ["totalLocalFlat", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
+    totalLocalFlatElemental: ["totalLocalFlatElemental", "localFlatCold", "localFlatFire", "localFlatLightning"],
+    totalFlatAttack: ["totalFlatAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack"],
+    totalFlatElementalAttack: ["totalFlatElementalAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack"],
     dps: ["dps", "localPhysDamage", "localFlatPhys", "localAttackSpeed"],
     life: ["life", "totalLife"],
     movementSpeed: ["movementSpeed", "totalMovementSpeed"],
@@ -2177,7 +2225,7 @@ function gearSearchSlots() {
         label: slot.label + ringSuffix,
         category: slot.category,
         statKeys: (PRESERVE_CONTROL_STATS_BY_SLOT[baseId] || Object.keys(slot.stats || {}))
-          .filter((key) => UPGRADE_STAT_IDS[key] || GEAR_EQUIPMENT_FILTER_IDS[key]),
+          .filter((key) => UPGRADE_STAT_IDS[key] || GEAR_EQUIPMENT_FILTER_IDS[key] || GEAR_COMPOSITE_STAT_GROUPS[key]),
         defaultFilters: (UPGRADE_SEARCH_STATS[baseId] || []).map((filter) => ({
           ...filter,
           key: filter.key || Object.keys(UPGRADE_STAT_IDS).find((key) => UPGRADE_STAT_IDS[key] === filter.id) || "",
@@ -2192,8 +2240,20 @@ function statLabel(key) {
   const labels = {
     dps: "DPS",
     flatPhys: "Flat phys",
+    localFlatPhys: "Local flat phys",
+    localFlatCold: "Local flat cold",
+    localFlatFire: "Local flat fire",
+    localFlatLightning: "Local flat lightning",
+    localFlatChaos: "Local flat chaos",
+    totalLocalFlat: "Total local flat damage",
+    totalLocalFlatElemental: "Total local elemental flat",
+    totalFlatAttack: "Total flat damage to attacks",
+    totalFlatElementalAttack: "Total elemental flat to attacks",
     flatPhysAttack: "Flat phys to attacks",
     flatColdAttack: "Flat cold to attacks",
+    flatFireAttack: "Flat fire to attacks",
+    flatLightningAttack: "Flat lightning to attacks",
+    flatChaosAttack: "Flat chaos to attacks",
     flatEle: "Flat elemental",
     attackSpeed: "Attack speed",
     critChance: "Critical chance",
@@ -2253,6 +2313,7 @@ function statComparison(currentStats, candidateStats, preferredKeys = []) {
 function buildGearSearchStatFilters(slotId, filters) {
   const clean = [];
   const equipment = [];
+  const composite = [];
   const unsupported = [];
   for (const item of filters || []) {
     const key = item && item.key;
@@ -2267,6 +2328,21 @@ function buildGearSearchStatFilters(slotId, filters) {
       continue;
     }
 
+    const compositeKeys = GEAR_COMPOSITE_STAT_GROUPS[key];
+    if (compositeKeys) {
+      const compositeFilters = compositeKeys
+        .map((statKey) => UPGRADE_STAT_IDS[statKey])
+        .filter(Boolean)
+        .map((id) => ({ id }));
+      if (compositeFilters.length) {
+        const value = {};
+        if (Number.isFinite(min)) value.min = min;
+        if (Number.isFinite(max)) value.max = max;
+        composite.push({ key, type: "count", filters: compositeFilters, value: { min: 1 }, postValue: Object.keys(value).length ? value : undefined });
+        continue;
+      }
+    }
+
     const id = item && item.id ? item.id : UPGRADE_STAT_IDS[key];
     if (!id) {
       if (key) unsupported.push(key);
@@ -2279,13 +2355,13 @@ function buildGearSearchStatFilters(slotId, filters) {
     if (Number.isFinite(statMax)) value.max = statMax;
     clean.push({ key, id, value: Object.keys(value).length ? value : undefined });
   }
-  return { statFilters: clean, equipmentFilters: equipment, unsupported };
+  return { statFilters: clean, equipmentFilters: equipment, compositeFilters: composite, unsupported };
 }
 
 function buildGearSearchQuery(input, slot) {
   const slotId = input.slot || "bow";
   const maxPriceDiv = Number(input.maxPriceDiv ?? input.maxPriceEx) || 0;
-  const { statFilters, equipmentFilters, unsupported } = buildGearSearchStatFilters(slotId, input.filters);
+  const { statFilters, equipmentFilters, compositeFilters, unsupported } = buildGearSearchStatFilters(slotId, input.filters);
   const queryFilters = statFilters.map((filter) => filter.value ? ({ id: filter.id, value: filter.value }) : ({ id: filter.id }));
   const equipmentQueryFilters = {};
   for (const filter of equipmentFilters) {
@@ -2323,10 +2399,29 @@ function buildGearSearchQuery(input, slot) {
     },
     sort: { price: "asc" },
   };
+  for (const group of compositeFilters) {
+    query.query.stats.push({
+      type: group.type,
+      filters: group.filters,
+      value: group.value,
+    });
+  }
   if (!Object.keys(equipmentQueryFilters).length) delete query.query.filters.equipment_filters;
   if (maxPriceDiv > 0) query.query.filters.trade_filters.filters.price.max = maxPriceDiv;
   if (query.query.stats[0] && !query.query.stats[0].value) delete query.query.stats[0].value;
-  return { query, statFilters, equipmentFilters, unsupported };
+  return { query, statFilters, equipmentFilters, compositeFilters, unsupported };
+}
+
+function compositeStatsSatisfied(stats, compositeFilters) {
+  const misses = [];
+  for (const filter of compositeFilters || []) {
+    const value = filter && filter.postValue;
+    if (!value) continue;
+    const statValue = Number(stats && stats[filter.key]) || 0;
+    if (Number.isFinite(Number(value.min)) && statValue < Number(value.min)) misses.push({ key: filter.key, value: statValue, min: Number(value.min) });
+    if (Number.isFinite(Number(value.max)) && statValue > Number(value.max)) misses.push({ key: filter.key, value: statValue, max: Number(value.max) });
+  }
+  return { ok: misses.length === 0, misses };
 }
 
 function analyzeGearSearch(text) {
@@ -2360,13 +2455,14 @@ async function searchGear(input) {
   if (!slot) throw new Error("Unknown slot");
   const current = input.current || {};
   const currentStats = current.raw ? parseItemStats(current.raw) : (current.stats || {});
-  const { query, statFilters, equipmentFilters, unsupported } = buildGearSearchQuery(input, slot);
+  const { query, statFilters, equipmentFilters, compositeFilters, unsupported } = buildGearSearchQuery(input, slot);
   const preview = {
     league,
     slot: slotId,
     query,
     statFilters,
     equipmentFilters,
+    compositeFilters,
     unsupportedFilters: unsupported,
   };
   if (input.previewOnly) return { ...preview, listings: [], tradeStatus: tradeStatus(), updated: new Date().toISOString() };
@@ -2395,6 +2491,7 @@ async function searchGear(input) {
     if (!price || price.exalted <= 0) continue;
     const item = entry.item || {};
     const candidateStats = parseItemStats(itemTextFromTradeEntry(entry));
+    if (!compositeStatsSatisfied(candidateStats, compositeFilters).ok) continue;
     listings.push({
       id: entry.id,
       slot: slotId,
