@@ -97,6 +97,8 @@
     .slot-card textarea { min-height: 64px; max-height: 140px; }
     .slot-actions { display: grid; grid-template-columns: 1fr 74px; gap: 8px; }
     .slot-card .hint { color: var(--mu); font-size: 10px; line-height: 1.4; }
+    .import-savebar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+    .import-savebar label { margin-bottom: 5px; }
     .advanced-import { border-top: 1px solid var(--bd); padding-top: 10px; }
     .advanced-import summary { cursor: pointer; color: var(--mu); font-weight: 800; }
     .advanced-import[open] summary { color: var(--gd); }
@@ -147,7 +149,7 @@
       .nav, .status { margin-top: 10px; text-align: left; }
       aside { margin-bottom: 14px; }
       .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .filter-row, .triple, .import-progress, .slot-actions { grid-template-columns: 1fr; }
+      .filter-row, .triple, .import-progress, .slot-actions, .import-savebar { grid-template-columns: 1fr; }
       .locked-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
@@ -215,10 +217,21 @@
               </div>
             </div>
             <div class="slot-grid" id="slotImportGrid"></div>
+            <div class="import-savebar">
+              <div>
+                <label for="importSaveName">Save name</label>
+                <input id="importSaveName" type="text" autocomplete="off" placeholder="Player or character name">
+              </div>
+              <div>
+                <label for="importProfileSelect">Saved imports</label>
+                <select id="importProfileSelect"></select>
+              </div>
+            </div>
             <div class="actions">
               <button class="primary" id="analyzeBtn">Analyze Gear</button>
-              <button id="saveBtn">Save</button>
-              <button id="loadBtn">Load</button>
+              <button id="saveBtn">Save Import</button>
+              <button id="loadBtn">Load Import</button>
+              <button id="deleteSaveBtn">Delete Save</button>
             </div>
           </div>
         </section>
@@ -386,6 +399,9 @@
   }
 })();`;
 
+    const IMPORT_PROFILES_KEY = "poe2.gearSearch.importProfiles";
+    const IMPORT_TEXT_KEY = "poe2.gearSearch.text";
+
     const els = {
       importShell: document.getElementById("importShell"),
       importBody: document.getElementById("importBody"),
@@ -393,6 +409,8 @@
       slotImportGrid: document.getElementById("slotImportGrid"),
       importProgressFill: document.getElementById("importProgressFill"),
       importProgressText: document.getElementById("importProgressText"),
+      importSaveName: document.getElementById("importSaveName"),
+      importProfileSelect: document.getElementById("importProfileSelect"),
       consoleSnippet: document.getElementById("consoleSnippet"),
       gearText: document.getElementById("gearText"),
       status: document.getElementById("status"),
@@ -495,6 +513,70 @@
       const text = compiledImportText();
       els.gearText.value = text || "";
       return els.gearText.value;
+    }
+
+    function loadImportProfiles() {
+      try {
+        const value = JSON.parse(localStorage.getItem(IMPORT_PROFILES_KEY) || "{}");
+        return value && typeof value === "object" ? value : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function saveImportProfiles(profiles) {
+      localStorage.setItem(IMPORT_PROFILES_KEY, JSON.stringify(profiles || {}));
+    }
+
+    function renderImportProfiles(selectedName = "") {
+      const profiles = loadImportProfiles();
+      const names = Object.keys(profiles).sort((a, b) => a.localeCompare(b));
+      els.importProfileSelect.innerHTML = names.length
+        ? names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")
+        : `<option value="">No saved imports</option>`;
+      els.importProfileSelect.disabled = !names.length;
+      if (selectedName && profiles[selectedName]) els.importProfileSelect.value = selectedName;
+    }
+
+    function selectedImportProfileName() {
+      return els.importProfileSelect.value || "";
+    }
+
+    function saveCurrentImportProfile() {
+      const name = (els.importSaveName.value || selectedImportProfileName()).trim();
+      if (!name) {
+        els.importSaveName.placeholder = "Type a save name first";
+        els.importSaveName.focus();
+        return;
+      }
+      const text = syncRawFromSlots();
+      const profiles = loadImportProfiles();
+      profiles[name] = { name, text, savedAt: new Date().toISOString() };
+      saveImportProfiles(profiles);
+      localStorage.setItem(IMPORT_TEXT_KEY, text || "");
+      renderImportProfiles(name);
+      els.importSaveName.value = name;
+      setImportOpen(false);
+    }
+
+    async function loadSelectedImportProfile() {
+      const name = selectedImportProfileName();
+      const profiles = loadImportProfiles();
+      const entry = name ? profiles[name] : null;
+      els.gearText.value = entry ? (entry.text || "") : (localStorage.getItem(IMPORT_TEXT_KEY) || "");
+      if (entry) els.importSaveName.value = name;
+      hydrateSlotImports(els.gearText.value);
+      if (els.gearText.value.trim()) await analyze();
+    }
+
+    function deleteSelectedImportProfile() {
+      const name = selectedImportProfileName();
+      if (!name) return;
+      const profiles = loadImportProfiles();
+      delete profiles[name];
+      saveImportProfiles(profiles);
+      if (els.importSaveName.value.trim() === name) els.importSaveName.value = "";
+      renderImportProfiles();
     }
 
     function hydrateSlotImports(text) {
@@ -1021,6 +1103,7 @@
 
     state.lockedItems = loadLockedItems();
     els.consoleSnippet.textContent = CONSOLE_EXPORT_SNIPPET;
+    renderImportProfiles();
     renderSlotImportGrid();
     setImportOpen(true);
     els.importToggle.addEventListener("click", () => setImportOpen(!state.importOpen));
@@ -1039,20 +1122,26 @@
     });
     document.getElementById("searchBtn").addEventListener("click", () => search().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
     document.getElementById("addFilterBtn").addEventListener("click", () => { addFilter(); updatePreview(); });
-    document.getElementById("saveBtn").addEventListener("click", () => { localStorage.setItem("poe2.gearSearch.text", syncRawFromSlots() || ""); setImportOpen(false); });
-    document.getElementById("loadBtn").addEventListener("click", async () => {
-      els.gearText.value = localStorage.getItem("poe2.gearSearch.text") || "";
-      hydrateSlotImports(els.gearText.value);
-      if (els.gearText.value.trim()) await analyze();
+    document.getElementById("saveBtn").addEventListener("click", saveCurrentImportProfile);
+    document.getElementById("loadBtn").addEventListener("click", () => loadSelectedImportProfile().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
+    document.getElementById("deleteSaveBtn").addEventListener("click", deleteSelectedImportProfile);
+    els.importProfileSelect.addEventListener("change", () => {
+      els.importSaveName.value = selectedImportProfileName();
     });
     els.slotSelect.addEventListener("change", () => { state.selectedSlot = els.slotSelect.value; setDefaultFilters(); updatePreview(); });
     [els.budget, els.matchMode, els.minMatches].forEach((el) => el.addEventListener("input", updatePreview));
 
     refreshStatus();
     setInterval(refreshStatus, 15000);
-    const saved = localStorage.getItem("poe2.gearSearch.text") || localStorage.getItem("poe2.upgradeFinder.gearText") || "";
+    const profiles = loadImportProfiles();
+    const firstProfile = Object.keys(profiles).sort((a, b) => a.localeCompare(b))[0] || "";
+    const saved = (firstProfile && profiles[firstProfile] ? profiles[firstProfile].text : "") || localStorage.getItem(IMPORT_TEXT_KEY) || localStorage.getItem("poe2.upgradeFinder.gearText") || "";
     if (saved) {
       els.gearText.value = saved;
+      if (firstProfile) {
+        els.importSaveName.value = firstProfile;
+        renderImportProfiles(firstProfile);
+      }
       hydrateSlotImports(saved);
       analyze().catch(() => {});
     } else {
