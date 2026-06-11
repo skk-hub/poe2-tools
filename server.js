@@ -1518,7 +1518,7 @@ const PRESERVE_CONTROL_STATS_BY_SLOT = {
   helmet: ["energyShield", "life", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   chest: ["evasion", "deflection", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   boots: ["movementSpeed", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  gloves: ["attackSpeed", "critChance", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  gloves: ["attackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   ring: ["totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "life", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   belt: ["life", "str", "dex", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   jewel: ["manaOnKill", "critChance", "attackSpeed", "projectileDamage"],
