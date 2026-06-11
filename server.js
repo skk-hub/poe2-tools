@@ -1549,6 +1549,8 @@ function parseItemStats(text) {
   const avgPair = (match) => (Number(match[1]) + Number(match[2])) / 2;
   let weaponAverageHit = 0;
   let weaponAps = 0;
+  let explicitDps = 0;
+
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage to Attacks/gi)) addStat(stats, "flatPhysAttack", avgPair(match));
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage(?! to Attacks)/gi)) {
     addStat(stats, "flatPhys", avgPair(match));
@@ -1562,10 +1564,19 @@ function parseItemStats(text) {
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Fire Damage(?! to Attacks)/gi)) addStat(stats, "localFlatFire", avgPair(match));
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Lightning Damage(?! to Attacks)/gi)) addStat(stats, "localFlatLightning", avgPair(match));
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Chaos Damage(?! to Attacks)/gi)) addStat(stats, "localFlatChaos", avgPair(match));
+
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Physical Damage/gi)) addStat(stats, "localPhysDamage", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance for Attacks/gi)) addStat(stats, "attackCrit", match[1]);
-  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance/gi)) addStat(stats, "critChance", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance/gi)) {
+    // On weapons this is local; on others it's global. For now we use localCritChance to be safe if it's likely local.
+    const key = /Bows|Staves|Wands|Swords|Axes|Maces|Daggers|Claws/i.test(source) ? "localCritChance" : "critChance";
+    addStat(stats, key, match[1]);
+  }
   for (const match of source.matchAll(/\+(\d+(?:\.\d+)?)% to Critical Hit Chance/gi)) addStat(stats, "critChance", match[1]);
-  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Attack Speed/gi)) addStat(stats, "attackSpeed", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Attack Speed/gi)) {
+    const key = /Bows|Staves|Wands|Swords|Axes|Maces|Daggers|Claws/i.test(source) ? "localAttackSpeed" : "attackSpeed";
+    addStat(stats, key, match[1]);
+  }
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Damage with Bow Skills/gi)) addStat(stats, "bowDamage", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Projectile Speed/gi)) addStat(stats, "projectileSpeed", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Projectile Damage/gi)) addStat(stats, "projectileDamage", match[1]);
@@ -1575,8 +1586,31 @@ function parseItemStats(text) {
   for (const match of source.matchAll(/\+(\d+) to Spirit/gi)) addStat(stats, "spirit", match[1]);
   for (const match of source.matchAll(/\+(\d+) to maximum Life/gi)) addStat(stats, "life", match[1]);
   for (const match of source.matchAll(/\+(\d+) to maximum Energy Shield/gi)) addStat(stats, "energyShield", match[1]);
+
+  // Handle local equipment stats (Evasion, Energy Shield, Deflection, local Crit) separately from modifiers to avoid double-counting
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Evasion Rating/gi)) addStat(stats, "evasion", match[1]);
+  for (const match of source.matchAll(/Evasion Rating:\s*(\d+(?:\.\d+)?)/gi)) {
+    delete stats.evasion;
+    addStat(stats, "evasion", match[1]);
+  }
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Energy Shield/gi)) addStat(stats, "energyShield", match[1]);
+  for (const match of source.matchAll(/Energy Shield:\s*(\d+(?:\.\d+)?)/gi)) {
+    delete stats.energyShield;
+    addStat(stats, "energyShield", match[1]);
+  }
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Deflection Rating/gi)) addStat(stats, "deflection", match[1]);
+  for (const match of source.matchAll(/Deflection Rating:\s*(\d+(?:\.\d+)?)/gi)) {
+    delete stats.deflection;
+    addStat(stats, "deflection", match[1]);
+  }
+  for (const match of source.matchAll(/Critical Hit Chance:\s*(\d+(?:\.\d+)?)%/gi)) {
+    // If it's a weapon property, it's the base + local mods. 
+    // We only use it if we haven't already parsed a global crit chance, or we can use a separate key.
+    // For now, let's keep it in critChance but avoid adding to it if it already has a value from mod?
+    // Actually, local crit is often what players care about for weapons.
+    if (!stats.critChance) addStat(stats, "critChance", match[1]);
+  }
+
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Movement Speed/gi)) addStat(stats, "movementSpeed", match[1]);
   for (const match of source.matchAll(/\+(\d+)% to Fire Resistance/gi)) addStat(stats, "fireRes", match[1]);
   for (const match of source.matchAll(/\+(\d+)% to Cold Resistance/gi)) addStat(stats, "coldRes", match[1]);
@@ -1600,16 +1634,21 @@ function parseItemStats(text) {
     addStat(stats, "int", match[1]);
   }
   for (const match of source.matchAll(/(\d+) Mana gained on Kill/gi)) addStat(stats, "manaOnKill", match[1]);
-  for (const match of source.matchAll(/Physical DPS:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "dps", match[1]);
-  for (const match of source.matchAll(/Elemental DPS:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "dps", match[1]);
+
+  for (const match of source.matchAll(/Physical DPS:\s*(\d+(?:\.\d+)?)/gi)) explicitDps += Number(match[1]);
+  for (const match of source.matchAll(/Elemental DPS:\s*(\d+(?:\.\d+)?)/gi)) explicitDps += Number(match[1]);
   for (const match of source.matchAll(/Physical Damage:\s*(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)/gi)) weaponAverageHit += avgPair(match);
   for (const match of source.matchAll(/(?:Fire|Cold|Lightning) Damage:\s*(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)/gi)) weaponAverageHit += avgPair(match);
   for (const match of source.matchAll(/Attacks per Second:\s*(\d+(?:\.\d+)?)/gi)) weaponAps = Math.max(weaponAps, Number(match[1]) || 0);
-  if (weaponAverageHit > 0 && weaponAps > 0) addStat(stats, "dps", weaponAverageHit * weaponAps);
+
+  if (weaponAverageHit > 0 && weaponAps > 0) {
+    addStat(stats, "dps", weaponAverageHit * weaponAps);
+  } else if (explicitDps > 0) {
+    addStat(stats, "dps", explicitDps);
+  }
+
   if (weaponAps > 0) addStat(stats, "attackSpeed", weaponAps * 10);
-  for (const match of source.matchAll(/Evasion Rating:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "evasion", match[1]);
-  for (const match of source.matchAll(/Energy Shield:\s*(\d+(?:\.\d+)?)/gi)) addStat(stats, "energyShield", match[1]);
-  for (const match of source.matchAll(/Critical Hit Chance:\s*(\d+(?:\.\d+)?)%/gi)) addStat(stats, "critChance", match[1]);
+
   const flatElementalAttack = ["flatColdAttack", "flatFireAttack", "flatLightningAttack"].reduce((total, key) => total + (Number(stats[key]) || 0), 0);
   const flatAttack = flatElementalAttack + (Number(stats.flatPhysAttack) || 0) + (Number(stats.flatChaosAttack) || 0);
   const localFlatElemental = ["localFlatCold", "localFlatFire", "localFlatLightning"].reduce((total, key) => total + (Number(stats[key]) || 0), 0);
@@ -1898,10 +1937,13 @@ function statDisplayRank(key) {
     "energyShield",
     "evasion",
     "movementSpeed",
+    "localAttackSpeed",
     "attackSpeed",
+    "localCritChance",
     "critChance",
     "attackCrit",
     "critDamage",
+    "localPhysDamage",
     "flatPhys",
     "localFlatPhys",
     "localFlatCold",
@@ -2239,17 +2281,17 @@ function gearSearchSlots() {
 function statLabel(key) {
   const labels = {
     dps: "DPS",
-    flatPhys: "Flat phys",
-    localFlatPhys: "Local flat phys",
-    localFlatCold: "Local flat cold",
-    localFlatFire: "Local flat fire",
-    localFlatLightning: "Local flat lightning",
-    localFlatChaos: "Local flat chaos",
+    flatPhys: "Flat physical damage",
+    localFlatPhys: "Adds physical damage",
+    localFlatCold: "Adds cold damage",
+    localFlatFire: "Adds fire damage",
+    localFlatLightning: "Adds lightning damage",
+    localFlatChaos: "Adds chaos damage",
     totalLocalFlat: "Total local flat damage",
-    totalLocalFlatElemental: "Total local elemental flat",
-    totalFlatAttack: "Total flat damage to attacks",
+    totalLocalFlatElemental: "Total elemental flat damage",
+    totalFlatAttack: "Total flat to attacks",
     totalFlatElementalAttack: "Total elemental flat to attacks",
-    flatPhysAttack: "Flat phys to attacks",
+    flatPhysAttack: "Flat physical to attacks",
     flatColdAttack: "Flat cold to attacks",
     flatFireAttack: "Flat fire to attacks",
     flatLightningAttack: "Flat lightning to attacks",
@@ -2259,14 +2301,17 @@ function statLabel(key) {
     critChance: "Critical chance",
     attackCrit: "Attack critical chance",
     critDamage: "Critical damage",
+    localPhysDamage: "% increased physical damage",
+    localAttackSpeed: "Local attack speed",
+    localCritChance: "Local critical chance",
     bowDamage: "Bow skill damage",
     projectileLevels: "Projectile skill levels",
     projectileSpeed: "Projectile speed",
     projectileDamage: "Projectile damage",
     deflection: "Deflection rating",
-    life: "Life",
+    life: "Maximum life",
     energyShield: "Energy shield",
-    evasion: "Evasion",
+    evasion: "Evasion rating",
     movementSpeed: "Movement speed",
     fireRes: "Fire resistance",
     coldRes: "Cold resistance",
@@ -2295,7 +2340,10 @@ function statComparison(currentStats, candidateStats, preferredKeys = []) {
     ...Object.keys(currentStats || {}),
     ...Object.keys(candidateStats || {}),
   ]))
-    .filter((key) => (Number(currentStats && currentStats[key]) || 0) || (Number(candidateStats && candidateStats[key]) || 0))
+    .filter((key) => {
+      if (preferredKeys.includes(key)) return true; // Always include preferred keys
+      return (Number(currentStats && currentStats[key]) || 0) || (Number(candidateStats && candidateStats[key]) || 0);
+    })
     .sort((a, b) => statDisplayRank(a) - statDisplayRank(b) || a.localeCompare(b));
   return keys.map((key) => {
     const current = roundStatValue(currentStats && currentStats[key]);
@@ -2338,7 +2386,13 @@ function buildGearSearchStatFilters(slotId, filters) {
         const value = {};
         if (Number.isFinite(min)) value.min = min;
         if (Number.isFinite(max)) value.max = max;
-        composite.push({ key, type: "count", filters: compositeFilters, value: { min: 1 }, postValue: Object.keys(value).length ? value : undefined });
+        composite.push({ 
+          key, 
+          type: "count", 
+          filters: compositeFilters, 
+          value: { min: 1 }, 
+          postValue: Object.keys(value).length ? value : undefined 
+        });
         continue;
       }
     }
@@ -3020,7 +3074,7 @@ const server = http.createServer(async (req, res) => {
       send(res, 200, data, MIME[path.extname(fullPath).toLowerCase()] || "application/octet-stream");
     });
   } catch (err) {
-    send(res, 500, err.message);
+    send(res, 500, JSON.stringify({ error: err.message }), "application/json; charset=utf-8");
   }
 });
 

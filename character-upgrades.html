@@ -773,7 +773,7 @@
       const projectedTotals = buildProjectedTotals();
       const deltas = statComparison(currentTotals, projectedTotals)
         .filter((stat) => stat.delta !== 0)
-        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.label.localeCompare(b.label));
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || statDisplayRank(a.key) - statDisplayRank(b.key));
       const topGain = deltas.find((stat) => stat.delta > 0) || deltas[0] || null;
       const topLoss = deltas.find((stat) => stat.delta < 0) || null;
       const slotsLocked = entries.length;
@@ -784,11 +784,9 @@
         const currentStats = current ? (current.stats || {}) : {};
         const candidateStats = entry.candidateStats || {};
         const compareRows = statComparison(currentStats, candidateStats, state.slots[entry.slot] ? state.slots[entry.slot].statKeys : [])
-          .filter((stat) => stat.delta !== 0)
-          .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.label.localeCompare(b.label))
-          .slice(0, 5)
+          .slice(0, 10)
           .map((stat) => {
-            const cls = stat.delta > 0 ? "delta-pos" : "delta-neg";
+            const cls = stat.delta > 0 ? "delta-pos" : stat.delta < 0 ? "delta-neg" : "";
             const sign = stat.delta > 0 ? "+" : "";
             return `<tr><td>${escapeHtml(stat.label)}</td><td>${fmt(stat.current)}</td><td>${fmt(stat.candidate)}</td><td class="${cls}">${sign}${fmt(stat.delta)}</td></tr>`;
           }).join("");
@@ -808,13 +806,13 @@
             <div class="lock-sub">${escapeHtml(current ? (current.name || "Current item") : "No current item for this slot")} → ${escapeHtml(entry.name || "Locked item")}</div>
             <table class="comparison">
               <thead><tr><th>Stat</th><th>Current</th><th>Locked</th><th>Delta</th></tr></thead>
-              <tbody>${compareRows || `<tr><td colspan="4" class="muted">No changed stats.</td></tr>`}</tbody>
+              <tbody>${compareRows || `<tr><td colspan="4" class="muted">No stats to show.</td></tr>`}</tbody>
             </table>
           </article>
         `;
       }).join("");
 
-      const overviewRows = deltas.slice(0, 8).map((stat) => {
+      const overviewRows = deltas.slice(0, 12).map((stat) => {
         const cls = stat.delta > 0 ? "delta-pos" : "delta-neg";
         const sign = stat.delta > 0 ? "+" : "";
         return `<tr><td>${escapeHtml(stat.label)}</td><td>${fmt(stat.current)}</td><td>${fmt(stat.candidate)}</td><td class="${cls}">${sign}${fmt(stat.delta)}</td></tr>`;
@@ -855,6 +853,57 @@
       return keys.map((key) => `<option value="${key}" ${key === selected ? "selected" : ""}>${escapeHtml(statOptionLabel(key))}</option>`).join("");
     }
 
+    function statDisplayRank(key) {
+      const order = [
+        "dps",
+        "projectileLevels",
+        "spirit",
+        "life",
+        "energyShield",
+        "evasion",
+        "movementSpeed",
+        "localAttackSpeed",
+        "attackSpeed",
+        "localCritChance",
+        "critChance",
+        "attackCrit",
+        "critDamage",
+        "localPhysDamage",
+        "flatPhys",
+        "localFlatPhys",
+        "localFlatCold",
+        "localFlatFire",
+        "localFlatLightning",
+        "localFlatChaos",
+        "totalLocalFlat",
+        "totalLocalFlatElemental",
+        "totalFlatAttack",
+        "totalFlatElementalAttack",
+        "flatPhysAttack",
+        "flatColdAttack",
+        "flatFireAttack",
+        "flatLightningAttack",
+        "flatChaosAttack",
+        "flatEle",
+        "bowDamage",
+        "projectileSpeed",
+        "projectileDamage",
+        "fireRes",
+        "coldRes",
+        "lightningRes",
+        "chaosRes",
+        "str",
+        "dex",
+        "int",
+        "totalAllAttributes",
+        "explicitAttributes",
+        "rarity",
+        "manaOnKill",
+      ];
+      const index = order.indexOf(key);
+      return index === -1 ? order.length : index;
+    }
+
     function statOptionLabel(key) {
       const labels = {
         dps: "DPS",
@@ -864,7 +913,7 @@
         localFlatFire: "Adds fire damage",
         localFlatLightning: "Adds lightning damage",
         localFlatChaos: "Adds chaos damage",
-        totalLocalFlat: "Total flat damage",
+        totalLocalFlat: "Total local flat damage",
         totalLocalFlatElemental: "Total elemental flat damage",
         localAttackSpeed: "Local attack speed",
         localCritChance: "Local critical chance",
@@ -902,7 +951,7 @@
         movementSpeed: "Movement speed",
         manaOnKill: "Mana on kill",
       };
-      return labels[key] || key;
+      return labels[key] || key.replace(/([A-Z])/g, " $1").replace(/^./, (ch) => ch.toUpperCase());
     }
 
     function statComparison(currentStats, candidateStats, preferredKeys = []) {
@@ -911,8 +960,11 @@
         ...Object.keys(currentStats || {}),
         ...Object.keys(candidateStats || {}),
       ]))
-        .filter((key) => (Number(currentStats && currentStats[key]) || 0) || (Number(candidateStats && candidateStats[key]) || 0))
-        .sort((a, b) => a.localeCompare(b));
+        .filter((key) => {
+          if (preferredKeys.includes(key)) return true; // Always include preferred keys
+          return (Number(currentStats && currentStats[key]) || 0) || (Number(candidateStats && candidateStats[key]) || 0);
+        })
+        .sort((a, b) => statDisplayRank(a) - statDisplayRank(b) || a.localeCompare(b));
       return keys.map((key) => {
         const current = Math.round((Number(currentStats && currentStats[key]) || 0) * 100) / 100;
         const candidate = Math.round((Number(candidateStats && candidateStats[key]) || 0) * 100) / 100;
@@ -1018,7 +1070,7 @@
           warnings.push("Unsupported filters not sent: " + result.unsupportedFilters.join(", "));
         }
         if ((result.compositeFilters || []).some((filter) => filter.postValue)) {
-          warnings.push("Combined flat damage filters are app-filtered after fetching; the opened Trade page only shows the broad component prefilter.");
+          warnings.push("Combined flat damage filters use a broad prefilter (any of the components) on the Trade site and are strictly summed locally. We fetch extra items to find the best matches.");
         }
         const warning = warnings.length ? warnings.join("\n") + "\n\n" : "";
         els.queryPreview.textContent = warning + JSON.stringify(result.query, null, 2);
@@ -1052,11 +1104,13 @@
       const open = result.url ? `<a class="primary" href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">Open Trade</a>` : "";
       els.results.innerHTML = `<div class="actions">${open}</div>` + result.listings.map((item) => {
         const isLocked = !!(state.lockedItems && state.lockedItems[item.slot] && state.lockedItems[item.slot].id === item.id);
-        const rows = (item.comparison || []).map((stat) => {
-          const cls = stat.delta > 0 ? "delta-pos" : stat.delta < 0 ? "delta-neg" : "";
-          const sign = stat.delta > 0 ? "+" : "";
-          return `<tr><td>${escapeHtml(stat.label)}</td><td>${fmt(stat.current)}</td><td>${fmt(stat.candidate)}</td><td class="${cls}">${sign}${fmt(stat.delta)}</td></tr>`;
-        }).join("");
+        const rows = (item.comparison || [])
+          .slice(0, 10)
+          .map((stat) => {
+            const cls = stat.delta > 0 ? "delta-pos" : stat.delta < 0 ? "delta-neg" : "";
+            const sign = stat.delta > 0 ? "+" : "";
+            return `<tr><td>${escapeHtml(stat.label)}</td><td>${fmt(stat.current)}</td><td>${fmt(stat.candidate)}</td><td class="${cls}">${sign}${fmt(stat.delta)}</td></tr>`;
+          }).join("");
         return `
           <article class="listing">
             <div class="listing-head">
@@ -1073,7 +1127,7 @@
             </div>
             <table class="comparison">
               <thead><tr><th>Stat</th><th>Current</th><th>Candidate</th><th>Delta</th></tr></thead>
-              <tbody>${rows}</tbody>
+              <tbody>${rows || `<tr><td colspan="4" class="muted">No stats to show.</td></tr>`}</tbody>
             </table>
           </article>
         `;
@@ -1121,7 +1175,7 @@
       const result = await api("/api/gear-search/search", requestPayload(false));
       const warnings = [];
       if ((result.compositeFilters || []).some((filter) => filter.postValue)) {
-        warnings.push("Combined flat damage filters are app-filtered after fetching; the opened Trade page only shows the broad component prefilter.");
+        warnings.push("Combined flat damage filters use a broad prefilter (any of the components) on the Trade site and are strictly summed locally. We fetch extra items to find the best matches.");
       }
       els.queryPreview.textContent = (warnings.length ? warnings.join("\n") + "\n\n" : "") + JSON.stringify(result.query || {}, null, 2);
       renderResults(result);
