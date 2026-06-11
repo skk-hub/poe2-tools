@@ -1450,8 +1450,8 @@ const GEAR_EQUIPMENT_FILTER_IDS = {
 };
 
 const GEAR_COMPOSITE_STAT_GROUPS = {
-  totalFlatAttack: ["flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack"],
-  totalFlatElementalAttack: ["flatColdAttack", "flatFireAttack", "flatLightningAttack"],
+  totalFlatAttack: ["flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
+  totalFlatElementalAttack: ["flatColdAttack", "flatFireAttack", "flatLightningAttack", "localFlatCold", "localFlatFire", "localFlatLightning"],
   totalLocalFlat: ["localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
   totalLocalFlatElemental: ["localFlatCold", "localFlatFire", "localFlatLightning"],
 };
@@ -1565,7 +1565,7 @@ function parseItemStats(text) {
   let explicitDps = 0;
 
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage to Attacks/gi)) addStat(stats, "flatPhysAttack", avgPair(match));
-  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage(?! to Attacks)/gi)) {
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage(?! to Attacks| to Spells)/gi)) {
     addStat(stats, "flatPhys", avgPair(match));
     addStat(stats, "localFlatPhys", avgPair(match));
   }
@@ -1573,10 +1573,10 @@ function parseItemStats(text) {
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Fire Damage to Attacks/gi)) addStat(stats, "flatFireAttack", avgPair(match));
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Lightning Damage to Attacks/gi)) addStat(stats, "flatLightningAttack", avgPair(match));
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Chaos Damage to Attacks/gi)) addStat(stats, "flatChaosAttack", avgPair(match));
-  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Cold Damage(?! to Attacks)/gi)) addStat(stats, "localFlatCold", avgPair(match));
-  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Fire Damage(?! to Attacks)/gi)) addStat(stats, "localFlatFire", avgPair(match));
-  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Lightning Damage(?! to Attacks)/gi)) addStat(stats, "localFlatLightning", avgPair(match));
-  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Chaos Damage(?! to Attacks)/gi)) addStat(stats, "localFlatChaos", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Cold Damage(?! to Attacks| to Spells)/gi)) addStat(stats, "localFlatCold", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Fire Damage(?! to Attacks| to Spells)/gi)) addStat(stats, "localFlatFire", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Lightning Damage(?! to Attacks| to Spells)/gi)) addStat(stats, "localFlatLightning", avgPair(match));
+  for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Chaos Damage(?! to Attacks| to Spells)/gi)) addStat(stats, "localFlatChaos", avgPair(match));
 
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Physical Damage/gi)) addStat(stats, "localPhysDamage", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance for Attacks/gi)) addStat(stats, "attackCrit", match[1]);
@@ -1662,8 +1662,8 @@ function parseItemStats(text) {
 
   if (weaponAps > 0) addStat(stats, "attackSpeed", weaponAps * 10);
 
-  const flatElementalAttack = ["flatColdAttack", "flatFireAttack", "flatLightningAttack"].reduce((total, key) => total + (Number(stats[key]) || 0), 0);
-  const flatAttack = flatElementalAttack + (Number(stats.flatPhysAttack) || 0) + (Number(stats.flatChaosAttack) || 0);
+  const flatElementalAttack = ["flatColdAttack", "flatFireAttack", "flatLightningAttack", "localFlatCold", "localFlatFire", "localFlatLightning"].reduce((total, key) => total + (Number(stats[key]) || 0), 0);
+  const flatAttack = flatElementalAttack + (Number(stats.flatPhysAttack) || 0) + (Number(stats.flatChaosAttack) || 0) + (Number(stats.localFlatPhys) || 0) + (Number(stats.localFlatChaos) || 0);
   const localFlatElemental = ["localFlatCold", "localFlatFire", "localFlatLightning"].reduce((total, key) => total + (Number(stats[key]) || 0), 0);
   const localFlat = localFlatElemental + (Number(stats.localFlatPhys) || 0) + (Number(stats.localFlatChaos) || 0);
   if (flatElementalAttack > 0) stats.totalFlatElementalAttack = flatElementalAttack;
