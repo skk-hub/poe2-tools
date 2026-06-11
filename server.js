@@ -2417,14 +2417,14 @@ function buildGearSearchStatFilters(slotId, filters) {
       const compositeFilters = compositeKeys
         .map((statKey) => UPGRADE_STAT_IDS[statKey])
         .filter(Boolean)
-        .map((id) => ({ id }));
+        .map((id) => ({ id, value: { weight: 1 } }));
       if (compositeFilters.length) {
         const value = {};
         if (Number.isFinite(min)) value.min = min;
         if (Number.isFinite(max)) value.max = max;
         composite.push({ 
           key, 
-          type: "sum", 
+          type: "weight", 
           filters: compositeFilters, 
           value: Object.keys(value).length ? value : { min: 1 }, 
           postValue: Object.keys(value).length ? value : undefined 
