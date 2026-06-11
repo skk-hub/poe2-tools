@@ -206,7 +206,7 @@
             <details class="advanced-import" id="advancedImport">
               <summary>Advanced raw import</summary>
               <div class="console-helper">
-                <div class="sub">Open the PoE character page, paste this in the browser console, then paste the copied page export below.</div>
+                <div class="sub">Open your PoE2 character/equipment page, paste this in the browser console, then paste the copied export below.</div>
                 <div class="actions">
                   <button id="copyConsoleBtn" type="button">Copy Console Code</button>
                   <a href="https://pathofexile2.com/my-account/" target="_blank" rel="noreferrer">Open PoE2 Account</a>
@@ -312,19 +312,78 @@
     ];
 
     const CONSOLE_EXPORT_SNIPPET = `(() => {
-  const html = document.documentElement.outerHTML;
-  const note = "PoE Tools gear export copied. Paste it into Advanced raw import.";
+  const seen = new WeakSet();
+  const items = [];
+  const itemKey = (item) => [item.inventoryId, item.name, item.typeLine, JSON.stringify(item.explicitMods || [])].join("|");
+  const addItem = (value) => {
+    if (!value || typeof value !== "object") return;
+    const hasName = value.name || value.typeLine;
+    const hasMods = Array.isArray(value.explicitMods) || Array.isArray(value.implicitMods) || Array.isArray(value.craftedMods);
+    if (hasName && (hasMods || value.inventoryId)) {
+      const key = itemKey(value);
+      if (!items.some((item) => itemKey(item) === key)) items.push(value);
+    }
+  };
+  const walk = (value, depth = 0) => {
+    if (!value || depth > 8) return;
+    if (typeof value === "string") {
+      if (/inventoryId|explicitMods|typeLine/.test(value)) {
+        try { walk(JSON.parse(value), depth + 1); } catch {}
+      }
+      return;
+    }
+    if (typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    addItem(value);
+    if (Array.isArray(value)) {
+      value.forEach((entry) => walk(entry, depth + 1));
+      return;
+    }
+    Object.keys(value).slice(0, 250).forEach((key) => walk(value[key], depth + 1));
+  };
+
+  document.querySelectorAll("script").forEach((script) => {
+    const text = script.textContent || "";
+    if (!/inventoryId|explicitMods|typeLine|__NUXT__|__NEXT_DATA__/.test(text)) return;
+    if (script.type === "application/json" || text.trim().startsWith("{") || text.trim().startsWith("[")) {
+      try { walk(JSON.parse(text)); } catch {}
+    }
+    for (const match of text.matchAll(/\\{[^{}]*(?:"typeLine"|"explicitMods"|"inventoryId")[\\s\\S]{0,5000}?\\}/g)) {
+      try { walk(JSON.parse(match[0])); } catch {}
+    }
+  });
+  ["__NUXT__", "__NEXT_DATA__", "__INITIAL_STATE__", "__APOLLO_STATE__"].forEach((key) => {
+    try { walk(window[key]); } catch {}
+  });
+  ["localStorage", "sessionStorage"].forEach((storeName) => {
+    const store = window[storeName];
+    if (!store) return;
+    for (let index = 0; index < store.length; index += 1) {
+      const key = store.key(index);
+      const value = store.getItem(key);
+      if (/inventoryId|explicitMods|typeLine/.test(value || "")) walk(value);
+    }
+  });
+
+  const exportText = JSON.stringify({
+    source: "poe2-console-export",
+    url: location.href,
+    exportedAt: new Date().toISOString(),
+    itemCount: items.length,
+    items
+  }, null, 2);
+  const done = () => console.log("PoE Tools export copied:", items.length, "items. Paste it into Advanced raw import.");
+  const fail = () => {
+    console.log("Clipboard blocked. Copy the export JSON below and paste it into Advanced raw import.");
+    console.log(exportText);
+  };
+  if (!items.length) console.warn("No item data found on this page. Open the character/equipment page first, then run this again.");
   if (typeof copy === "function") {
-    copy(html);
-    console.log(note);
-    return;
+    copy(exportText);
+    done();
+  } else {
+    navigator.clipboard.writeText(exportText).then(done).catch(fail);
   }
-  navigator.clipboard.writeText(html)
-    .then(() => console.log(note))
-    .catch(() => {
-      console.log("Clipboard blocked. Copy the export text below and paste it into Advanced raw import.");
-      console.log(html);
-    });
 })();`;
 
     const els = {
