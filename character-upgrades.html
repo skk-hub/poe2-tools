@@ -101,6 +101,9 @@
     .advanced-import summary { cursor: pointer; color: var(--mu); font-weight: 800; }
     .advanced-import[open] summary { color: var(--gd); }
     .advanced-import textarea { margin-top: 10px; min-height: 180px; }
+    .console-helper { display: grid; gap: 8px; margin: 10px 0; padding: 10px; border: 1px solid var(--bd); background: oklch(9.5% 0.028 40); }
+    .console-helper .sub { margin: 0; }
+    .console-code { max-height: 150px; }
     .locked-panel { display: grid; gap: 10px; }
     .locked-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
     .locked-card, .lock-card { border: 1px solid var(--bd); background: var(--s2); }
@@ -202,6 +205,14 @@
             </div>
             <details class="advanced-import" id="advancedImport">
               <summary>Advanced raw import</summary>
+              <div class="console-helper">
+                <div class="sub">Open the PoE character page, paste this in the browser console, then paste the copied page export below.</div>
+                <div class="actions">
+                  <button id="copyConsoleBtn" type="button">Copy Console Code</button>
+                  <a href="https://www.pathofexile.com/account/view-profile" target="_blank" rel="noreferrer">Open PoE Profile</a>
+                </div>
+                <pre class="console-code" id="consoleSnippet"></pre>
+              </div>
               <label for="gearText">Raw item text, character JSON, or browser export HTML</label>
               <textarea id="gearText" spellcheck="false" placeholder="Paste copied item text, character JSON, or browser export HTML"></textarea>
               <div class="actions" style="margin-top:10px">
@@ -300,6 +311,22 @@
       { id: "belt", label: "Belt", match: /Item Class:\s*Belts/i },
     ];
 
+    const CONSOLE_EXPORT_SNIPPET = `(() => {
+  const html = document.documentElement.outerHTML;
+  const note = "PoE Tools gear export copied. Paste it into Advanced raw import.";
+  if (typeof copy === "function") {
+    copy(html);
+    console.log(note);
+    return;
+  }
+  navigator.clipboard.writeText(html)
+    .then(() => console.log(note))
+    .catch(() => {
+      console.log("Clipboard blocked. Copy the export text below and paste it into Advanced raw import.");
+      console.log(html);
+    });
+})();`;
+
     const els = {
       importShell: document.getElementById("importShell"),
       importBody: document.getElementById("importBody"),
@@ -307,6 +334,7 @@
       slotImportGrid: document.getElementById("slotImportGrid"),
       importProgressFill: document.getElementById("importProgressFill"),
       importProgressText: document.getElementById("importProgressText"),
+      consoleSnippet: document.getElementById("consoleSnippet"),
       gearText: document.getElementById("gearText"),
       status: document.getElementById("status"),
       slotSelect: document.getElementById("slotSelect"),
@@ -933,12 +961,23 @@
     }
 
     state.lockedItems = loadLockedItems();
+    els.consoleSnippet.textContent = CONSOLE_EXPORT_SNIPPET;
     renderSlotImportGrid();
     setImportOpen(true);
     els.importToggle.addEventListener("click", () => setImportOpen(!state.importOpen));
     document.getElementById("analyzeBtn").addEventListener("click", () => analyze().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
     document.getElementById("importBtn").addEventListener("click", () => importExport().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
     document.getElementById("syncSlotsBtn").addEventListener("click", () => hydrateSlotImports(els.gearText.value || ""));
+    document.getElementById("copyConsoleBtn").addEventListener("click", async () => {
+      const button = document.getElementById("copyConsoleBtn");
+      try {
+        await navigator.clipboard.writeText(CONSOLE_EXPORT_SNIPPET);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Copy Failed";
+      }
+      setTimeout(() => { button.textContent = "Copy Console Code"; }, 1400);
+    });
     document.getElementById("searchBtn").addEventListener("click", () => search().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
     document.getElementById("addFilterBtn").addEventListener("click", () => { addFilter(); updatePreview(); });
     document.getElementById("saveBtn").addEventListener("click", () => { localStorage.setItem("poe2.gearSearch.text", syncRawFromSlots() || ""); setImportOpen(false); });
