@@ -2474,7 +2474,9 @@ async function searchGear(input) {
   const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
   const search = await fetchTrade(searchUrl, { method: "POST", body: JSON.stringify(query) });
   const resultUrl = "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(league) + "/" + search.id;
-  const ids = (search.result || []).slice(0, 20);
+  const hasCompositePostFilters = compositeFilters.some((filter) => filter && filter.postValue);
+  const fetchLimit = hasCompositePostFilters ? 60 : 20;
+  const ids = (search.result || []).slice(0, fetchLimit);
   const fetchedResults = [];
   for (let i = 0; i < ids.length; i += 10) {
     const chunk = ids.slice(i, i + 10);

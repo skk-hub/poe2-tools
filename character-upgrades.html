@@ -1013,9 +1013,14 @@
       if (!Object.keys(state.slots).length) return;
       try {
         const result = await api("/api/gear-search/search", requestPayload(true));
-        const warning = result.unsupportedFilters && result.unsupportedFilters.length
-          ? "Unsupported filters not sent: " + result.unsupportedFilters.join(", ") + "\n\n"
-          : "";
+        const warnings = [];
+        if (result.unsupportedFilters && result.unsupportedFilters.length) {
+          warnings.push("Unsupported filters not sent: " + result.unsupportedFilters.join(", "));
+        }
+        if ((result.compositeFilters || []).some((filter) => filter.postValue)) {
+          warnings.push("Combined flat damage filters are app-filtered after fetching; the opened Trade page only shows the broad component prefilter.");
+        }
+        const warning = warnings.length ? warnings.join("\n") + "\n\n" : "";
         els.queryPreview.textContent = warning + JSON.stringify(result.query, null, 2);
         renderSummary(result);
       } catch (err) {
@@ -1114,7 +1119,11 @@
     async function search() {
       els.results.innerHTML = `<div class="empty">Searching Trade2 through the shared queue...</div>`;
       const result = await api("/api/gear-search/search", requestPayload(false));
-      els.queryPreview.textContent = JSON.stringify(result.query || {}, null, 2);
+      const warnings = [];
+      if ((result.compositeFilters || []).some((filter) => filter.postValue)) {
+        warnings.push("Combined flat damage filters are app-filtered after fetching; the opened Trade page only shows the broad component prefilter.");
+      }
+      els.queryPreview.textContent = (warnings.length ? warnings.join("\n") + "\n\n" : "") + JSON.stringify(result.query || {}, null, 2);
       renderResults(result);
       refreshStatus();
     }
