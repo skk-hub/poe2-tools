@@ -1544,8 +1544,21 @@ function addStat(stats, key, value) {
 
 function parseItemStats(text) {
   const stats = {};
+  const rawLines = String(text || "").split(/\r?\n/);
+  let explicitSource = "";
+  let inExplicit = false;
+  for (const line of rawLines) {
+    if (/^Explicit:|^Implicits:|^Implicit:/i.test(line)) {
+      inExplicit = true;
+      continue;
+    }
+    if (line === "---") {
+      inExplicit = false;
+      continue;
+    }
+    if (inExplicit) explicitSource += line + "\n";
+  }
   const source = normalizePoeMarkup(text);
-  const explicitSource = source.split(/\r?\n/).filter((line) => /^Explicit: /i.test(line)).join("\n");
   const avgPair = (match) => (Number(match[1]) + Number(match[2])) / 2;
   let weaponAverageHit = 0;
   let weaponAps = 0;
@@ -1660,6 +1673,14 @@ function parseItemStats(text) {
   if (flatElementalAttack > 0) stats.flatEle = flatElementalAttack;
   const elementalRes = (Number(stats.fireRes) || 0) + (Number(stats.coldRes) || 0) + (Number(stats.lightningRes) || 0);
   if (elementalRes > 0) stats.totalElementalRes = elementalRes;
+  const totalRes = elementalRes + (Number(stats.chaosRes) || 0);
+  if (totalRes > 0) stats.totalResistance = totalRes;
+  if (stats.life > 0) stats.totalLife = stats.life;
+  if (stats.energyShield > 0) stats.totalEnergyShield = stats.energyShield;
+  if (stats.movementSpeed > 0) stats.totalMovementSpeed = stats.movementSpeed;
+  if (stats.str > 0) stats.totalStr = stats.str;
+  if (stats.dex > 0) stats.totalDex = stats.dex;
+  if (stats.int > 0) stats.totalInt = stats.int;
   return stats;
 }
 
@@ -1934,9 +1955,12 @@ function statDisplayRank(key) {
     "projectileLevels",
     "spirit",
     "life",
+    "totalLife",
     "energyShield",
+    "totalEnergyShield",
     "evasion",
     "movementSpeed",
+    "totalMovementSpeed",
     "localAttackSpeed",
     "attackSpeed",
     "localCritChance",
@@ -1966,10 +1990,15 @@ function statDisplayRank(key) {
     "fireRes",
     "coldRes",
     "lightningRes",
+    "totalElementalRes",
     "chaosRes",
+    "totalResistance",
     "str",
+    "totalStr",
     "dex",
+    "totalDex",
     "int",
+    "totalInt",
     "totalAllAttributes",
     "explicitAttributes",
     "rarity",
@@ -2310,17 +2339,24 @@ function statLabel(key) {
     projectileDamage: "Projectile damage",
     deflection: "Deflection rating",
     life: "Maximum life",
+    totalLife: "Total life",
     energyShield: "Energy shield",
+    totalEnergyShield: "Total energy shield",
     evasion: "Evasion rating",
     movementSpeed: "Movement speed",
+    totalMovementSpeed: "Total movement speed",
     fireRes: "Fire resistance",
     coldRes: "Cold resistance",
     lightningRes: "Lightning resistance",
     totalElementalRes: "Total elemental res (sum)",
     chaosRes: "Chaos resistance",
+    totalResistance: "Total resistance (incl. chaos)",
     str: "Strength",
+    totalStr: "Total strength",
     dex: "Dexterity",
+    totalDex: "Total dexterity",
     int: "Intelligence",
+    totalInt: "Total intelligence",
     totalAllAttributes: "All attributes",
     explicitAttributes: "Explicit all attributes",
     spirit: "Spirit",
