@@ -1452,8 +1452,6 @@ const GEAR_EQUIPMENT_FILTER_IDS = {
 const GEAR_COMPOSITE_STAT_GROUPS = {
   totalFlatAttack: ["flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
   totalFlatElementalAttack: ["flatColdAttack", "flatFireAttack", "flatLightningAttack", "localFlatCold", "localFlatFire", "localFlatLightning"],
-  totalLocalFlat: ["localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
-  totalLocalFlatElemental: ["localFlatCold", "localFlatFire", "localFlatLightning"],
 };
 
 const UPGRADE_SEARCH_STATS = {
@@ -1461,11 +1459,13 @@ const UPGRADE_SEARCH_STATS = {
     { key: "dps", value: { min: 600 } },
     { id: UPGRADE_STAT_IDS.localPhysDamage, value: { min: 100 } },
     { id: UPGRADE_STAT_IDS.localCritChance },
+    { key: "totalFlatElementalAttack" },
   ],
   quiver: [
     { id: UPGRADE_STAT_IDS.projectileLevels, value: { min: 1 } },
     { id: UPGRADE_STAT_IDS.attackCrit, value: { min: 20 } },
     { id: UPGRADE_STAT_IDS.critDamage },
+    { key: "totalFlatElementalAttack" },
   ],
   amulet: [
     { id: UPGRADE_STAT_IDS.projectileLevels, value: { min: 1 } },
@@ -1491,14 +1491,14 @@ const UPGRADE_SEARCH_STATS = {
   ],
   gloves: [
     { id: UPGRADE_STAT_IDS.attackSpeed, value: { min: 10 } },
-    { id: UPGRADE_STAT_IDS.flatPhysAttack },
+    { key: "totalFlatElementalAttack" },
     { id: UPGRADE_STAT_IDS.fireRes, value: { min: 20 } },
   ],
   ring: [
     { id: UPGRADE_STAT_IDS.life, value: { min: 50 } },
     { id: UPGRADE_STAT_IDS.fireRes, value: { min: 20 } },
     { id: UPGRADE_STAT_IDS.coldRes, value: { min: 20 } },
-    { id: UPGRADE_STAT_IDS.flatPhysAttack },
+    { key: "totalFlatElementalAttack" },
   ],
   belt: [
     { id: UPGRADE_STAT_IDS.life, value: { min: 80 } },
@@ -1512,7 +1512,7 @@ const UPGRADE_SEARCH_STATS = {
 };
 
 const PRESERVE_CONTROL_STATS_BY_SLOT = {
-  bow: ["dps", "critChance", "attackSpeed", "totalLocalFlat", "totalLocalFlatElemental", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
+  bow: ["dps", "critChance", "attackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
   quiver: ["projectileLevels", "attackCrit", "critDamage", "bowDamage", "projectileSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "rarity"],
   amulet: ["projectileLevels", "spirit", "critChance", "critDamage", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "rarity"],
   helmet: ["energyShield", "life", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
@@ -2424,9 +2424,9 @@ function buildGearSearchStatFilters(slotId, filters) {
         if (Number.isFinite(max)) value.max = max;
         composite.push({ 
           key, 
-          type: "count", 
+          type: "sum", 
           filters: compositeFilters, 
-          value: { min: 1 }, 
+          value: Object.keys(value).length ? value : { min: 1 }, 
           postValue: Object.keys(value).length ? value : undefined 
         });
         continue;
