@@ -190,6 +190,23 @@
             </button>
           </div>
           <div class="import-body" id="importBody">
+            <details class="advanced-import" id="advancedImport">
+              <summary>Advanced raw import</summary>
+              <div class="console-helper">
+                <div class="sub">Open your PoE2 character/equipment page, paste this in the browser console, then paste the copied export below.</div>
+                <div class="actions">
+                  <button id="copyConsoleBtn" type="button">Copy Console Code</button>
+                  <a href="https://pathofexile2.com/my-account/characters" target="_blank" rel="noreferrer">Open PoE2 Characters</a>
+                </div>
+                <pre class="console-code" id="consoleSnippet"></pre>
+              </div>
+              <label for="gearText">Raw item text, character JSON, or browser export HTML</label>
+              <textarea id="gearText" spellcheck="false" placeholder="Paste copied item text, character JSON, or browser export HTML"></textarea>
+              <div class="actions" style="margin-top:10px">
+                <button id="importBtn" type="button">Import Export</button>
+                <button id="syncSlotsBtn" type="button">Fill Slots From Raw</button>
+              </div>
+            </details>
             <div class="import-help">
               <div>In game: hover an equipped item, press Ctrl+C, then paste it into the matching slot below.</div>
               <div class="import-progress">
@@ -203,23 +220,6 @@
               <button id="saveBtn">Save</button>
               <button id="loadBtn">Load</button>
             </div>
-            <details class="advanced-import" id="advancedImport">
-              <summary>Advanced raw import</summary>
-              <div class="console-helper">
-                <div class="sub">Open your PoE2 character/equipment page, paste this in the browser console, then paste the copied export below.</div>
-                <div class="actions">
-                  <button id="copyConsoleBtn" type="button">Copy Console Code</button>
-                  <a href="https://pathofexile2.com/my-account/" target="_blank" rel="noreferrer">Open PoE2 Account</a>
-                </div>
-                <pre class="console-code" id="consoleSnippet"></pre>
-              </div>
-              <label for="gearText">Raw item text, character JSON, or browser export HTML</label>
-              <textarea id="gearText" spellcheck="false" placeholder="Paste copied item text, character JSON, or browser export HTML"></textarea>
-              <div class="actions" style="margin-top:10px">
-                <button id="importBtn" type="button">Import Export</button>
-                <button id="syncSlotsBtn" type="button">Fill Slots From Raw</button>
-              </div>
-            </details>
           </div>
         </section>
 
