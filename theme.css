@@ -1,0 +1,92 @@
+/* ============================================================================
+   PoE Tools — shared design system (premium dark workbench)
+   Linked first on every page; pages keep only page-specific layout below it.
+   Identity: a PoE item-tooltip aesthetic — warm near-black, hairline borders,
+   restrained amber gold, data set in mono. Premium via elevation + type +
+   spacing, not rounded corners. Tokens are the single source of truth, so a
+   page that drops its own :root inherits the whole system.
+   ============================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root{
+  /* ---- Surfaces: warm near-black, clean elevation steps ---- */
+  --bg:oklch(9% 0.020 42);
+  --s1:oklch(12% 0.022 42);
+  --s2:oklch(15.5% 0.022 42);
+  --s3:oklch(20% 0.022 42);
+  --bd:oklch(29% 0.020 42);
+  --bd2:oklch(42% 0.022 42);
+  /* ---- Text: brighter than before to kill the "muddy" low-contrast feel ---- */
+  --tx:oklch(89% 0.014 65);
+  --mu:oklch(62% 0.015 58);
+  /* ---- Accent: restrained amber gold (the one bold color) ---- */
+  --gd:oklch(80% 0.15 74);
+  --gd-2:oklch(71% 0.135 72);
+  --gd-a:oklch(80% 0.15 74 / 0.10);
+  --gd-b:oklch(80% 0.15 74 / 0.35);
+  /* ---- Semantics: profit / risk / info, used only where they mean something ---- */
+  --gr:oklch(71% 0.15 150);
+  --rd:oklch(64% 0.16 24);
+  --cy:oklch(73% 0.11 215);
+  --pu:oklch(68% 0.11 300);
+
+  /* ---- Type roles ---- */
+  --ff-display:'Cinzel',Georgia,serif;
+  --ff-ui:'Inter',system-ui,-apple-system,sans-serif;
+  --ff-mono:'JetBrains Mono',ui-monospace,monospace;
+  /* aliases so any page's existing var names resolve to the system */
+  --ff:var(--ff-ui); --ui:var(--ff-ui); --display:var(--ff-display);
+  --mono:var(--ff-mono); --text:var(--tx); --muted:var(--mu); --gold:var(--gd);
+
+  /* ---- Radius / elevation / motion ---- */
+  --r:3px; --r-lg:5px;
+  --sh-1:0 1px 2px oklch(0% 0 0 / .40);
+  --sh-2:0 6px 22px oklch(0% 0 0 / .42);
+  --sh-pop:0 16px 44px oklch(0% 0 0 / .55);
+  --glow:0 0 0 1px var(--gd-b), 0 10px 30px oklch(62% 0.12 70 / .14);
+  --ease:cubic-bezier(.2,.7,.3,1);
+}
+
+/* ---- Global niceties (additive — safe across pages) ---- */
+html{ -webkit-text-size-adjust:100%; }
+body{ -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+::selection{ background:var(--gd-b); color:oklch(98% 0.02 80); }
+:focus-visible{ outline:2px solid var(--gd); outline-offset:2px; border-radius:var(--r); }
+
+/* Custom scrollbars — quiet, on-brand */
+*{ scrollbar-width:thin; scrollbar-color:var(--bd2) transparent; }
+::-webkit-scrollbar{ width:10px; height:10px; }
+::-webkit-scrollbar-track{ background:transparent; }
+::-webkit-scrollbar-thumb{ background:var(--bd2); border-radius:6px; border:2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover{ background:oklch(52% 0.03 60); }
+
+/* Numbers read as data: tabular figures wherever mono is used */
+.num,[class*="mono"],code,kbd{ font-variant-numeric:tabular-nums; }
+
+/* ---- Motion: entrance + interaction (transform/opacity only) ---- */
+@keyframes fadeUp{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
+@keyframes fadeIn{ from{ opacity:0; } to{ opacity:1; } }
+
+@media (prefers-reduced-motion: no-preference){
+  .toolcard,.toolpanel,.panel,.card,.hero,.metric,.eval,.tabs,.pagehead,.summary{
+    animation:fadeUp .36s var(--ease) both;
+  }
+  /* gentle stagger for grids/rails */
+  .toolsgrid>*:nth-child(2),.controls>*:nth-child(2){ animation-delay:.03s; }
+  .toolsgrid>*:nth-child(3){ animation-delay:.06s; }
+  .toolsgrid>*:nth-child(4){ animation-delay:.09s; }
+  .toolsgrid>*:nth-child(5){ animation-delay:.12s; }
+  .toolsgrid>*:nth-child(6){ animation-delay:.15s; }
+  .toolsgrid>*:nth-child(n+7){ animation-delay:.18s; }
+
+  /* hover lift + amber glow for elevated surfaces */
+  .toolcard,.metric{ transition:transform .16s var(--ease),border-color .16s var(--ease),background .16s var(--ease),box-shadow .16s var(--ease); }
+  .toolcard:hover{ transform:translateY(-3px); box-shadow:var(--sh-2); }
+  .toolcard.ready:hover{ box-shadow:var(--glow); }
+  .metric:hover{ transform:translateY(-1px); }
+}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+}
