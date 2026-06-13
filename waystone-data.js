@@ -26,11 +26,14 @@ window.WAYSTONE_DATA = {
 
   // Short tokens chosen to match the in-game mod text without colliding with
   // unrelated mods (e.g. "ack s" matches "Pack Size" but not "Attack Speed").
+  // Order = market value (see marketWeights): Pack Size first, then Monster
+  // Effectiveness / Rarity. NOTE 0.5: waystones no longer roll "Quantity of
+  // Items" — that token was removed.
   tokens: {
     // Desirable WAYSTONE reward mods (used for the magic/blue upgrade pick).
-    rewardBlue: "rar|uantit|ack s|aystone f|agic and r",
-    // Desirable TABLET mods (rarity / quantity / pack size / increased monsters).
-    tabletDesirable: "rar|uantit|ack s|onster",
+    rewardBlue: "ack s|agic monst|onster eff|rar|aystone f",
+    // Desirable TABLET mods (pack size / monsters / rarity).
+    tabletDesirable: "ack s|onster|rar",
     // Risky suffixes to exclude (less Recovery / reduced Flask Charges /
     // -% maximum Player Resistances / less Cooldown Recovery).
     danger: "ess rec|educed flask|aximum player|ess cool",
@@ -49,14 +52,46 @@ window.WAYSTONE_DATA = {
     "Hallowed", "of Nemeses", "Perennial's", "Rusted", "Sacrificial",
   ],
 
-  // Top waystone reward mods to target when juicing (current patch priority).
+  // Top waystone reward mods to target when juicing, ORDERED BY MARKET VALUE
+  // (see marketWeights below — derived from live Trade2 price floors). Target
+  // %s are the thresholds where the market starts paying a premium.
   waystoneTargets: [
-    "increased Rarity of Items found",
-    "increased Pack Size",
-    "more Magic and Rare Monsters",
-    "increased Quantity of Items found",
-    "more Waystones found in Area (sustain)",
+    "increased Pack Size — aim ≥35% (top-paid stat, ~40ex premium tier)",
+    "increased Monster Effectiveness / Magic Monsters — aim ≥30% (≈ as valued as Pack Size)",
+    "increased Rarity of Items found — only pays high: aim ≥50% (mid rarity is near-worthless)",
+    "increased Monster Rarity — cheapest reward stat; nice-to-have, don't pay for it",
+    "more Waystones found in Area (sustain) — utility, not priced",
   ],
+
+  // ── Market value of waystone reward stats ───────────────────────────────
+  // Oracle: live PoE2 Trade2 "Waystone (Tier 16)" price-floor sweep. For each
+  // stat we read the cheapest EXALTED-priced Tier-16 listing meeting a
+  // threshold; that floor = the market's marginal price for that roll. Single
+  // "1 ex" listings are AFK/mispriced and ignored — figures read the 2nd–5th
+  // cheapest cluster. Stats correlate (premium maps stack several), so treat
+  // `weight` as a RELATIVE ranking, not an isolated currency value. Re-run the
+  // sweep each patch to refresh. `weight` is normalised to Pack Size = 1.0.
+  marketWeights: {
+    source: "PoE2 Trade2 — Waystone (Tier 16) price-floor sweep",
+    analyzed: "2026-06-13",
+    league: "Runes of Aldur",
+    baselineEx: 1, // a junk Tier-16 waystone floors at ~1ex
+    // ranked best → worst by premium over baseline
+    stats: [
+      { key: "packSize", label: "Pack Size", weight: 1.0, premiumAt: 35,
+        floors: [[25, 20], [35, 40]],
+        tip: "Density — the #1 paid stat. ≥35% is the ~40ex premium tier." },
+      { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.95, premiumAt: 30,
+        floors: [[30, 40]],
+        tip: "Magic-monster density/effectiveness. Nearly as valued as Pack Size." },
+      { key: "itemRarity", label: "Item Rarity", weight: 0.55, premiumAt: 50,
+        floors: [[35, 4], [50, 25]],
+        tip: "Only pays at high rolls (≥50 → ~25ex). Mid rarity barely moves price." },
+      { key: "monsterRarity", label: "Monster Rarity", weight: 0.15, premiumAt: null,
+        floors: [[30, 6], [40, 6]],
+        tip: "Cheapest reward stat — flat ~6ex even at ≥40%. Don't pay for it." },
+    ],
+  },
 
   // Shared blue->juiced crafting path (content-agnostic). Per-content notes add
   // the right tablet + scaling tip.

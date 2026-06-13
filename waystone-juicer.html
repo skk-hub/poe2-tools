@@ -72,6 +72,18 @@
   .tag{display:inline-block;font:700 10px var(--ff-mono);text-transform:uppercase;padding:1px 6px;border:1px solid var(--bd);border-radius:2px;margin-right:6px}
   .tag.good{color:var(--gr);border-color:oklch(67% 0.14 148 / .5)}
   .tag.bad{color:var(--rd);border-color:oklch(62% 0.14 20 / .5)}
+  .tag.mid{color:var(--gd);border-color:oklch(80% 0.15 74 / .5)}
+  .mw-row{padding:7px 0;border-bottom:1px solid var(--bd)}
+  .mw-row:last-child{border-bottom:0}
+  .mw-top{display:flex;align-items:baseline;gap:8px}
+  .mw-name{color:var(--tx);font:700 13px var(--ff)}
+  .mw-aim{color:var(--gd);font:10px var(--ff-mono);text-transform:uppercase}
+  .mw-floor{margin-left:auto;color:var(--mu);font:10px var(--ff-mono)}
+  .mw-bar{height:6px;background:var(--bg);border:1px solid var(--bd);border-radius:2px;margin:5px 0 4px;overflow:hidden}
+  .mw-bar span{display:block;height:100%;background:var(--gd);opacity:.8}
+  .mw-tip{color:var(--mu);font:11px var(--ff)}
+  .scoreline{display:flex;align-items:baseline;gap:8px;margin:6px 0 2px;color:var(--mu);font:12px var(--ff-mono)}
+  .scoreline b{color:var(--gd);font-size:14px}
   .foot{color:var(--mu);font:12px var(--ff);margin-top:24px;padding-top:14px;border-top:1px solid var(--bd)}
 </style>
 </head>
@@ -131,7 +143,8 @@
   function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
 
   // Content-agnostic waystone regex (waystone reward mods are not content-specific).
-  function runRegex(){ return `"rar" "uantit" !"${T.danger}"`; }
+  // Market-led: require Pack Size (top-paid stat) + a second premium reward.
+  function runRegex(){ return `"ack s" "agic monst|onster eff|rar" !"${T.danger}"`; }
   function blueRegex(){ return `"${T.rewardBlue}" !"${T.danger}"`; }
   function tabletRegex(token){ return `"${token}" "${T.tabletDesirable}"`; }
 
@@ -148,6 +161,38 @@
           </div>
           <div class="meta"><span>quoted=AND · | =OR · !"…"=exclude</span><span class="${over?"over":""}">${len}/${D.regexLimit} chars</span></div>
           ${mods&&mods.length?`<ul class="modlist">${mods.map(m=>`<li>${esc(m)}</li>`).join("")}</ul>`:""}
+        </div>
+      </div>`;
+  }
+
+  // Market-derived value ranking of waystone reward stats (baked from a live
+  // Trade2 Tier-16 price-floor sweep — see waystone-data.js marketWeights).
+  function marketCard(){
+    const mw = D.marketWeights;
+    if (!mw || !mw.stats || !mw.stats.length) return "";
+    const max = Math.max(...mw.stats.map(s => s.weight)) || 1;
+    const rows = mw.stats.map(s => {
+      const pct = Math.round((s.weight / max) * 100);
+      const floorTop = s.floors && s.floors.length ? s.floors[s.floors.length - 1] : null;
+      const tag = floorTop ? `~${floorTop[1]}ex @ ${floorTop[0]}%+` : "";
+      const aim = s.premiumAt ? `aim ≥${s.premiumAt}%` : "low value";
+      return `
+        <div class="mw-row">
+          <div class="mw-top">
+            <span class="mw-name">${esc(s.label)}</span>
+            <span class="mw-aim">${esc(aim)}</span>
+            <span class="mw-floor">${esc(tag)}</span>
+          </div>
+          <div class="mw-bar"><span style="width:${pct}%"></span></div>
+          <div class="mw-tip">${esc(s.tip)}</div>
+        </div>`;
+    }).join("");
+    return `
+      <div class="card">
+        <div class="card-head"><span class="card-title">Mod value — what the market pays for</span><span class="card-kind">market</span></div>
+        <div class="card-body">
+          <div class="mw-list">${rows}</div>
+          <div class="note">From a live Trade2 Tier-16 price-floor sweep (${esc(mw.analyzed)}, ${esc(mw.league)}). Bar = relative value vs Pack Size. Stats correlate, so this is a ranking, not a price tag. Re-run the sweep each patch.</div>
         </div>
       </div>`;
   }
@@ -185,8 +230,9 @@
       </div>`;
     els.panel.innerHTML =
       `<p class="panel-blurb">${esc(ct.blurb)}</p>` +
+      marketCard() +
       regexCard(`Best ${ct.label} tablets`, "tablet", tabletRegex(ct.tabletToken),
-        ["Rarity / Quantity / Pack Size", "increased Monsters (content scaling)"]) +
+        ["Pack Size / increased Monsters (content scaling)", "Rarity"]) +
       regexCard("Best 6-mod waystones to run", "waystone", runRegex(), D.waystoneTargets) +
       regexCard("Best blue waystones to upgrade", "waystone (magic)", blueRegex(),
         ["Any top reward mod already rolled", "no risky suffixes"]) +
@@ -216,13 +262,25 @@
   }
 
   // ---- Evaluate pasted item ----
-  const REWARD = [
-    ["Rarity of Items", /rarity of items/i],
-    ["Quantity of Items", /quantity of items/i],
-    ["Pack Size", /pack size/i],
-    ["Magic & Rare Monsters", /magic (and|&) rare monster|rare monsters|magic monsters/i],
-    ["Waystone sustain", /waystones? (found|in area)/i],
-  ];
+  // Per-stat detectors keyed to marketWeights (so the verdict is value-weighted).
+  const STAT_RE = {
+    packSize: /pack size/i,
+    monsterEffectiveness: /monster effectiveness|magic monster/i,
+    itemRarity: /rarity of items|item rarity/i,
+    monsterRarity: /monster rarity|rare monster/i,
+  };
+  const SUSTAIN_RE = /waystones? (found|in area)|waystone drop/i;
+  // Pull the rolled % for a stat: scan lines matching the detector, take the max %.
+  function statRoll(text, re){
+    let found=false, value=0;
+    for (const line of String(text).split(/\n/)){
+      if (!re.test(line)) continue;
+      found = true;
+      const m = line.match(/(\d+(?:\.\d+)?)\s*%/);
+      if (m) value = Math.max(value, parseFloat(m[1]));
+    }
+    return { found, value };
+  }
   const DANGER = [
     ["less Recovery Rate", /less recovery rate/i],
     ["reduced Flask Charges", /reduced flask/i],
@@ -233,6 +291,27 @@
     for (const ct of D.contentTypes){ if (ct.id!=="general" && new RegExp(ct.tabletToken,"i").test(t)) return ct; }
     return null;
   }
+  // Score a pasted waystone by market weight: contribution = weight × rolled%.
+  // Returns total score, the best (most valuable) rolled stat, and per-stat rows.
+  function marketScore(text){
+    const stats = (D.marketWeights && D.marketWeights.stats) || [];
+    let score = 0, best = null, rows = [];
+    for (const s of stats){
+      const re = STAT_RE[s.key]; if (!re) continue;
+      const { found, value } = statRoll(text, re);
+      if (!found) continue;
+      const contrib = s.weight * value;
+      score += contrib;
+      const premium = s.premiumAt != null && value >= s.premiumAt;
+      const tagCls = premium ? "good" : (s.weight >= 0.5 ? "mid" : "bad");
+      const tagTxt = premium ? "premium" : (s.weight < 0.3 ? "low value" : (value ? "below premium" : "present"));
+      rows.push({ label: s.label, value, contrib, tagCls, tagTxt, weight: s.weight });
+      if (!best || contrib > best.contrib) best = { label: s.label, value, contrib };
+    }
+    rows.sort((a,b)=>b.contrib - a.contrib);
+    return { score, best, rows };
+  }
+
   function evaluate(){
     const text = els.evalInput.value || "";
     if (!text.trim()){ els.evalOut.innerHTML=""; return; }
@@ -240,33 +319,45 @@
     const rarity = rarityM ? rarityM[1].toLowerCase() : "";
     const isTablet = /precursor tablet|\btablet\b/i.test(text);
     const isWaystone = /waystone/i.test(text);
-    const rewards = REWARD.filter(r=>r[1].test(text)).map(r=>r[0]);
     const dangers = DANGER.filter(r=>r[1].test(text)).map(r=>r[0]);
+    const sustain = SUSTAIN_RE.test(text);
+    const ms = marketScore(text);
 
-    let cls="warn", head="", lines=[];
-    if (rewards.length) lines.push(`<span class="tag good">good</span>${rewards.join(", ")}`);
-    if (dangers.length) lines.push(`<span class="tag bad">risk</span>${dangers.join(", ")}`);
+    let cls="warn", head="", lines=[], scoreHtml="";
 
     if (isTablet){
       const ct = detectContent(text);
       const name = ct ? ct.label : "Generic / Precursor";
-      if (rewards.length>=2){ cls="good"; head=`✓ Good ${name} tablet — use it`; }
-      else if (rewards.length===1){ cls="warn"; head=`~ Usable ${name} tablet — low roll`; }
+      const n = ms.rows.length;
+      if (ms.rows.some(r=>r.label==="Pack Size") && n>=2){ cls="good"; head=`✓ Good ${name} tablet — use it (Pack Size + extras)`; }
+      else if (n>=2){ cls="good"; head=`✓ Good ${name} tablet — use it`; }
+      else if (n===1){ cls="warn"; head=`~ Usable ${name} tablet — low roll`; }
       else { cls="bad"; head=`✗ Weak ${name} tablet — sell/skip`; }
     } else if (isWaystone){
-      if (rarity==="normal"){ cls="warn"; head="White waystone — Alch it (or Transmute → Aug → Regal), target Rarity/Quantity/Pack"; }
+      // Market-weighted verdict: a high Pack Size / Monster Effectiveness map is
+      // "good" even with low rarity; a pure-rarity map is cheap-to-make.
+      const bestTxt = ms.best ? `${ms.best.label} ${ms.best.value}%` : "no reward stats";
+      if (rarity==="normal"){ cls="warn"; head="White waystone — Alch (or Transmute→Aug→Regal), force Pack Size + Monster Effectiveness"; }
       else if (rarity==="magic"){
-        if (rewards.length){ cls="good"; head="Good blue — Regal, then Exalt to fill (keep Rarity/Quantity/Pack)"; }
-        else { cls="warn"; head="Weak blue — Augment for a reward mod, or Transmute-reroll"; }
+        if (ms.score >= 30){ cls="good"; head=`Good blue (best: ${bestTxt}) — Regal then Exalt, keep Pack Size / Monster mods`; }
+        else if (ms.score > 0){ cls="warn"; head=`Weak blue (best: ${bestTxt}) — Aug toward Pack Size, or reroll`; }
+        else { cls="warn"; head="Weak blue — Augment for a reward mod (target Pack Size), or Transmute-reroll"; }
       } else { // rare or unknown
-        if (dangers.length){ cls="bad"; head="⚠ Risky rare — run only as a cheap throwaway map"; }
-        else if (rewards.length>=2){ cls="good"; head="✓ Juiced rare — run it"; }
-        else { cls="warn"; head="Mediocre rare — okay to run, not worth more currency"; }
+        if (ms.score >= 55){ cls="good"; head=`✓ Premium juice (best: ${bestTxt})${dangers.length?" — has risk mods, run anyway":""}`; }
+        else if (ms.score >= 25){ cls=dangers.length?"warn":"good"; head=`Solid map (best: ${bestTxt}) — run it`; }
+        else if (dangers.length){ cls="bad"; head="⚠ Risky rare, weak rewards — cheap throwaway only"; }
+        else { cls="warn"; head=`Mediocre rare (best: ${bestTxt}) — okay to run, low market value`; }
       }
+      scoreHtml = `<div class="scoreline">Market value score <b>${Math.round(ms.score)}</b><span>(weight × rolled %, higher = worth more)</span></div>`;
+      for (const r of ms.rows){
+        lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""} <span style="color:var(--mu)">·×${r.weight}</span>`);
+      }
+      if (sustain) lines.push(`<span class="tag mid">sustain</span>Waystone drop chance — utility, not priced`);
     } else {
       cls="warn"; head="Couldn't tell if this is a waystone or tablet — paste the full copied item text";
     }
-    els.evalOut.innerHTML = `<div class="verdict ${cls}"><div class="head">${esc(head)}</div>${lines.length?`<ul>${lines.map(l=>`<li>${l}</li>`).join("")}</ul>`:""}</div>`;
+    if (dangers.length) lines.push(`<span class="tag bad">risk</span>${dangers.join(", ")}`);
+    els.evalOut.innerHTML = `<div class="verdict ${cls}"><div class="head">${esc(head)}</div>${scoreHtml}${lines.length?`<ul>${lines.map(l=>`<li>${l}</li>`).join("")}</ul>`:""}</div>`;
   }
   els.evalBtn.addEventListener("click", evaluate);
 
