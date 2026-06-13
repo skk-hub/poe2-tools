@@ -64,7 +64,7 @@
   .omen-rec-item{color:var(--tx);font:12px var(--ff);margin:3px 0}
   .omen-rec-item b{color:var(--gd)}
   textarea{width:100%;min-height:150px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);padding:10px;font:12px var(--ff-mono);border-radius:2px;resize:vertical}
-  .eval{margin-top:18px}
+  .eval{margin-top:18px;margin-bottom:18px}
   .eval h2{color:var(--gd);font:700 13px var(--ff);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px}
   .primary{height:34px;padding:0 16px;border:1px solid oklch(80% 0.15 74 / .5);background:var(--gd-a);color:var(--gd);font:700 12px var(--ff-mono);text-transform:uppercase;margin-top:10px}
   .verdict{margin-top:12px;border:1px solid var(--bd);background:var(--s1);padding:12px}
@@ -114,9 +114,6 @@
       <span class="fxchip" id="fxRate" style="display:none"></span>
     </div>
 
-    <div class="tabs" id="tabs"></div>
-    <div id="panel"></div>
-
     <div class="eval">
       <h2>Evaluate a waystone or tablet</h2>
       <p class="sub">Copy an item in-game (Ctrl+C) and paste it — get its approx. value and the content type it's best paired with.</p>
@@ -124,6 +121,9 @@
       <button class="primary" id="evalBtn" type="button">Evaluate</button>
       <div id="evalOut"></div>
     </div>
+
+    <div class="tabs" id="tabs"></div>
+    <div id="panel"></div>
 
     <p class="foot">
       These regex strings are meant to be pasted into the in-game stash search (Ctrl-F) — this tool can't read your stash directly.
