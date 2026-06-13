@@ -10,7 +10,7 @@
 <style>
 /* Design tokens live in theme.css; page-specific layout follows. */
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--tx);font-family:var(--ff-ui);font-size:13px;min-height:100vh;-webkit-font-smoothing:antialiased}
+body{background:radial-gradient(150% 105% at 50% -25%, oklch(24% 0.045 68 / 0.30), transparent 55%), var(--bg);background-attachment:fixed;color:var(--tx);font-family:var(--ff-ui);font-size:13px;min-height:100vh;-webkit-font-smoothing:antialiased}
 a{color:var(--cy);text-decoration:none}
 a:hover{text-decoration:underline}
 button,.navbtn,.toolbtn{border:1px solid var(--bd);background:var(--s2);color:var(--tx);border-radius:2px;font:inherit;height:32px;cursor:pointer;padding:0 13px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:border-color 120ms,background 120ms,color 120ms}
@@ -39,22 +39,25 @@ input:focus{outline:none;border-color:var(--bd2)}
 
 /* Home */
 .homehead{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:16px;align-items:stretch;margin-bottom:22px}
-.hero{background:var(--s1);border:1px solid var(--bd);border-radius:0;padding:30px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 4px 32px oklch(0 0 0 / 0.5)}
-h1{font-family:var(--ff-display);color:var(--gd);font-size:34px;font-weight:700;line-height:1.1;letter-spacing:.04em;text-wrap:balance}
-.lead{color:var(--tx);font-size:13px;line-height:1.65;max-width:65ch;margin-top:12px}
+.hero{position:relative;overflow:hidden;background:linear-gradient(160deg,oklch(17.5% 0.028 58),var(--s1) 62%);border:1px solid var(--bd2);border-radius:0;padding:40px 36px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:var(--sh-2),inset 0 1px 0 oklch(85% 0.12 75 / 0.08)}
+.hero::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--gd) 30%,var(--gd) 70%,transparent);opacity:.55}
+.hero::after{content:"";position:absolute;width:360px;height:360px;right:-110px;top:-150px;background:radial-gradient(circle,oklch(80% 0.15 74 / 0.16),transparent 70%);pointer-events:none}
+.hero>*{position:relative;z-index:1}
+h1{font-family:var(--ff-display);color:var(--gd);font-size:42px;font-weight:700;line-height:1.04;letter-spacing:.03em;text-wrap:balance;text-shadow:0 0 30px oklch(80% 0.15 74 / 0.28)}
+.lead{color:var(--tx);font-size:14px;line-height:1.7;max-width:62ch;margin-top:14px}
 .heroactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:24px}
 .primary{background:var(--gd-a);border-color:oklch(80% 0.15 74 / 0.5);color:var(--gd);font-weight:700}
 .primary:hover{background:oklch(80% 0.15 74 / 0.18);border-color:var(--gd)}
 .secondary{color:var(--mu)}
 .quick{display:flex;flex-direction:column;gap:6px}
-.metric{background:var(--s1);border:1px solid var(--bd);border-radius:0;padding:12px 14px;display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-.metric b{font-family:var(--ff-mono);font-size:18px;font-weight:600;color:var(--gd);white-space:nowrap}
+.metric{background:linear-gradient(180deg,var(--s2),var(--s1));border:1px solid var(--bd);border-radius:0;padding:14px 16px;display:flex;align-items:baseline;justify-content:space-between;gap:8px;box-shadow:var(--sh-1)}
+.metric b{font-family:var(--ff-mono);font-size:20px;font-weight:600;color:var(--gd);white-space:nowrap;text-shadow:0 0 18px oklch(80% 0.15 74 / 0.22)}
 .metric span{color:var(--mu);font-size:10px;line-height:1.4;text-align:right}
 
 /* Tool cards */
 .toolsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:14px}
-.toolcard{position:relative;background:var(--s1);border:1px solid var(--bd);min-height:164px;display:flex;flex-direction:column;justify-content:space-between;padding:20px;box-shadow:var(--sh-1);transition:transform .16s var(--ease),background .16s var(--ease),border-color .16s var(--ease),box-shadow .16s var(--ease)}
-.toolcard:hover{background:var(--s2);border-color:var(--bd2)}
+.toolcard{position:relative;background:linear-gradient(180deg,oklch(15% 0.023 48),var(--s1));border:1px solid var(--bd);min-height:166px;display:flex;flex-direction:column;justify-content:space-between;padding:20px;box-shadow:var(--sh-1);transition:transform .16s var(--ease),background .16s var(--ease),border-color .16s var(--ease),box-shadow .16s var(--ease)}
+.toolcard:hover{background:linear-gradient(180deg,var(--s2),oklch(13.5% 0.022 48));border-color:var(--bd2)}
 /* signature: a thin gold tooltip rule on live tools */
 .toolcard.ready{border-color:var(--gd-b)}
 .toolcard.ready::before{content:"";position:absolute;inset:-1px -1px auto -1px;height:2px;background:linear-gradient(90deg,var(--gd-2),var(--gd));opacity:.85}
