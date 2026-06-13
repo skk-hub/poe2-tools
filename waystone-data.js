@@ -53,43 +53,46 @@ window.WAYSTONE_DATA = {
   ],
 
   // Top waystone reward mods to target when juicing, ORDERED BY MARKET VALUE
-  // (see marketWeights below — derived from live Trade2 price floors). Target
-  // %s are the thresholds where the market starts paying a premium.
+  // (see marketWeights below). Value is %-DEPENDENT — these notes say where on
+  // the curve each stat is worth chasing.
   waystoneTargets: [
-    "increased Pack Size — aim ≥35% (top-paid stat, ~40ex premium tier)",
-    "increased Monster Effectiveness / Magic Monsters — aim ≥30% (≈ as valued as Pack Size)",
-    "increased Rarity of Items found — only pays high: aim ≥50% (mid rarity is near-worthless)",
-    "increased Monster Rarity — cheapest reward stat; nice-to-have, don't pay for it",
-    "more Waystones found in Area (sustain) — utility, not priced",
+    "increased Item Rarity — the top chase: value explodes past ~60% (70%+ ≈ 325ex). Mid rarity (≤50%) is cheap.",
+    "increased Pack Size — best value per % at mid rolls; aim ≥30%. Caps ~40% ≈ 40ex (lower ceiling than Rarity).",
+    "increased Monster Effectiveness / Magic Monsters — tracks Pack Size; aim ≥40% ≈ 37ex.",
+    "increased Monster Rarity — worthless even at high rolls (~1ex); never pay for it.",
+    "more Waystones found in Area (sustain) — utility, not priced.",
   ],
 
-  // ── Market value of waystone reward stats ───────────────────────────────
+  // ── Market value of waystone reward stats (%-AWARE) ──────────────────────
   // Oracle: live PoE2 Trade2 "Waystone (Tier 16)" price-floor sweep. For each
-  // stat we read the cheapest EXALTED-priced Tier-16 listing meeting a
-  // threshold; that floor = the market's marginal price for that roll. Single
-  // "1 ex" listings are AFK/mispriced and ignored — figures read the 2nd–5th
-  // cheapest cluster. Stats correlate (premium maps stack several), so treat
-  // `weight` as a RELATIVE ranking, not an isolated currency value. Re-run the
-  // sweep each patch to refresh. `weight` is normalised to Pack Size = 1.0.
+  // stat we read the cheapest EXALTED-priced Tier-16 listing at several % of
+  // that stat → a price-vs-% CURVE. Key lesson: the same absolute % is NOT
+  // comparable across stats because their roll CEILINGS differ (Rarity rolls
+  // to ~84%, Pack Size only ~41%), so a flat per-stat weight is misleading —
+  // price the rolled % against the stat's own curve. `weight` is the peak
+  // value normalised to the best stat (ranking by ceiling). Floors are
+  // whole-map and correlated, so a map's value ≈ its single best stat, not the
+  // sum. Re-run the sweep each patch.
   marketWeights: {
-    source: "PoE2 Trade2 — Waystone (Tier 16) price-floor sweep",
+    source: "PoE2 Trade2 — Waystone (Tier 16) price-vs-% curve sweep",
     analyzed: "2026-06-13",
     league: "Runes of Aldur",
     baselineEx: 1, // a junk Tier-16 waystone floors at ~1ex
-    // ranked best → worst by premium over baseline
+    note: "Value depends on the rolled %, not just which stat. High Item Rarity is the top chase; Pack Size / Monster Effectiveness win on value-per-% at mid rolls but peak lower.",
+    // ranked by peak (ceiling) value; `curve` = [rolled %, floor ex]
     stats: [
-      { key: "packSize", label: "Pack Size", weight: 1.0, premiumAt: 35,
-        floors: [[25, 20], [35, 40]],
-        tip: "Density — the #1 paid stat. ≥35% is the ~40ex premium tier." },
-      { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.95, premiumAt: 30,
-        floors: [[30, 40]],
-        tip: "Magic-monster density/effectiveness. Nearly as valued as Pack Size." },
-      { key: "itemRarity", label: "Item Rarity", weight: 0.55, premiumAt: 50,
-        floors: [[35, 4], [50, 25]],
-        tip: "Only pays at high rolls (≥50 → ~25ex). Mid rarity barely moves price." },
-      { key: "monsterRarity", label: "Monster Rarity", weight: 0.15, premiumAt: null,
-        floors: [[30, 6], [40, 6]],
-        tip: "Cheapest reward stat — flat ~6ex even at ≥40%. Don't pay for it." },
+      { key: "itemRarity", label: "Item Rarity", weight: 1.0, ceiling: 84, peakEx: 325,
+        curve: [[30, 1], [50, 20], [70, 325]],
+        tip: "Highest ceiling and the top chase — explodes past ~60% (70%+ ≈ 325ex). Mid rarity (≤50%) is cheap." },
+      { key: "packSize", label: "Pack Size", weight: 0.12, ceiling: 41, peakEx: 40,
+        curve: [[20, 1], [30, 20], [40, 40]],
+        tip: "Best value per % at mid rolls (~2ex/%). Caps ~40% → ~40ex; can't reach Rarity's top end." },
+      { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.11, ceiling: 44, peakEx: 37,
+        curve: [[20, 1], [40, 37]],
+        tip: "Tracks Pack Size — strong mid-roll value, peaks ~40% → ~37ex." },
+      { key: "monsterRarity", label: "Monster Rarity", weight: 0.01, ceiling: 62, peakEx: 1,
+        curve: [[40, 1]],
+        tip: "Worthless even at ≥40% (~1ex). Never pay for it." },
     ],
   },
 

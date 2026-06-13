@@ -84,6 +84,8 @@
   .mw-bar{height:6px;background:var(--bg);border:1px solid var(--bd);border-radius:2px;margin:5px 0 4px;overflow:hidden}
   .mw-bar span{display:block;height:100%;background:var(--gd);opacity:.8}
   .mw-tip{color:var(--mu);font:11px var(--ff)}
+  .mw-curve{color:var(--tx);font:11px var(--ff-mono);margin:2px 0}
+  .mw-note-top{color:var(--tx);font:12px var(--ff);margin-bottom:10px;padding:8px 10px;border-left:2px solid oklch(80% 0.15 74 / .5);background:var(--gd-a)}
   .mw-refresh{margin-left:auto;height:24px;font-size:10px}
   .mw-refresh:disabled{opacity:.5;cursor:default}
   .mw-status{color:var(--gd);font:11px var(--ff-mono);margin-bottom:8px}
@@ -183,34 +185,38 @@
     const mw = MW();
     if (!mw || !mw.stats || !mw.stats.length) return "";
     const live = /live refresh/i.test(mw.source || "") || !!liveWeights;
-    const max = Math.max(...mw.stats.map(s => s.weight)) || 1;
+    // Log-scaled bar so a 325ex peak doesn't crush 40ex into invisibility.
+    const peak = (s) => s.peakEx || (s.curve && s.curve.length ? s.curve[s.curve.length-1][1] : 0) || 0;
+    const maxLog = Math.log10(Math.max(10, ...mw.stats.map(peak)));
     const rows = mw.stats.map(s => {
-      const pct = Math.round((s.weight / max) * 100);
-      const floorTop = s.floors && s.floors.length ? s.floors[s.floors.length - 1] : null;
-      const tag = floorTop ? `~${floorTop[1]}ex @ ${floorTop[0]}%+` : "";
-      const aim = s.premiumAt ? `aim ≥${s.premiumAt}%` : "low value";
+      const pk = peak(s);
+      const pct = Math.round((Math.log10(Math.max(1, pk)) / maxLog) * 100);
+      const curveTxt = (s.curve || []).map(([p, ex]) => `${p}%→${ex}ex`).join("  ");
+      const ceil = s.ceiling ? `rolls to ~${s.ceiling}%` : "";
       return `
         <div class="mw-row">
           <div class="mw-top">
             <span class="mw-name">${esc(s.label)}</span>
-            <span class="mw-aim">${esc(aim)}</span>
-            <span class="mw-floor">${esc(tag)}</span>
+            <span class="mw-aim">peak ~${pk}ex</span>
+            <span class="mw-floor">${esc(ceil)}</span>
           </div>
           <div class="mw-bar"><span style="width:${pct}%"></span></div>
+          <div class="mw-curve">${esc(curveTxt)}</div>
           <div class="mw-tip">${esc(s.tip)}</div>
         </div>`;
     }).join("");
     return `
       <div class="card">
         <div class="card-head">
-          <span class="card-title">Mod value — what the market pays for</span>
+          <span class="card-title">Mod value — price vs rolled %</span>
           <span class="card-kind">${live ? "live" : "baked"}</span>
           <button class="copy mw-refresh" id="weightRefresh" type="button" title="Re-sweep live Trade2 prices (rate-limited)">Refresh from market</button>
         </div>
         <div class="card-body">
+          ${mw.note ? `<div class="mw-note-top">${esc(mw.note)}</div>` : ""}
           <div class="mw-list">${rows}</div>
           ${weightStatus ? `<div class="mw-status">${esc(weightStatus)}</div>` : ""}
-          <div class="note">Trade2 Tier-16 price-floor sweep — ${live ? "live" : "baked"} (${esc(mw.analyzed)}, ${esc(mw.league)}). Bar = relative value vs the top stat. Stats correlate, so this is a ranking, not a price tag. <b>Refresh</b> re-runs the sweep against the live market (shared rate limit — at most once every ~2 min).</div>
+          <div class="note">Trade2 Tier-16 price-vs-% sweep — ${live ? "live" : "baked"} (${esc(mw.analyzed)}, ${esc(mw.league)}). Curve = cheapest exalted listing at each rolled %. Same % isn't comparable across stats (different ceilings), so read the curve, not just the bar. <b>Refresh</b> re-runs it live (shared rate limit — at most once every ~2 min).</div>
         </div>
       </div>`;
   }
@@ -319,7 +325,9 @@
     try {
       const r = await fetch("/api/waystone/market-weights");
       const d = await r.json();
-      if (d && d.weights && d.weights.stats && d.weights.stats.length){
+      // Only adopt cache that matches the current %-aware shape (has curves);
+      // ignore stale older-format caches so the baked curves show instead.
+      if (d && d.weights && d.weights.stats && d.weights.stats.length && d.weights.stats[0].curve){
         liveWeights = d.weights;
         rerenderActive();
       }
@@ -377,25 +385,41 @@
     for (const ct of D.contentTypes){ if (ct.id!=="general" && new RegExp(ct.tabletToken,"i").test(t)) return ct; }
     return null;
   }
-  // Score a pasted waystone by market weight: contribution = weight × rolled%.
-  // Returns total score, the best (most valuable) rolled stat, and per-stat rows.
+  // Interpolate a stat's market floor (ex) at a rolled %, from its price-vs-%
+  // curve. Below the first point scales toward 0; above the last, extrapolates
+  // along the final slope (so a near-max Rarity roll prices high).
+  function curveEx(curve, pct){
+    if (!curve || !curve.length || pct <= 0) return 0;
+    if (pct <= curve[0][0]) return curve[0][1] * (pct / curve[0][0]);
+    for (let i = 1; i < curve.length; i++){
+      if (pct <= curve[i][0]){
+        const [x0,y0] = curve[i-1], [x1,y1] = curve[i];
+        return y0 + (y1 - y0) * (pct - x0) / (x1 - x0);
+      }
+    }
+    const a = curve[curve.length-2] || curve[0], b = curve[curve.length-1];
+    const slope = (b[1]-a[1]) / Math.max(1, b[0]-a[0]);
+    return Math.max(b[1], b[1] + slope * (pct - b[0]));
+  }
+
+  // Price a pasted waystone against the %-aware curves. Floors are whole-map, so
+  // a map's value ≈ its single BEST stat (not the sum). Returns that headline ex,
+  // the best stat, and per-stat ex rows.
   function marketScore(text){
     const stats = (MW() && MW().stats) || [];
-    let score = 0, best = null, rows = [];
+    let best = null, rows = [];
     for (const s of stats){
       const re = STAT_RE[s.key]; if (!re) continue;
       const { found, value } = statRoll(text, re);
       if (!found) continue;
-      const contrib = s.weight * value;
-      score += contrib;
-      const premium = s.premiumAt != null && value >= s.premiumAt;
-      const tagCls = premium ? "good" : (s.weight >= 0.5 ? "mid" : "bad");
-      const tagTxt = premium ? "premium" : (s.weight < 0.3 ? "low value" : (value ? "below premium" : "present"));
-      rows.push({ label: s.label, value, contrib, tagCls, tagTxt, weight: s.weight });
-      if (!best || contrib > best.contrib) best = { label: s.label, value, contrib };
+      const ex = Math.round(curveEx(s.curve, value));
+      const tagCls = ex >= 60 ? "good" : ex >= 15 ? "mid" : "bad";
+      const tagTxt = ex >= 60 ? "premium" : ex >= 15 ? "good roll" : "low value";
+      rows.push({ label: s.label, value, ex, tagCls, tagTxt });
+      if (!best || ex > best.ex) best = { label: s.label, value, ex };
     }
-    rows.sort((a,b)=>b.contrib - a.contrib);
-    return { score, best, rows };
+    rows.sort((a,b)=>b.ex - a.ex);
+    return { headlineEx: best ? best.ex : 0, best, rows };
   }
 
   function evaluate(){
@@ -420,23 +444,24 @@
       else if (n===1){ cls="warn"; head=`~ Usable ${name} tablet — low roll`; }
       else { cls="bad"; head=`✗ Weak ${name} tablet — sell/skip`; }
     } else if (isWaystone){
-      // Market-weighted verdict: a high Pack Size / Monster Effectiveness map is
-      // "good" even with low rarity; a pure-rarity map is cheap-to-make.
-      const bestTxt = ms.best ? `${ms.best.label} ${ms.best.value}%` : "no reward stats";
-      if (rarity==="normal"){ cls="warn"; head="White waystone — Alch (or Transmute→Aug→Regal), force Pack Size + Monster Effectiveness"; }
+      // %-aware verdict: a map's value ≈ its single best stat priced off the
+      // curve, so a near-max Rarity roll reads premium even alone.
+      const ex = ms.headlineEx;
+      const bestTxt = ms.best ? `${ms.best.label} ${ms.best.value}% ≈ ${ms.best.ex}ex` : "no reward stats";
+      if (rarity==="normal"){ cls="warn"; head="White waystone — Alch (or Transmute→Aug→Regal), chase high Rarity / Pack Size"; }
       else if (rarity==="magic"){
-        if (ms.score >= 30){ cls="good"; head=`Good blue (best: ${bestTxt}) — Regal then Exalt, keep Pack Size / Monster mods`; }
-        else if (ms.score > 0){ cls="warn"; head=`Weak blue (best: ${bestTxt}) — Aug toward Pack Size, or reroll`; }
-        else { cls="warn"; head="Weak blue — Augment for a reward mod (target Pack Size), or Transmute-reroll"; }
+        if (ex >= 20){ cls="good"; head=`Good blue (best: ${bestTxt}) — Regal then Exalt, push that roll higher`; }
+        else if (ex > 0){ cls="warn"; head=`Weak blue (best: ${bestTxt}) — Aug toward Rarity / Pack Size, or reroll`; }
+        else { cls="warn"; head="Weak blue — Augment for a reward mod, or Transmute-reroll"; }
       } else { // rare or unknown
-        if (ms.score >= 55){ cls="good"; head=`✓ Premium juice (best: ${bestTxt})${dangers.length?" — has risk mods, run anyway":""}`; }
-        else if (ms.score >= 25){ cls=dangers.length?"warn":"good"; head=`Solid map (best: ${bestTxt}) — run it`; }
+        if (ex >= 100){ cls="good"; head=`✓ Premium juice (best: ${bestTxt})${dangers.length?" — has risk mods, run anyway":""}`; }
+        else if (ex >= 30){ cls=dangers.length?"warn":"good"; head=`Solid map (best: ${bestTxt}) — run it`; }
         else if (dangers.length){ cls="bad"; head="⚠ Risky rare, weak rewards — cheap throwaway only"; }
         else { cls="warn"; head=`Mediocre rare (best: ${bestTxt}) — okay to run, low market value`; }
       }
-      scoreHtml = `<div class="scoreline">Market value score <b>${Math.round(ms.score)}</b><span>(weight × rolled %, higher = worth more)</span></div>`;
+      scoreHtml = `<div class="scoreline">Est. floor value <b>≈ ${Math.round(ex)} ex</b><span>(its best stat priced off the live curve)</span></div>`;
       for (const r of ms.rows){
-        lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""} <span style="color:var(--mu)">·×${r.weight}</span>`);
+        lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""} <span style="color:var(--mu)">≈ ${r.ex}ex</span>`);
       }
       if (sustain) lines.push(`<span class="tag mid">sustain</span>Waystone drop chance — utility, not priced`);
     } else {

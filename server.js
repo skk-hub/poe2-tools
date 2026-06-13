@@ -694,12 +694,14 @@ const WAYSTONE_WEIGHTS_FILE = path.join(ROOT, ".waystone-weights.json");
 const WAYSTONE_SWEEP_COOLDOWN_MS = 2 * 60 * 1000;
 const WAYSTONE_SWEEP = {
   tier: 16,
-  // Kept lean (7 searches incl. baseline) to stay gentle on the shared limit.
+  // Multiple thresholds per stat → a price-vs-% CURVE (the same % isn't
+  // comparable across stats, so a flat weight misleads). 10 searches incl.
+  // baseline; cooldown + queue keep it gentle on the shared limit.
   stats: [
-    { key: "packSize", label: "Pack Size", filter: "map_packsize", thresholds: [25, 35], tip: "Density — the top-paid stat." },
-    { key: "monsterEffectiveness", label: "Monster Effectiveness", filter: "map_magic_monsters", thresholds: [30], tip: "Magic-monster density/effectiveness." },
-    { key: "itemRarity", label: "Item Rarity", filter: "map_iir", thresholds: [35, 50], tip: "Pays mainly at high rolls." },
-    { key: "monsterRarity", label: "Monster Rarity", filter: "map_rare_monsters", thresholds: [30], tip: "Cheapest reward stat." },
+    { key: "itemRarity", label: "Item Rarity", filter: "map_iir", prop: "Item Rarity", thresholds: [30, 50, 70], tip: "Highest ceiling and the top chase — explodes past ~60%." },
+    { key: "packSize", label: "Pack Size", filter: "map_packsize", prop: "Pack Size", thresholds: [20, 30, 40], tip: "Best value per % at mid rolls; caps ~40%." },
+    { key: "monsterEffectiveness", label: "Monster Effectiveness", filter: "map_magic_monsters", prop: "Monster Effectiveness", thresholds: [20, 40], tip: "Tracks Pack Size; peaks ~40%." },
+    { key: "monsterRarity", label: "Monster Rarity", filter: "map_rare_monsters", prop: "Monster Rarity", thresholds: [40], tip: "Worthless even at high rolls." },
   ],
 };
 
@@ -717,7 +719,13 @@ function robustWaystoneFloor(prices) {
   return sorted[0];
 }
 
-async function waystoneFloor(league, mapFilters) {
+function waystonePropVal(item, key) {
+  const p = (item.properties || []).find((pr) => String(pr.name || "").includes(key));
+  if (!p) return 0;
+  return Number(String(((p.values || [])[0] || [])[0] || "").replace(/[+%]/g, "")) || 0;
+}
+
+async function waystoneFloor(league, mapFilters, prop) {
   const body = JSON.stringify({
     query: {
       status: { option: "any" },
@@ -731,16 +739,16 @@ async function waystoneFloor(league, mapFilters) {
   });
   const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
   const search = await fetchTrade(searchUrl, { method: "POST", body });
-  const ids = (search.result || []).slice(0, 6);
+  const ids = (search.result || []).slice(0, 8);
   const total = (search.result || []).length;
-  if (!ids.length) return { total: 0, floor: null };
+  if (!ids.length) return { total: 0, floor: null, maxRoll: 0 };
   const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id);
   const fetched = await fetchTrade(fetchUrl);
-  const prices = (fetched.result || [])
-    .filter((e) => e && e.listing && e.listing.price && e.listing.price.currency === "exalted")
-    .map((e) => Number(e.listing.price.amount))
-    .filter((n) => n > 0);
-  return { total, floor: robustWaystoneFloor(prices) };
+  const rows = (fetched.result || [])
+    .filter((e) => e && e.item && e.listing && e.listing.price && e.listing.price.currency === "exalted")
+    .map((e) => ({ p: Number(e.listing.price.amount), roll: prop ? waystonePropVal(e.item, prop) : 0 }))
+    .filter((r) => r.p > 0);
+  return { total, floor: robustWaystoneFloor(rows.map((r) => r.p)), maxRoll: Math.max(0, ...rows.map((r) => r.roll)) };
 }
 
 async function runWaystoneSweep(league) {
@@ -748,26 +756,25 @@ async function runWaystoneSweep(league) {
   const base = baseline.floor || 1;
   const stats = [];
   for (const s of WAYSTONE_SWEEP.stats) {
-    const floors = [];
+    const curve = [];
+    let ceiling = 0;
     for (const t of s.thresholds) {
-      const r = await waystoneFloor(league, { [s.filter]: { min: t } });
-      if (r.floor != null) floors.push([t, Math.round(r.floor)]);
+      const r = await waystoneFloor(league, { [s.filter]: { min: t } }, s.prop);
+      if (r.floor != null) curve.push([t, Math.round(r.floor)]);
+      ceiling = Math.max(ceiling, r.maxRoll || 0);
     }
-    stats.push({ key: s.key, label: s.label, tip: s.tip, floors });
+    const peakEx = curve.length ? curve[curve.length - 1][1] : 0;
+    stats.push({ key: s.key, label: s.label, tip: s.tip, curve, ceiling, peakEx });
   }
-  const topFloor = (st) => (st.floors.length ? st.floors[st.floors.length - 1][1] : 0);
-  const maxTop = Math.max(1, ...stats.map(topFloor));
-  for (const st of stats) {
-    st.weight = Math.round((topFloor(st) / maxTop) * 100) / 100;
-    const prem = st.floors.find(([, ex]) => ex >= Math.max(base * 3, 10));
-    st.premiumAt = prem ? prem[0] : null;
-  }
-  stats.sort((a, b) => b.weight - a.weight);
+  const maxPeak = Math.max(1, ...stats.map((st) => st.peakEx));
+  for (const st of stats) st.weight = Math.round((st.peakEx / maxPeak) * 100) / 100;
+  stats.sort((a, b) => b.peakEx - a.peakEx);
   return {
-    source: "PoE2 Trade2 — Waystone (Tier " + WAYSTONE_SWEEP.tier + ") price-floor sweep (live refresh)",
+    source: "PoE2 Trade2 — Waystone (Tier " + WAYSTONE_SWEEP.tier + ") price-vs-% curve sweep (live refresh)",
     analyzed: new Date().toISOString().slice(0, 10),
     league,
     baselineEx: Math.round(base),
+    note: "Value depends on the rolled %, not just which stat. Read each stat's curve.",
     stats,
     updated: new Date().toISOString(),
   };
