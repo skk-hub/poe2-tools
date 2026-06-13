@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Arbitrage Scanner - PoE Tools</title>
+<title>Arbitrage Scanner — PoE Tools</title>
 <style>
   :root{
     --bg:oklch(10% 0.025 42); --s1:oklch(13% 0.024 42); --s2:oklch(16% 0.022 42);
@@ -23,6 +23,7 @@
   .nav{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
   .navbtn{height:28px;font-size:11px;color:var(--mu);border:1px solid transparent;background:transparent;padding:0 11px;text-decoration:none;display:inline-flex;align-items:center;border-radius:2px}
   .navbtn:hover{color:var(--tx);background:var(--s2);border-color:var(--bd)}
+  .navbtn.active{color:var(--gd);background:var(--gd-a);border-color:oklch(80% 0.15 74 / .35)}
   .shell{max-width:1180px;margin:0 auto;padding:18px 16px}
   .pagehead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:6px 0 18px}
   h1{margin:0;color:var(--gd);font:700 23px/1.1 var(--ff);letter-spacing:.04em}
@@ -69,11 +70,14 @@
   <header class="appbar">
     <div class="appbarin">
       <div class="mark">PoE</div>
-      <span class="brandname">PoE TOOLS</span>
+      <span class="brandname">PoE Tools</span>
       <nav class="nav">
-        <a class="navbtn" href="index.html">Home</a>
-        <a class="navbtn" href="waystone-juicer.html">Map Juicer</a>
+        <a class="navbtn" href="index.html#home">Home</a>
+        <a class="navbtn" href="index.html#craft-pricer">Craft Pricer</a>
+        <a class="navbtn" href="index.html#rune-picker">Rune Picker</a>
         <a class="navbtn" href="character-upgrades.html">Gear Search</a>
+        <a class="navbtn" href="waystone-juicer.html">Map Juicer</a>
+        <a class="navbtn active" href="arbitrage-scanner.html">Arbitrage</a>
       </nav>
     </div>
   </header>
@@ -103,8 +107,9 @@
         <div class="checks" style="margin-top:12px">
           <label class="check"><input id="catCurrency" type="checkbox" checked> Currency</label>
           <label class="check"><input id="catFragments" type="checkbox" checked> Fragments</label>
+          <label class="check"><input id="forceRefresh" type="checkbox"> Force live refresh (skip 2-min cache)</label>
         </div>
-        <div class="hint">The scanner compares buying an item with ex and selling that item back to ex. Results are estimates, not guarantees; whisper/stock can change before you execute both legs.</div>
+        <div class="hint">Compares buying an item with ex vs. selling it back to ex via the official Currency Exchange. A scan is just 2 Trade2 calls (all buy legs + all sell legs) and results cache for 2 min — repeat scans reuse the cache unless you tick <b>Force live refresh</b>. Results are estimates; whisper/stock can change before you execute both legs.</div>
       </div>
     </section>
 
@@ -125,12 +130,22 @@ const els = {
   slippagePct: document.getElementById("slippagePct"),
   catCurrency: document.getElementById("catCurrency"),
   catFragments: document.getElementById("catFragments"),
+  forceRefresh: document.getElementById("forceRefresh"),
 };
 
 function esc(s){return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
 function num(id){return Number(els[id].value) || 0;}
 function fmt(n, d=2){return Number(n || 0).toLocaleString(undefined, {maximumFractionDigits:d});}
 function setStatus(text, cls=""){els.status.textContent = text; els.status.className = "statusline " + cls;}
+function limitUntil(data){
+  return data?.tradeStatus?.tradeLimitedUntil || data?.tradeLimitedUntil || "";
+}
+function fmtLimitUntil(data){
+  const raw = limitUntil(data);
+  if (!raw) return "";
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? raw : d.toLocaleString();
+}
 
 function payload(){
   return {
@@ -143,7 +158,7 @@ function payload(){
       currency: els.catCurrency.checked,
       fragments: els.catFragments.checked,
     },
-    force: true,
+    force: els.forceRefresh.checked,
   };
 }
 
@@ -163,10 +178,15 @@ function render(data){
   renderSummary(data);
   const rows = data.opportunities || [];
   if (!rows.length) {
+    const until = fmtLimitUntil(data);
+    const scanned = (data.universe || []).length;
+    const skipped = (data.errors || []).length;
     els.results.className = "empty";
     els.results.innerHTML = data.limited
-      ? "Trade2 is currently rate limited and no matching cached opportunities are available."
-      : "No flips passed the current net profit, ROI, stock, and slippage filters.";
+      ? "Trade2 is currently rate limited" + (until ? " until " + esc(until) : "") + " and no matching cached opportunities are available."
+      : `Scanned ${scanned} pair${scanned === 1 ? "" : "s"} — none cleared your net-profit / ROI / stock filters. `
+        + `The Currency Exchange spread is usually negative for an instant round-trip, so profitable flips are brief mispricings; lower the thresholds or re-scan later.`
+        + (skipped ? ` (${skipped} had no offer on one side.)` : "");
     return;
   }
   els.results.className = "";
@@ -209,7 +229,10 @@ async function scan(){
     });
     const data = await res.json();
     render(data);
-    if (data.limited) setStatus("Trade2 limited. Showing cached data when available.", "err");
+    if (data.limited) {
+      const until = fmtLimitUntil(data);
+      setStatus("Trade2 limited" + (until ? " until " + until : "") + ". Showing cached data when available.", "err");
+    }
     else if (data.cached) setStatus("Loaded cached scan from " + (data.updated || "recently") + ".", "ok");
     else setStatus("Scan complete: " + (data.opportunities || []).length + " opportunities.", "ok");
   } catch (err) {

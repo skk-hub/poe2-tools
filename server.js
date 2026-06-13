@@ -509,18 +509,43 @@ async function resolveArbitrageItems(league) {
   return items;
 }
 
-async function fetchExchangeBest(league, haveId, wantId, minStock) {
+// Batched exchange fetch: `have`/`want` accept arrays, so one call returns
+// offers across MANY currency pairs. The whole scan needs just 2 of these
+// (all buy legs, all sell legs) instead of 2 calls per item — the key fix for
+// repeatedly tripping the shared Trade2 rate limit.
+async function fetchExchangeRaw(league, haveIds, wantIds) {
   const endpoint = "https://www.pathofexile.com/api/trade2/exchange/poe2/" + encodeURIComponent(league);
   const body = JSON.stringify({
     exchange: {
       status: { option: "online" },
-      have: [haveId],
-      want: [wantId],
+      have: Array.isArray(haveIds) ? haveIds : [haveIds],
+      want: Array.isArray(wantIds) ? wantIds : [wantIds],
     },
     engine: "new",
   });
-  const data = await tradeQueue.request(endpoint, { method: "POST", body });
-  return bestExchangeOffer(data, haveId, wantId, minStock);
+  return tradeQueue.request(endpoint, { method: "POST", body });
+}
+
+// The exchange API rejects ~11+ have/want items ("Too many items"), and even a
+// 6-wide batch returns a capped page that starves some currencies (a 9-want buy
+// dropped Divine entirely). A 3-wide batch was verified to cover every currency,
+// so chunk small and merge the offer maps. One side is always [exalted]. Cost:
+// ceil(items/3) calls per leg — ~8 for a full currency+fragment scan vs 22 for
+// the old per-item path.
+const EXCHANGE_BATCH_CAP = 3;
+async function fetchExchangeChunked(league, haveIds, wantIds) {
+  const haveArr = Array.isArray(haveIds) ? haveIds : [haveIds];
+  const wantArr = Array.isArray(wantIds) ? wantIds : [wantIds];
+  const multiOnHave = haveArr.length >= wantArr.length;
+  const list = multiOnHave ? haveArr : wantArr;
+  const fixed = multiOnHave ? wantArr : haveArr;
+  const merged = {};
+  for (let i = 0; i < list.length; i += EXCHANGE_BATCH_CAP) {
+    const chunk = list.slice(i, i + EXCHANGE_BATCH_CAP);
+    const data = await fetchExchangeRaw(league, multiOnHave ? chunk : fixed, multiOnHave ? fixed : chunk);
+    if (data && data.result && typeof data.result === "object") Object.assign(merged, data.result);
+  }
+  return { result: merged };
 }
 
 function arbitrageCacheFresh(cache) {
@@ -549,10 +574,30 @@ async function scanArbitrage(input = {}) {
   const opportunities = [];
   const errors = [];
 
+  // Two batched calls cover every item: all buy legs (give ex, get item) and
+  // all sell legs (give item, get ex). Per-item bestExchangeOffer then filters
+  // the shared response down to each pair.
+  const itemIds = items.map((item) => item.id);
+  let buyData, sellData;
+  try {
+    buyData = await fetchExchangeChunked(league, EXALTED_ID, itemIds);
+    sellData = await fetchExchangeChunked(league, itemIds, EXALTED_ID);
+  } catch (err) {
+    const limited = /rate limited/i.test(String(err && err.message));
+    return {
+      limited,
+      error: limited ? undefined : String(err && err.message).slice(0, 180),
+      stale: Boolean(cached),
+      cachedAt: cached && cached.updated,
+      tradeStatus: tradeStatus(),
+      ...(cached || { opportunities: [], errors: [] }),
+    };
+  }
+
   for (const item of items) {
     try {
-      const buy = await fetchExchangeBest(league, EXALTED_ID, item.id, minStock);
-      const sell = await fetchExchangeBest(league, item.id, EXALTED_ID, minStock);
+      const buy = bestExchangeOffer(buyData, EXALTED_ID, item.id, minStock);
+      const sell = bestExchangeOffer(sellData, item.id, EXALTED_ID, minStock);
       if (!buy || !sell) {
         errors.push({ item: item.name, reason: "missing-side" });
         continue;
