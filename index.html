@@ -8,143 +8,127 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="theme.css">
 <style>
-/* Design tokens live in theme.css; page-specific layout follows. */
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:radial-gradient(150% 105% at 50% -25%, oklch(24% 0.045 68 / 0.30), transparent 55%), var(--bg);background-attachment:fixed;color:var(--tx);font-family:var(--ff-ui);font-size:13px;min-height:100vh;-webkit-font-smoothing:antialiased}
-a{color:var(--cy);text-decoration:none}
-a:hover{text-decoration:underline}
-button,.navbtn,.toolbtn{border:1px solid var(--bd);background:var(--s2);color:var(--tx);border-radius:2px;font:inherit;height:32px;cursor:pointer;padding:0 13px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:border-color 120ms,background 120ms,color 120ms}
-button:hover,.toolbtn:hover{border-color:var(--bd2);background:var(--s3)}
-button:disabled{opacity:.35;cursor:default}
-input{border:1px solid var(--bd);background:var(--s2);color:var(--tx);border-radius:2px;font:inherit;height:32px;width:190px;padding:0 10px;transition:border-color 120ms}
-input:focus{outline:none;border-color:var(--bd2)}
-
-/* App bar */
-.appbar{position:sticky;top:0;z-index:100;background:var(--s3);border-bottom:1px solid var(--bd);box-shadow:0 1px 0 var(--bd),0 4px 24px oklch(0 0 0 / 0.7)}
-.appbarin{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 24px;max-width:1440px;margin:0 auto}
-.brand{display:flex;align-items:center;gap:11px;min-width:0}
-.mark{width:30px;height:30px;border:1px solid oklch(80% 0.15 74 / 0.55);background:oklch(80% 0.15 74 / 0.06);color:var(--gd);border-radius:2px;display:flex;align-items:center;justify-content:center;font-family:var(--ff-display);font-weight:700;font-size:13px;letter-spacing:.05em;box-shadow:0 0 14px oklch(80% 0.15 74 / 0.2),inset 0 1px 0 oklch(80% 0.15 74 / 0.15)}
-.brandtext{min-width:0}
-.brandname{font-family:var(--ff-display);color:var(--gd);font-size:15px;font-weight:700;letter-spacing:.08em;line-height:1.1}
-.brandmeta{color:var(--mu);font-size:10px;margin-top:3px;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap;justify-content:flex-end}
-.navbtn{height:28px;font-size:11px;font-weight:500;color:var(--mu);border-color:transparent;background:transparent;padding:0 11px;letter-spacing:.02em}
-.navbtn:hover{color:var(--tx);background:var(--s2);border-color:var(--bd)}
-.navbtn.active{color:var(--gd);background:var(--gd-a);border-color:oklch(80% 0.15 74 / 0.35)}
-
-/* Shell */
-.shell{padding:26px 24px 44px;max-width:1440px;margin:0 auto}
+/* ===== Hub: modern dashboard, built on theme.css tokens ===== */
+.shell{padding:32px 24px 56px;max-width:1280px;margin:0 auto}
 .view{display:none}
-.view.active{display:block}
+.view.active{display:block;animation:fadeIn .3s var(--ease) both}
+a{color:var(--info);text-decoration:none}
+a:hover{text-decoration:underline}
 
-/* Home */
-.homehead{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:16px;align-items:stretch;margin-bottom:22px}
-.hero{position:relative;overflow:hidden;background:linear-gradient(160deg,oklch(17.5% 0.028 58),var(--s1) 62%);border:1px solid var(--bd2);border-radius:0;padding:40px 36px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:var(--sh-2),inset 0 1px 0 oklch(85% 0.12 75 / 0.08)}
-.hero::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--gd) 30%,var(--gd) 70%,transparent);opacity:.55}
-.hero::after{content:"";position:absolute;width:360px;height:360px;right:-110px;top:-150px;background:radial-gradient(circle,oklch(80% 0.15 74 / 0.16),transparent 70%);pointer-events:none}
+/* App header: sticky, blurred, hairline */
+.appbar{position:sticky;top:0;z-index:100;background:oklch(15% 0.006 270 / 0.78);backdrop-filter:saturate(140%) blur(14px);-webkit-backdrop-filter:saturate(140%) blur(14px);border-bottom:1px solid var(--border)}
+.appbarin{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 24px;max-width:1280px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:11px;min-width:0;text-decoration:none}
+.brand:hover{text-decoration:none}
+.mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(150deg,var(--gold-bright),var(--gold-deep));color:oklch(20% 0.04 70);display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:15px;box-shadow:var(--shadow-sm),inset 0 1px 0 oklch(100% 0 0 / .3)}
+.brandname{font-family:var(--font-display);color:var(--text);font-size:16px;font-weight:700;letter-spacing:.04em;line-height:1.1}
+.brandmeta{color:var(--text-faint);font-size:10.5px;margin-top:2px;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav{display:flex;align-items:center;gap:3px;flex-wrap:wrap;justify-content:flex-end}
+.navbtn{position:relative;height:34px;display:inline-flex;align-items:center;padding:0 13px;border-radius:var(--r);font:500 13px var(--font-ui);color:var(--text-muted);transition:color var(--t),background var(--t)}
+.navbtn:hover{color:var(--text);background:var(--surface-2);text-decoration:none}
+.navbtn.active{color:var(--gold-bright);background:var(--gold-soft)}
+.navbtn.active::after{content:"";position:absolute;left:13px;right:13px;bottom:-9px;height:2px;border-radius:2px;background:var(--gold)}
+
+/* Hero */
+.hero{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:32px;align-items:center;
+  background:linear-gradient(135deg,var(--surface-1),var(--bg-deep) 70%);border:1px solid var(--border);border-radius:var(--r-xl);
+  padding:40px;margin-bottom:34px;box-shadow:var(--shadow-md),var(--inset-hi)}
+.hero::after{content:"";position:absolute;width:480px;height:480px;right:-140px;top:-200px;border-radius:50%;
+  background:radial-gradient(circle,var(--gold-glow),transparent 68%);pointer-events:none}
 .hero>*{position:relative;z-index:1}
-h1{font-family:var(--ff-display);color:var(--gd);font-size:42px;font-weight:700;line-height:1.04;letter-spacing:.03em;text-wrap:balance;text-shadow:0 0 30px oklch(80% 0.15 74 / 0.28)}
-.lead{color:var(--tx);font-size:14px;line-height:1.7;max-width:62ch;margin-top:14px}
-.heroactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:24px}
-.primary{background:var(--gd-a);border-color:oklch(80% 0.15 74 / 0.5);color:var(--gd);font-weight:700}
-.primary:hover{background:oklch(80% 0.15 74 / 0.18);border-color:var(--gd)}
-.secondary{color:var(--mu)}
-.quick{display:flex;flex-direction:column;gap:6px}
-.metric{background:linear-gradient(180deg,var(--s2),var(--s1));border:1px solid var(--bd);border-radius:0;padding:14px 16px;display:flex;align-items:baseline;justify-content:space-between;gap:8px;box-shadow:var(--sh-1)}
-.metric b{font-family:var(--ff-mono);font-size:20px;font-weight:600;color:var(--gd);white-space:nowrap;text-shadow:0 0 18px oklch(80% 0.15 74 / 0.22)}
-.metric span{color:var(--mu);font-size:10px;line-height:1.4;text-align:right}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;color:var(--gold);font:600 11px var(--font-mono);letter-spacing:.12em;text-transform:uppercase}
+.eyebrow::before{content:"";width:18px;height:1px;background:var(--gold);opacity:.6}
+h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;line-height:1.06;letter-spacing:-.02em;margin:14px 0 0;text-wrap:balance}
+.lead{color:var(--text-muted);font-size:15px;line-height:1.6;max-width:54ch;margin-top:14px}
+.heroactions{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
+.hero-stats{display:flex;flex-direction:column;gap:10px;min-width:200px}
+.stat{display:flex;flex-direction:column;gap:2px;padding:14px 18px;background:oklch(100% 0 0 / .025);border:1px solid var(--border);border-radius:var(--r-md)}
+.stat b{font-family:var(--font-mono);font-size:24px;font-weight:600;color:var(--text);letter-spacing:-.01em;line-height:1}
+.stat b.gold{color:var(--gold-bright)}
+.stat span{color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
 
-/* Tool cards */
-.toolsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:14px}
-.toolcard{position:relative;background:linear-gradient(180deg,oklch(15% 0.023 48),var(--s1));border:1px solid var(--bd);min-height:166px;display:flex;flex-direction:column;justify-content:space-between;padding:20px;box-shadow:var(--sh-1);transition:transform .16s var(--ease),background .16s var(--ease),border-color .16s var(--ease),box-shadow .16s var(--ease)}
-.toolcard:hover{background:linear-gradient(180deg,var(--s2),oklch(13.5% 0.022 48));border-color:var(--bd2)}
-/* signature: a thin gold tooltip rule on live tools */
-.toolcard.ready{border-color:var(--gd-b)}
-.toolcard.ready::before{content:"";position:absolute;inset:-1px -1px auto -1px;height:2px;background:linear-gradient(90deg,var(--gd-2),var(--gd));opacity:.85}
-.tooltop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.tooltitle{font-family:var(--ff-display);color:var(--gd);font-size:13px;font-weight:700;line-height:1.3;letter-spacing:.04em}
-.tag{font-size:9px;text-transform:uppercase;letter-spacing:.5px;border:1px solid var(--bd);border-radius:0;padding:2px 6px;color:var(--mu);white-space:nowrap;font-weight:600}
-.tag.live{color:var(--gr);border-color:oklch(67% 0.14 148 / 0.45);background:oklch(67% 0.14 148 / 0.07)}
-.tooldesc{color:var(--mu);font-size:12px;line-height:1.55;margin-top:10px}
-.toolfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:18px}
-.toolbtn{height:28px;font-size:11px;border-radius:2px}
+/* Section label */
+.section-label{display:flex;align-items:center;gap:12px;margin:0 2px 16px;color:var(--text-faint);font:600 11px var(--font-mono);letter-spacing:.14em;text-transform:uppercase}
+.section-label::after{content:"";flex:1;height:1px;background:var(--border)}
 
-/* Page head */
-.pagehead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px}
-.pagehead h1{font-size:22px;margin-bottom:0}
-.sub{color:var(--mu);font-size:11px;margin-top:5px;line-height:1.5}
+/* Tools grid — product cards */
+.tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
+.tool{position:relative;display:flex;flex-direction:column;background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));border:1px solid var(--border);border-radius:var(--r-lg);padding:22px;box-shadow:var(--shadow-sm),var(--inset-hi);
+  transition:transform var(--t),box-shadow var(--t),border-color var(--t)}
+.tool:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg);border-color:var(--border-strong)}
+.tool.ready:hover{border-color:var(--border-gold)}
+.tool-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
+.tool-icon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--gold);background:var(--gold-soft);border:1px solid var(--border-gold)}
+.tool-icon svg{width:22px;height:22px}
+.tool.soon .tool-icon{color:var(--text-faint);background:var(--surface-2);border-color:var(--border)}
+.tool-name{font:700 16px var(--font-ui);color:var(--text);letter-spacing:-.01em;margin:0}
+.tool-desc{color:var(--text-muted);font-size:13px;line-height:1.55;margin:8px 0 0;flex:1}
+.tool-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.tool-meta{color:var(--text-faint);font:500 11.5px var(--font-mono)}
+
+/* Page head (tool views) */
+.pagehead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}
+.pagehead h1{font-size:24px;margin:0}
+.sub{color:var(--text-muted);font-size:12px;margin-top:6px;line-height:1.5}
 .controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.status{color:var(--mu);font-size:11px;min-height:16px;text-align:right;width:100%;font-family:var(--ff-mono)}
-.status.ok{color:var(--gr)}
-.status.err{color:var(--rd)}
-#refresh,#checkRunes{background:var(--gd-a);border-color:oklch(80% 0.15 74 / 0.5);color:var(--gd)}
-#refresh:hover,#checkRunes:hover{background:oklch(80% 0.15 74 / 0.18);border-color:var(--gd)}
+.status{color:var(--text-muted);font-size:11.5px;min-height:16px;text-align:right;width:100%;font-family:var(--font-mono)}
+.status.ok{color:var(--green)} .status.err{color:var(--red)}
+
+/* Generic input + button bridge for legacy markup in tool views */
+input{height:38px;padding:0 12px;border-radius:var(--r);background:var(--bg-deep);color:var(--text);border:1px solid var(--border);font:500 13px var(--font-ui);width:200px;transition:border-color var(--t),box-shadow var(--t)}
+input:focus{outline:none;border-color:var(--border-gold);box-shadow:0 0 0 3px var(--gold-glow)}
+button,.toolbtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:38px;padding:0 16px;border-radius:var(--r);font:600 13px var(--font-ui);color:var(--text);background:var(--surface-2);border:1px solid var(--border);cursor:pointer;text-decoration:none;transition:transform var(--t),background var(--t),border-color var(--t)}
+button:hover,.toolbtn:hover{background:var(--surface-3);border-color:var(--border-strong);transform:translateY(-1px);text-decoration:none}
+button:disabled{opacity:.45;cursor:default;transform:none}
+#checkRunes,#refresh{background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));color:oklch(22% 0.04 70);border-color:transparent;font-weight:700}
+#checkRunes:hover,#refresh:hover{filter:brightness(1.06);box-shadow:var(--shadow-gold)}
 
 /* Rune picker */
-.toolpanel{background:var(--s1);border:1px solid var(--bd);border-radius:0;overflow:hidden}
-.toolbar{background:var(--s2);border-bottom:1px solid var(--bd);padding:12px 14px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.toolbody{padding:14px}
-textarea{width:100%;min-height:210px;resize:vertical;border:1px solid var(--bd);background:oklch(9.5% 0.028 40);color:var(--tx);border-radius:0;font:inherit;line-height:1.5;padding:10px;transition:border-color 120ms}
-textarea:focus{outline:none;border-color:var(--bd2)}
-.paste-zone{border:1px dashed var(--bd2);padding:12px 14px;text-align:center;color:var(--mu);font-size:11px;cursor:pointer;transition:border-color 150ms,background 150ms,color 150ms;margin-bottom:10px;display:flex;flex-direction:column;align-items:center;gap:8px;user-select:none}
-.paste-zone:hover{border-color:var(--gd);color:var(--tx)}
-.paste-zone.drag-over{border-color:var(--gd);background:var(--gd-a)}
-.paste-zone.ocr-running{border-color:var(--cy);color:var(--cy)}
-.paste-zone.ocr-ok{border-color:var(--gr);color:var(--gr)}
-.paste-zone.ocr-err{border-color:var(--rd);color:var(--rd)}
+.toolpanel{background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-sm)}
+.toolbar{background:oklch(100% 0 0 / .02);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.toolbody{padding:16px}
+.tooltitle{font:700 14px var(--font-ui);color:var(--text);letter-spacing:-.01em}
+textarea{width:100%;min-height:210px;resize:vertical;border:1px solid var(--border);background:var(--bg-deep);color:var(--text);border-radius:var(--r);font:13px var(--font-mono);line-height:1.5;padding:12px;transition:border-color var(--t),box-shadow var(--t)}
+textarea:focus{outline:none;border-color:var(--border-gold);box-shadow:0 0 0 3px var(--gold-glow)}
+.paste-zone{border:1.5px dashed var(--border-strong);border-radius:var(--r);padding:14px;text-align:center;color:var(--text-muted);font-size:12px;cursor:pointer;transition:border-color var(--t),background var(--t),color var(--t);margin-bottom:12px;display:flex;flex-direction:column;align-items:center;gap:8px;user-select:none}
+.paste-zone:hover{border-color:var(--gold);color:var(--text);background:var(--gold-soft)}
+.paste-zone.drag-over{border-color:var(--gold);background:var(--gold-soft)}
+.paste-zone.ocr-running{border-color:var(--info);color:var(--info)}
+.paste-zone.ocr-ok{border-color:var(--green);color:var(--green)}
+.paste-zone.ocr-err{border-color:var(--red);color:var(--red)}
 #pastePreview{display:none;max-height:72px;max-width:100%;object-fit:contain;opacity:.75}
-.split{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr);gap:14px;align-items:start}
-.bestbox{background:oklch(67% 0.14 148 / 0.06);border:1px solid oklch(67% 0.14 148 / 0.3);border-radius:0;padding:12px;margin-bottom:12px;color:var(--gr)}
-.bestbox.empty{background:var(--s2);border-color:var(--bd);color:var(--mu)}
-.bestbox b{display:block;color:var(--gd);font-size:14px;margin-bottom:4px;font-weight:700}
-.tablewrap{overflow:auto;border:1px solid var(--bd);border-radius:0}
-table{width:100%;border-collapse:collapse;min-width:720px;background:var(--s1)}
-th,td{padding:7px 10px;border-bottom:1px solid oklch(14% 0.026 40);text-align:left;vertical-align:top}
-th{background:var(--s2);color:var(--mu);font-size:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
-td.num{text-align:right;white-space:nowrap;font-family:var(--ff-mono)}
-.conf{display:inline-block;font:600 10px/1 var(--ff-mono);text-transform:uppercase;letter-spacing:.04em;padding:3px 6px;border:1px solid var(--bd2);border-radius:0;white-space:nowrap;cursor:default}
-.conf-hi{color:var(--gr);border-color:oklch(67% 0.14 148 / .5)}
-.conf-md{color:var(--gd);border-color:oklch(80% 0.15 74 / .5)}
-.conf-lo{color:var(--rd);border-color:oklch(60% 0.14 20 / .5)}
-.conf-no,.conf-unk{color:var(--mu);border-color:var(--bd)}
-.muted{color:var(--mu)}
-.sample{margin-top:8px;color:var(--mu);font-size:11px;line-height:1.5}
+.split{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr);gap:16px;align-items:start}
+.bestbox{background:var(--green-soft);border:1px solid oklch(76% 0.17 152 / .3);border-radius:var(--r);padding:14px;margin-bottom:14px;color:var(--green)}
+.bestbox.empty{background:var(--surface-2);border-color:var(--border);color:var(--text-muted)}
+.bestbox b{display:block;color:var(--text);font-size:14px;margin-bottom:4px;font-weight:700}
+.tablewrap{overflow:auto;border:1px solid var(--border);border-radius:var(--r)}
+table{width:100%;border-collapse:collapse;min-width:720px}
+th,td{padding:9px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{background:oklch(100% 0 0 / .03);color:var(--text-faint);font:600 10px var(--font-ui);text-transform:uppercase;letter-spacing:.06em}
+tbody tr{transition:background var(--t)}
+tbody tr:hover{background:oklch(100% 0 0 / .02)}
+td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
+.conf{display:inline-block;font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;border:1px solid var(--border-strong);border-radius:var(--r-pill);white-space:nowrap;cursor:default}
+.conf-hi{color:var(--green);border-color:oklch(76% 0.17 152 / .4)}
+.conf-md{color:var(--gold);border-color:var(--border-gold)}
+.conf-lo{color:var(--red);border-color:oklch(67% 0.20 25 / .4)}
+.conf-no,.conf-unk{color:var(--text-faint);border-color:var(--border)}
+.muted{color:var(--text-faint)}
+.sample{margin-top:8px;color:var(--text-faint);font-size:11.5px;line-height:1.5}
 
-/* Craft cards */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:1px;background:var(--bd);border:1px solid var(--bd);margin-top:2px}
-.card{background:var(--s1);border:none;overflow:hidden;box-shadow:none;transition:background 150ms}
-.card:hover{background:oklch(12.5% 0.027 40)}
-.ch{background:var(--s2);border-bottom:2px solid var(--gd);padding:13px 18px}
-.ct{font-family:var(--ff-display);color:var(--gd);font-size:12px;font-weight:700;line-height:1.35;letter-spacing:.06em;text-transform:uppercase}
-.cd{color:var(--mu);font-size:11px;line-height:1.5;margin-top:5px}
-.row{display:flex;align-items:flex-start;padding:7px 18px;border-bottom:1px solid oklch(14% 0.026 40);gap:10px;transition:background 100ms}
-.row:last-child{border-bottom:none}
-.row:hover{background:var(--s2)}
-.row.opt{opacity:.45}
-.il{flex:1;min-width:0}
-.in{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.lbl{color:var(--tx)}
-.opt .lbl{color:var(--mu)}
-.bdg{font-size:9px;padding:1px 5px;border-radius:0;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
-.bc{background:oklch(80% 0.15 74 / 0.08);color:oklch(80% 0.15 74 / 0.9);border:1px solid oklch(80% 0.15 74 / 0.2)}
-.be{background:oklch(68% 0.11 210 / 0.08);color:oklch(68% 0.11 210 / 0.9);border:1px solid oklch(68% 0.11 210 / 0.2)}
-.bo{background:oklch(66% 0.11 300 / 0.08);color:oklch(66% 0.11 300 / 0.9);border:1px solid oklch(66% 0.11 300 / 0.2)}
-.bk{background:oklch(68% 0.10 170 / 0.08);color:oklch(68% 0.10 170 / 0.9);border:1px solid oklch(68% 0.10 170 / 0.2)}
-.ot{font-size:10px;color:var(--mu);font-style:italic}
-.nt{color:var(--mu);font-size:10px;margin-top:3px;line-height:1.35}
-.ip{text-align:right;white-space:nowrap;min-width:90px;flex-shrink:0}
-.pc{font-family:var(--ff-mono);font-size:15px;font-weight:600;color:var(--gd)}
-.pd{font-family:var(--ff-mono);color:var(--gr);font-size:10px;font-weight:500;margin-top:2px}
-.pm{font-family:var(--ff-mono);color:var(--mu);font-size:11px;font-style:italic}
-
-/* Card footer */
-.cf{background:oklch(10% 0.028 40);border-top:1px solid var(--bd);padding:11px 18px;display:flex;justify-content:space-between;align-items:center;gap:10px}
-.fl{color:var(--mu);font-size:10px;letter-spacing:.03em;text-transform:uppercase}
-.ft{font-family:var(--ff-mono);font-weight:600;font-size:20px;color:var(--gd);letter-spacing:-.01em}
-.fd{font-family:var(--ff-mono);font-size:11px;color:var(--gr);margin-left:10px;font-weight:500}
-
-@media(max-width:820px){.appbarin{display:block}.nav{justify-content:flex-start;margin-top:10px}.homehead{grid-template-columns:1fr}.pagehead{display:block}.controls{justify-content:flex-start;margin-top:12px}.status{text-align:left}.split{grid-template-columns:1fr}}
-@media(max-width:560px){.shell{padding:14px 12px}.appbarin{padding:10px 14px}.navbtn{flex:1}.hero{padding:20px}h1{font-size:26px}.toolsgrid,.grid{grid-template-columns:1fr}.row{padding:7px 14px}.ch,.cf{padding:10px 14px}input{width:100%}.toolfoot{display:block}.toolbtn{width:100%;margin-top:10px}}
+@media(max-width:860px){
+  .hero{grid-template-columns:1fr;gap:24px;padding:30px 26px}
+  .hero-stats{flex-direction:row;flex-wrap:wrap}
+  .hero-stats .stat{flex:1;min-width:120px}
+  .pagehead{display:block}.controls{justify-content:flex-start;margin-top:12px}.status{text-align:left}
+  .split{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+  .shell{padding:20px 14px 40px}.appbarin{padding:10px 14px}
+  .hero{padding:24px 20px}h1{font-size:30px}
+  .tools{grid-template-columns:1fr}
+  input{width:100%}
+}
 </style>
 </head>
 <body>
@@ -170,100 +154,96 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--ff-mono)}
 </header>
 <main class="shell">
   <section id="home" class="view active" data-view="home">
-    <div class="homehead">
-      <div class="hero">
-        <div>
-          <h1>PoE Tools</h1>
-          <p class="lead">Live poe.ninja prices for crafting materials. Six routes with required floors and full optional costs. Runs local, no login, no delay.</p>
-          <div class="heroactions">
-            <a class="toolbtn primary" href="#craft-pricer" data-view-link="craft-pricer">Open Craft Pricer</a>
-            <a class="toolbtn secondary" href="character-upgrades.html">Gear Search</a>
-            <a class="toolbtn secondary" href="arbitrage-scanner.html">Arbitrage</a>
-            <a class="toolbtn secondary" href="#coming-soon" data-view-link="coming-soon">More Tools</a>
-          </div>
+    <div class="hero">
+      <div class="hero-main">
+        <span class="eyebrow">Runes of Aldur · Patch 0.5</span>
+        <h1>Your Path of Exile&nbsp;2 economy workbench.</h1>
+        <p class="lead">Live poe.ninja and Trade2 pricing for crafting, runes, gear, maps, and currency flips — all in one place. Runs local: no login, no delay.</p>
+        <div class="heroactions">
+          <a class="btn btn-primary" href="#craft-pricer" data-view-link="craft-pricer">Open Craft Pricer</a>
+          <a class="btn" href="character-upgrades.html">Gear Search</a>
+          <a class="btn btn-ghost" href="#coming-soon" data-view-link="coming-soon">More tools</a>
         </div>
       </div>
-      <div class="quick" aria-label="Project status">
-        <div class="metric"><b id="homeToolCount">4</b><span>tools connected to live economy data</span></div>
-        <div class="metric"><b id="homeCraftCount">6</b><span>craft routes tracked</span></div>
-        <div class="metric"><b id="homePriceStatus">Ready</b><span>open craft pricer to load prices</span></div>
+      <div class="hero-stats" aria-label="Status">
+        <div class="stat"><b id="homeToolCount">4</b><span>Live tools</span></div>
+        <div class="stat"><b id="homeCraftCount">6</b><span>Craft routes</span></div>
+        <div class="stat"><b class="gold" id="homePriceStatus">Ready</b><span>Economy data</span></div>
       </div>
     </div>
-    <div class="toolsgrid">
-      <article class="toolcard ready">
-        <div>
-          <div class="tooltop">
-            <div class="tooltitle">Craft Price Checker</div>
-            <span class="tag live">Live</span>
-          </div>
-          <p class="tooldesc">Material costs for bow, quiver, amulet, and helmet routes. Required floors and full optional totals per route.</p>
+
+    <div class="section-label">Tools</div>
+    <div class="tools stagger">
+      <article class="tool ready">
+        <div class="tool-top">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L4.8 18A2 2 0 0 0 6.6 21h10.8a2 2 0 0 0 1.8-3L14 8.5V3"/><path d="M7 14h10"/></svg></span>
+          <span class="badge badge-live">Live</span>
         </div>
-        <div class="toolfoot">
-          <span class="sub">poe.ninja economy data.</span>
-          <a class="toolbtn primary" href="#craft-pricer" data-view-link="craft-pricer">Open</a>
-        </div>
-      </article>
-      <article class="toolcard">
-        <div>
-          <div class="tooltop">
-            <div class="tooltitle">Rune Picker</div>
-            <span class="tag live">Live</span>
-          </div>
-          <p class="tooldesc">Paste rune or reward choices, price each poe.ninja match, highlight the highest-value pick.</p>
-        </div>
-        <div class="toolfoot">
-          <span class="sub">Ported from open-poe-runes.ps1.</span>
-          <a class="toolbtn primary" href="#rune-picker" data-view-link="rune-picker">Open</a>
+        <h3 class="tool-name">Craft Price Checker</h3>
+        <p class="tool-desc">Material costs for bow, quiver, amulet, and helmet routes — required floors and full optional totals per route.</p>
+        <div class="tool-foot">
+          <span class="tool-meta">poe.ninja</span>
+          <a class="btn btn-sm btn-primary" href="#craft-pricer" data-view-link="craft-pricer">Open</a>
         </div>
       </article>
-      <article class="toolcard ready">
-        <div>
-          <div class="tooltop">
-            <div class="tooltitle">Gear Search</div>
-            <span class="tag live">Live</span>
-          </div>
-          <p class="tooldesc">Import gear, build slot-aware Trade2 filters, preview the query, and compare current items against candidate listings.</p>
+      <article class="tool ready">
+        <div class="tool-top">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18M9 3 7 9l5 12 5-12-2-6"/></svg></span>
+          <span class="badge badge-live">Live</span>
         </div>
-        <div class="toolfoot">
-          <span class="sub">Mobalytics Crit Hybrid profile.</span>
-          <a class="toolbtn primary" href="character-upgrades.html">Open</a>
-        </div>
-      </article>
-      <article class="toolcard ready">
-        <div>
-          <div class="tooltop">
-            <div class="tooltitle">Map Juicer</div>
-            <span class="tag live">Live</span>
-          </div>
-          <p class="tooldesc">Waystone juicing planner by content type — best blue-to-juiced path plus copy-paste stash regex for waystones and tablets. Patch 0.5.</p>
-        </div>
-        <div class="toolfoot">
-          <span class="sub">Offline · no Trade2.</span>
-          <a class="toolbtn primary" href="waystone-juicer.html">Open</a>
+        <h3 class="tool-name">Rune Picker</h3>
+        <p class="tool-desc">Paste rune or reward choices, price each poe.ninja match, and highlight the highest-value pick.</p>
+        <div class="tool-foot">
+          <span class="tool-meta">poe.ninja</span>
+          <a class="btn btn-sm btn-primary" href="#rune-picker" data-view-link="rune-picker">Open</a>
         </div>
       </article>
-      <article class="toolcard ready">
-        <div>
-          <div class="tooltop">
-            <div class="tooltitle">Arbitrage Scanner</div>
-            <span class="tag live">Live</span>
-          </div>
-          <p class="tooldesc">Manual Currency Exchange scan for ex-based flips across high-volume currency and fragments. Stock capped, slippage buffered.</p>
+      <article class="tool ready">
+        <div class="tool-top">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg></span>
+          <span class="badge badge-live">Live</span>
         </div>
-        <div class="toolfoot">
-          <span class="sub">Official Trade2 exchange.</span>
-          <a class="toolbtn primary" href="arbitrage-scanner.html">Open</a>
+        <h3 class="tool-name">Gear Search</h3>
+        <p class="tool-desc">Import gear, build slot-aware Trade2 filters, preview the query, and compare your items against live listings.</p>
+        <div class="tool-foot">
+          <span class="tool-meta">Trade2</span>
+          <a class="btn btn-sm btn-primary" href="character-upgrades.html">Open</a>
         </div>
       </article>
-      <article class="toolcard">
-        <div>
-          <div class="tooltop">
-            <div class="tooltitle">Farming Notes</div>
-            <span class="tag">Planned</span>
-          </div>
-          <p class="tooldesc">League farming plans, target drops, and expected returns alongside the tools that price them.</p>
+      <article class="tool ready">
+        <div class="tool-top">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 4-6 2v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span>
+          <span class="badge badge-live">Live</span>
         </div>
-        <div class="toolfoot"><span class="sub">Ready for expansion.</span></div>
+        <h3 class="tool-name">Map Juicer</h3>
+        <p class="tool-desc">Waystone juicing planner by content type — best blue-to-juiced path and copy-paste stash regex for waystones and tablets.</p>
+        <div class="tool-foot">
+          <span class="tool-meta">Offline</span>
+          <a class="btn btn-sm btn-primary" href="waystone-juicer.html">Open</a>
+        </div>
+      </article>
+      <article class="tool ready">
+        <div class="tool-top">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></span>
+          <span class="badge badge-live">Live</span>
+        </div>
+        <h3 class="tool-name">Arbitrage Scanner</h3>
+        <p class="tool-desc">Manual Currency Exchange scan for ex-based flips across high-volume currency and fragments — stock capped, slippage buffered.</p>
+        <div class="tool-foot">
+          <span class="tool-meta">Trade2</span>
+          <a class="btn btn-sm btn-primary" href="arbitrage-scanner.html">Open</a>
+        </div>
+      </article>
+      <article class="tool soon">
+        <div class="tool-top">
+          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-8"/><path d="M12 14c0-3.3 2.2-5.5 5.5-5.5C17.5 11.8 15.3 14 12 14Z"/><path d="M12 12c0-3.3-2.2-5.5-5.5-5.5C6.5 9.8 8.7 12 12 12Z"/></svg></span>
+          <span class="badge badge-soon">Planned</span>
+        </div>
+        <h3 class="tool-name">Farming Notes</h3>
+        <p class="tool-desc">League farming plans, target drops, and expected returns alongside the tools that price them.</p>
+        <div class="tool-foot">
+          <span class="tool-meta">Soon</span>
+        </div>
       </article>
     </div>
   </section>
@@ -334,10 +314,25 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--ff-mono)}
         <p class="sub">Placeholder pages for tools in progress.</p>
       </div>
     </div>
-    <div class="toolsgrid">
-      <article class="toolcard"><div><div class="tooltitle">Currency Watchlist</div><p class="tooldesc">A saved list of market items with chaos and divine equivalents.</p></div><span class="tag">Planned</span></article>
-      <article class="toolcard"><div><div class="tooltitle">Craft Planner</div><p class="tooldesc">Step-by-step material planning with quantities, failure cases, and expected rerolls.</p></div><span class="tag">Planned</span></article>
-      <article class="toolcard"><div><div class="tooltitle">Profit Notes</div><p class="tooldesc">Farming methods, costs, sale targets, and quick league notes.</p></div><span class="tag">Planned</span></article>
+    <div class="tools stagger">
+      <article class="tool soon">
+        <div class="tool-top"><span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="badge badge-soon">Planned</span></div>
+        <h3 class="tool-name">Currency Watchlist</h3>
+        <p class="tool-desc">A saved list of market items with chaos and divine equivalents, refreshed on demand.</p>
+        <div class="tool-foot"><span class="tool-meta">Soon</span></div>
+      </article>
+      <article class="tool soon">
+        <div class="tool-top"><span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span><span class="badge badge-soon">Planned</span></div>
+        <h3 class="tool-name">Craft Planner</h3>
+        <p class="tool-desc">Step-by-step material planning with quantities, failure cases, and expected rerolls.</p>
+        <div class="tool-foot"><span class="tool-meta">Soon</span></div>
+      </article>
+      <article class="tool soon">
+        <div class="tool-top"><span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5a1 1 0 0 1 1-1h10l5 5v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M14 4v6h6M8 14h8M8 17h5"/></svg></span><span class="badge badge-soon">Planned</span></div>
+        <h3 class="tool-name">Profit Notes</h3>
+        <p class="tool-desc">Farming methods, costs, sale targets, and quick league notes in one log.</p>
+        <div class="tool-foot"><span class="tool-meta">Soon</span></div>
+      </article>
     </div>
   </section>
 </main>

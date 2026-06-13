@@ -1,125 +1,192 @@
 /* ============================================================================
-   PoE Tools — shared design system (premium dark workbench)
-   Linked first on every page; pages keep only page-specific layout below it.
-   Identity: a PoE item-tooltip aesthetic — warm near-black, hairline borders,
-   restrained amber gold, data set in mono. Premium via elevation + type +
-   spacing, not rounded corners. Tokens are the single source of truth, so a
-   page that drops its own :root inherits the whole system.
+   PoE Tools — design system v2 (premium dark dashboard)
+   Direction: neutral charcoal base (NOT brown), Inter UI, gold as a sparse
+   accent, soft layered elevation, real radii, modern product cards.
+   Linked first on every page. Tokens are the single source of truth; legacy
+   var names are aliased so existing page CSS keeps working but recolours.
    ============================================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cinzel:wght@600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root{
-  /* ---- Surfaces: warm near-black, clean elevation steps ---- */
-  --bg:oklch(9% 0.020 42);
-  --s1:oklch(12% 0.022 42);
-  --s2:oklch(15.5% 0.022 42);
-  --s3:oklch(20% 0.022 42);
-  --bd:oklch(29% 0.020 42);
-  --bd2:oklch(42% 0.022 42);
-  /* ---- Text: brighter than before to kill the "muddy" low-contrast feel ---- */
-  --tx:oklch(89% 0.014 65);
-  --mu:oklch(62% 0.015 58);
-  /* ---- Accent: restrained amber gold (the one bold color) ---- */
-  --gd:oklch(80% 0.15 74);
-  --gd-2:oklch(71% 0.135 72);
-  --gd-a:oklch(80% 0.15 74 / 0.10);
-  --gd-b:oklch(80% 0.15 74 / 0.35);
-  /* ---- Semantics: profit / risk / info, used only where they mean something ---- */
-  --gr:oklch(71% 0.15 150);
-  --rd:oklch(64% 0.16 24);
-  --cy:oklch(73% 0.11 215);
-  --pu:oklch(68% 0.11 300);
+  /* ---- Charcoal surface scale: near-black, a whisper of cool, ~0 chroma ---- */
+  --bg:           oklch(15.0% 0.006 270);
+  --bg-deep:      oklch(12.5% 0.006 270);
+  --surface-1:    oklch(18.5% 0.006 270);
+  --surface-2:    oklch(22.0% 0.007 271);
+  --surface-3:    oklch(27.0% 0.008 272);
+  --surface-hover:oklch(24.5% 0.008 272);
+  /* hairline borders as light-alpha so they catch light like real UI */
+  --border:       oklch(100% 0 0 / 0.09);
+  --border-strong:oklch(100% 0 0 / 0.16);
+  --border-gold:  oklch(80% 0.14 75 / 0.45);
 
-  /* ---- Type roles ---- */
-  --ff-display:'Cinzel',Georgia,serif;
-  --ff-ui:'Inter',system-ui,-apple-system,sans-serif;
-  --ff-mono:'JetBrains Mono',ui-monospace,monospace;
-  /* aliases so any page's existing var names resolve to the system */
-  --ff:var(--ff-ui); --ui:var(--ff-ui); --display:var(--ff-display);
-  --mono:var(--ff-mono); --text:var(--tx); --muted:var(--mu); --gold:var(--gd);
-  --green:var(--gr); --red:var(--rd); --cyan:var(--cy);
+  /* ---- Text: high-contrast neutral ---- */
+  --text:         oklch(97% 0.002 270);
+  --text-muted:   oklch(74% 0.006 270);
+  --text-faint:   oklch(60% 0.006 270);
 
-  /* ---- Radius / elevation / motion ---- */
-  --r:3px; --r-lg:5px;
-  --sh-1:0 1px 2px oklch(0% 0 0 / .40);
-  --sh-2:0 6px 22px oklch(0% 0 0 / .42);
-  --sh-pop:0 16px 44px oklch(0% 0 0 / .55);
-  --glow:0 0 0 1px var(--gd-b), 0 10px 30px oklch(62% 0.12 70 / .14);
-  --ease:cubic-bezier(.2,.7,.3,1);
+  /* ---- Accent: one warm gold, used sparingly ---- */
+  --gold:         oklch(82% 0.135 78);
+  --gold-bright:  oklch(88% 0.14 82);
+  --gold-deep:    oklch(72% 0.13 70);
+  --gold-soft:    oklch(82% 0.135 78 / 0.12);
+  --gold-glow:    oklch(82% 0.135 78 / 0.22);
+
+  /* ---- Semantics ---- */
+  --green:        oklch(76% 0.17 152);
+  --green-soft:   oklch(76% 0.17 152 / 0.12);
+  --red:          oklch(67% 0.20 25);
+  --red-soft:     oklch(67% 0.20 25 / 0.12);
+  --info:         oklch(74% 0.12 248);
+  --violet:       oklch(72% 0.13 300);
+
+  /* ---- Type ---- */
+  --font-ui:'Inter',system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-display:'Cinzel',Georgia,serif;
+  --font-mono:'JetBrains Mono',ui-monospace,"SF Mono",monospace;
+
+  /* ---- Radius ---- */
+  --r-sm:6px; --r:8px; --r-md:10px; --r-lg:14px; --r-xl:20px; --r-pill:999px;
+
+  /* ---- Elevation (soft, layered, dark) ---- */
+  --shadow-sm:0 1px 2px oklch(0% 0 0 / .35);
+  --shadow-md:0 2px 8px -2px oklch(0% 0 0 / .40), 0 6px 18px -6px oklch(0% 0 0 / .35);
+  --shadow-lg:0 8px 24px -8px oklch(0% 0 0 / .50), 0 18px 48px -14px oklch(0% 0 0 / .45);
+  --shadow-gold:0 8px 30px -8px oklch(72% 0.13 70 / .30);
+  --inset-hi:inset 0 1px 0 oklch(100% 0 0 / .05);
+
+  /* ---- Motion ---- */
+  --ease:cubic-bezier(.2,.6,.2,1);
+  --t:160ms var(--ease);
+  --t-slow:240ms var(--ease);
+
+  /* ===== Legacy aliases → new system (so existing pages recolour cleanly) ===== */
+  --s1:var(--surface-1); --s2:var(--surface-2); --s3:var(--surface-3);
+  --bd:var(--border); --bd2:var(--border-strong);
+  --tx:var(--text); --mu:var(--text-muted); --muted:var(--text-muted); --text:var(--text);
+  --gd:var(--gold); --gd-2:var(--gold-deep); --gd-a:var(--gold-soft); --gd-b:var(--border-gold);
+  --gold:var(--gold); --gr:var(--green); --rd:var(--red); --cy:var(--info); --pu:var(--violet);
+  --green:var(--green); --red:var(--red); --cyan:var(--info);
+  --ff-ui:var(--font-ui); --ff:var(--font-ui); --ui:var(--font-ui);
+  --ff-mono:var(--font-mono); --mono:var(--font-mono);
+  --ff-display:var(--font-display); --display:var(--font-display);
+  --glow:var(--shadow-gold); --ease:var(--ease);
 }
 
-/* ---- Global niceties (additive — safe across pages) ---- */
+/* ---- Base ---- */
+*{ box-sizing:border-box; }
 html{ -webkit-text-size-adjust:100%; }
-body{ -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
-::selection{ background:var(--gd-b); color:oklch(98% 0.02 80); }
-:focus-visible{ outline:2px solid var(--gd); outline-offset:2px; border-radius:var(--r); }
-
-/* Custom scrollbars — quiet, on-brand */
-*{ scrollbar-width:thin; scrollbar-color:var(--bd2) transparent; }
-::-webkit-scrollbar{ width:10px; height:10px; }
-::-webkit-scrollbar-track{ background:transparent; }
-::-webkit-scrollbar-thumb{ background:var(--bd2); border-radius:6px; border:2px solid var(--bg); }
-::-webkit-scrollbar-thumb:hover{ background:oklch(52% 0.03 60); }
-
-/* Numbers read as data: tabular figures wherever mono is used */
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:var(--font-ui); font-size:13.5px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+::selection{ background:var(--gold-glow); color:oklch(99% 0.01 80); }
+:focus-visible{ outline:none; box-shadow:0 0 0 3px var(--gold-glow); border-radius:var(--r-sm); }
 .num,[class*="mono"],code,kbd{ font-variant-numeric:tabular-nums; }
+img,svg,video{ max-width:100%; }
+input[type=checkbox],input[type=radio]{ accent-color:var(--gold); }
 
-/* Form controls pick up the brand accent instead of browser default blue/red */
-input[type=checkbox],input[type=radio]{ accent-color:var(--gd); }
+::-webkit-scrollbar{ width:11px; height:11px; }
+::-webkit-scrollbar-track{ background:transparent; }
+::-webkit-scrollbar-thumb{ background:var(--surface-3); border-radius:var(--r-pill); border:3px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover{ background:oklch(34% 0.01 272); }
+*{ scrollbar-width:thin; scrollbar-color:var(--surface-3) transparent; }
 
-/* ---- Motion: entrance + interaction (transform/opacity only) ---- */
-@keyframes fadeUp{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
+/* ============================================================================
+   Reusable components (the shared design language)
+   ============================================================================ */
+
+/* ---- Buttons: bigger, cleaner, clearly clickable ---- */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  height:38px; padding:0 16px; border-radius:var(--r);
+  font:600 13px/1 var(--font-ui); letter-spacing:.01em; white-space:nowrap;
+  color:var(--text); background:var(--surface-2); border:1px solid var(--border);
+  cursor:pointer; text-decoration:none; user-select:none;
+  transition:transform var(--t),background var(--t),border-color var(--t),box-shadow var(--t),color var(--t);
+}
+.btn:hover{ background:var(--surface-3); border-color:var(--border-strong); transform:translateY(-1px); }
+.btn:active{ transform:translateY(0); }
+.btn:disabled{ opacity:.45; cursor:default; transform:none; }
+.btn-primary{
+  background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));
+  color:oklch(22% 0.04 70); border-color:transparent; font-weight:700;
+  box-shadow:var(--shadow-sm);
+}
+.btn-primary:hover{ filter:brightness(1.06); box-shadow:var(--shadow-gold); border-color:transparent; }
+.btn-ghost{ background:transparent; border-color:transparent; color:var(--text-muted); }
+.btn-ghost:hover{ background:var(--surface-2); color:var(--text); border-color:var(--border); }
+.btn-sm{ height:32px; padding:0 12px; font-size:12px; }
+.btn-block{ width:100%; }
+
+/* ---- Badges / status pills ---- */
+.badge{
+  display:inline-flex; align-items:center; gap:6px; height:22px; padding:0 9px;
+  border-radius:var(--r-pill); font:600 10.5px/1 var(--font-ui);
+  text-transform:uppercase; letter-spacing:.05em;
+  color:var(--text-faint); background:var(--surface-2); border:1px solid var(--border);
+}
+.badge-live{ color:var(--green); background:var(--green-soft); border-color:oklch(76% 0.17 152 / .3); }
+.badge-live::before{ content:""; width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 8px var(--green); }
+.badge-soon{ color:var(--text-faint); }
+
+/* ---- Cards / panels ---- */
+.card,.panel{
+  background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));
+  border:1px solid var(--border); border-radius:var(--r-lg);
+  box-shadow:var(--shadow-sm),var(--inset-hi);
+}
+
+/* ---- Inputs ---- */
+.field{
+  height:38px; padding:0 12px; border-radius:var(--r);
+  background:var(--bg-deep); color:var(--text); border:1px solid var(--border);
+  font:500 13px var(--font-ui); transition:border-color var(--t),box-shadow var(--t);
+}
+.field:focus{ outline:none; border-color:var(--border-gold); box-shadow:0 0 0 3px var(--gold-glow); }
+
+/* ============================================================================
+   Motion
+   ============================================================================ */
+@keyframes fadeUp{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:none; } }
 @keyframes fadeIn{ from{ opacity:0; } to{ opacity:1; } }
 
 @media (prefers-reduced-motion: no-preference){
-  .toolcard,.toolpanel,.panel,.card,.hero,.metric,.eval,.tabs,.pagehead,.summary{
-    animation:fadeUp .36s var(--ease) both;
-  }
-  /* gentle stagger for grids/rails */
-  .toolsgrid>*:nth-child(2),.controls>*:nth-child(2){ animation-delay:.03s; }
-  .toolsgrid>*:nth-child(3){ animation-delay:.06s; }
-  .toolsgrid>*:nth-child(4){ animation-delay:.09s; }
-  .toolsgrid>*:nth-child(5){ animation-delay:.12s; }
-  .toolsgrid>*:nth-child(6){ animation-delay:.15s; }
-  .toolsgrid>*:nth-child(n+7){ animation-delay:.18s; }
-
-  /* hover lift + amber glow for elevated surfaces */
-  .toolcard,.metric{ transition:transform .16s var(--ease),border-color .16s var(--ease),background .16s var(--ease),box-shadow .16s var(--ease); }
-  .toolcard:hover{ transform:translateY(-3px); box-shadow:var(--sh-2); }
-  .toolcard.ready:hover{ box-shadow:var(--glow); }
-  .metric:hover{ transform:translateY(-1px); }
+  .anim-in{ animation:fadeUp .42s var(--ease) both; }
+  .stagger>*{ animation:fadeUp .42s var(--ease) both; }
+  .stagger>*:nth-child(2){ animation-delay:.05s; }
+  .stagger>*:nth-child(3){ animation-delay:.10s; }
+  .stagger>*:nth-child(4){ animation-delay:.15s; }
+  .stagger>*:nth-child(5){ animation-delay:.20s; }
+  .stagger>*:nth-child(6){ animation-delay:.25s; }
+  .stagger>*:nth-child(n+7){ animation-delay:.30s; }
+  /* legacy classes still get a gentle entrance + hover lift */
+  .toolcard,.toolpanel,.panel,.card,.hero,.metric{ animation:fadeUp .4s var(--ease) both; }
+  .toolcard,.metric{ transition:transform var(--t),box-shadow var(--t),border-color var(--t),background var(--t); }
+  .toolcard:hover{ transform:translateY(-3px); box-shadow:var(--shadow-lg); }
 }
-
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
 }
 
 /* ============================================================================
-   Responsive — shared rules. Scoped under .appbar/.bar (higher specificity than
-   a bare .nav) so they win over per-page styles regardless of load order.
+   Responsive — shared. Scoped under .appbar/.bar so it beats per-page styles.
    ============================================================================ */
-
-/* Never let media (images/tables/pre) force horizontal page scroll */
-img,svg,video{ max-width:100%; height:auto; }
-
-@media (max-width: 820px){
-  /* App bar stacks: brand row on top, nav becomes a tidy single scroll-row.
-     display:flex overrides per-page `display:block` so the mark + wordmark
-     stay inline instead of stacking. */
-  .appbar .appbarin,.bar .barin{ display:flex; flex-wrap:wrap; align-items:center; row-gap:8px; }
+@media (max-width: 860px){
+  .appbar .appbarin,.bar .barin{ display:flex; flex-wrap:wrap; align-items:center; row-gap:10px; }
   .appbar .nav,.bar .nav{
-    width:100%; margin-top:4px; flex-wrap:nowrap; overflow-x:auto;
-    justify-content:flex-start; gap:3px; -webkit-overflow-scrolling:touch;
+    width:100%; margin-top:2px; flex-wrap:nowrap; overflow-x:auto;
+    justify-content:flex-start; gap:4px; -webkit-overflow-scrolling:touch;
     scrollbar-width:none; -ms-overflow-style:none;
-    mask-image:linear-gradient(90deg,#000 92%,transparent); /* hint there's more to scroll */
+    -webkit-mask-image:linear-gradient(90deg,#000 90%,transparent);
+            mask-image:linear-gradient(90deg,#000 90%,transparent);
   }
   .appbar .nav::-webkit-scrollbar,.bar .nav::-webkit-scrollbar{ display:none; }
-  .appbar .navbtn,.bar .navbtn{ flex:0 0 auto; white-space:nowrap; }
+  .appbar .navbtn,.bar .navbtn,.appbar .nav-link,.bar .nav-link{ flex:0 0 auto; white-space:nowrap; }
 }
-
-/* Touch targets a touch bigger on coarse pointers */
 @media (pointer: coarse){
-  .navbtn{ min-height:34px; }
-  button,.toolbtn,.copy,.primary,.tab{ min-height:38px; }
+  .navbtn,.nav-link{ min-height:36px; }
+  .btn,button,.toolbtn,.copy,.tab{ min-height:40px; }
 }
