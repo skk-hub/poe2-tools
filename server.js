@@ -2263,7 +2263,7 @@ function preserveStatsSatisfied(stats, preserveStats) {
   return { ok: misses.length === 0, misses };
 }
 
-function listingPriceEx(entry, currencyRates) {
+function listingPriceFromEntry(entry, currencyRates) {
   const price = entry.listing && entry.listing.price;
   if (!price || !currencyRates[price.currency]) return null;
   const exalted = roundPriceExalted(Number(price.amount) * currencyRates[price.currency]);
@@ -2417,17 +2417,22 @@ function buildGearSearchStatFilters(slotId, filters) {
       const compositeFilters = compositeKeys
         .map((statKey) => UPGRADE_STAT_IDS[statKey])
         .filter(Boolean)
-        .map((id) => ({ id, value: { weight: 1 } }));
+        .map((id) => ({ id }));
       if (compositeFilters.length) {
         const value = {};
         if (Number.isFinite(min)) value.min = min;
         if (Number.isFinite(max)) value.max = max;
-        composite.push({ 
-          key, 
-          type: "weight", 
-          filters: compositeFilters, 
-          value: Object.keys(value).length ? value : { min: 1 }, 
-          postValue: Object.keys(value).length ? value : undefined 
+        // Anonymous Trade2 rejects `sum`/`weight` stat groups with HTTP 400
+        // "Query is too complex" (those need a logged-in session). Use a broad
+        // `count` prefilter (>=1 component present) to narrow candidates, then
+        // enforce the real combined min/max locally via postValue +
+        // compositeStatsSatisfied on the fetched listings.
+        composite.push({
+          key,
+          type: "count",
+          filters: compositeFilters,
+          value: { min: 1 },
+          postValue: Object.keys(value).length ? value : undefined,
         });
         continue;
       }
@@ -2514,6 +2519,93 @@ function compositeStatsSatisfied(stats, compositeFilters) {
   return { ok: misses.length === 0, misses };
 }
 
+// Derived/aggregate or equipment-property keys whose stored value does not map
+// 1:1 to a single explicit trade stat, so they must not become per-item filters.
+const LISTING_SPEC_SKIP_KEYS = new Set([
+  "totalLife", "totalElementalRes", "totalResistance", "totalFlatAttack",
+  "totalFlatElementalAttack", "totalLocalFlatElemental", "totalLocalFlat", "flatEle",
+  "totalEnergyShield", "totalMovementSpeed", "totalStr", "totalDex", "totalInt",
+  "totalAllAttributes", "totalAttributes", "attributes", "explicitAttributes",
+  "evasion", "energyShield", "deflection", "dps",
+  // The parser folds "+X% to all Elemental Resistances" into fire/cold/lightning
+  // and "+X to all Attributes" into str/dex/int, so these values can exceed the
+  // single explicit stat the trade id filters on and would exclude the item
+  // itself. chaosRes has no such folding and stays.
+  "fireRes", "coldRes", "lightningRes", "str", "dex", "int",
+]);
+
+// Build a compact, self-contained spec for a single listing so the front end can
+// later ask the server to open the official Trade UI focused on (essentially)
+// that item. Only explicit single-mod stats are used; price + base type are the
+// strongest discriminators. No server-side state is kept.
+function buildListingSpec(slot, item, candidateStats, rawPrice) {
+  const stats = [];
+  for (const [key, value] of Object.entries(candidateStats || {})) {
+    if (LISTING_SPEC_SKIP_KEYS.has(key)) continue;
+    const id = UPGRADE_STAT_IDS[key];
+    if (!id || !id.startsWith("explicit.")) continue;
+    const num = Number(value);
+    if (!Number.isFinite(num) || num <= 0) continue;
+    stats.push({ id, value: num });
+  }
+  stats.sort((a, b) => b.value - a.value);
+  // Note: we deliberately do not pin query.type. For magic/rare items the trade
+  // `typeLine` is the affixed name (e.g. "Virile Pearl Ring of Magma"), not a
+  // valid base type, which GGG rejects. Category + exact price + a tight stat
+  // band are specific enough to surface this listing.
+  const spec = {
+    category: slot && slot.category ? slot.category : "",
+    stats: stats.slice(0, 6).map((s) => ({ id: s.id, value: s.value })),
+  };
+  if (rawPrice && rawPrice.currency && Number.isFinite(Number(rawPrice.amount))) {
+    spec.price = { option: String(rawPrice.currency), amount: Number(rawPrice.amount) };
+  }
+  return spec;
+}
+
+function buildListingTradeQuery(spec) {
+  const filters = { type_filters: { filters: { rarity: { option: "nonunique" } } } };
+  if (spec && spec.category) {
+    filters.type_filters.filters.category = { option: String(spec.category) };
+  }
+  if (spec && spec.price && spec.price.option && Number.isFinite(Number(spec.price.amount))) {
+    const amount = Number(spec.price.amount);
+    filters.trade_filters = { filters: { price: { option: String(spec.price.option), min: amount, max: amount } } };
+  }
+  // Filter each stat by min = its rolled value (floored). An exact band would
+  // wrongly exclude the item, because GGG normalizes some mods differently than
+  // our parser (e.g. "+X% to all Elemental Resistances" is its own stat, not the
+  // fire/cold/lightning ids). Combined with category + exact price this yields a
+  // focused, price-sorted search that always contains the listing near the top.
+  const statFilters = ((spec && spec.stats) || [])
+    .filter((s) => s && s.id)
+    .slice(0, 8)
+    .map((s) => {
+      const num = Number(s.value);
+      if (!Number.isFinite(num)) return { id: String(s.id) };
+      return { id: String(s.id), value: { min: Math.floor(num) } };
+    });
+  const query = {
+    // "any" so the item is viewable even if the seller is currently offline.
+    query: { status: { option: "any" }, filters, stats: statFilters.length ? [{ type: "and", filters: statFilters }] : [] },
+    sort: { price: "asc" },
+  };
+  return query;
+}
+
+async function gearListingLink(input) {
+  const spec = input && input.spec;
+  if (!spec || typeof spec !== "object") throw new Error("Missing listing spec");
+  const league = input.league || UPGRADE_GUIDE_PROFILE.league;
+  const status = tradeStatus();
+  if (status.limited) return { limited: true, tradeStatus: status };
+  const query = buildListingTradeQuery(spec);
+  const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
+  const search = await fetchTrade(searchUrl, { method: "POST", body: JSON.stringify(query) });
+  const resultUrl = "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(league) + "/" + search.id;
+  return { url: resultUrl, total: search.total || 0, query, tradeStatus: tradeStatus() };
+}
+
 function analyzeGearSearch(text) {
   const analysis = analyzeUpgradeState(text);
   const slots = gearSearchSlots();
@@ -2535,6 +2627,15 @@ function analyzeGearSearch(text) {
     totals: analysis.totals,
     updated: analysis.updated,
   };
+}
+
+// GGG's listing.account.online is null when offline, otherwise an object that
+// may carry status "afk"/"dnd" (absent = plain online). Note: this reflects the
+// seller, not whether the item is still in their stash.
+function sellerOnlineStatus(account) {
+  const online = account && account.online;
+  if (!online) return "offline";
+  return online.status === "afk" ? "afk" : online.status === "dnd" ? "dnd" : "online";
 }
 
 async function searchGear(input) {
@@ -2579,7 +2680,7 @@ async function searchGear(input) {
   const preferredKeys = PRESERVE_CONTROL_STATS_BY_SLOT[slot.baseId || slotId] || [];
   const listings = [];
   for (const entry of fetchedResults) {
-    const price = listingPriceEx(entry, rates);
+    const price = listingPriceFromEntry(entry, rates);
     if (!price || price.exalted <= 0) continue;
     const item = entry.item || {};
     const candidateStats = parseItemStats(itemTextFromTradeEntry(entry));
@@ -2593,11 +2694,13 @@ async function searchGear(input) {
       priceDiv: price.divine,
       rawPrice: price.raw,
       seller: entry.listing && entry.listing.account ? (entry.listing.account.name || "") : "",
+      sellerStatus: sellerOnlineStatus(entry.listing && entry.listing.account),
       listedAt: entry.listing ? (entry.listing.indexed || "") : "",
       whisper: entry.listing && entry.listing.whisper ? entry.listing.whisper : "",
       stats: compactStats(candidateStats, 12),
       candidateStats,
       comparison: statComparison(currentStats, candidateStats, preferredKeys),
+      tradeSpec: buildListingSpec(slot, item, candidateStats, entry.listing && entry.listing.price),
     });
   }
 
@@ -2692,7 +2795,7 @@ async function searchUpgradeSlot(input) {
   const rejected = [];
   for (const entry of fetchedResults) {
     diagnostics.fetched++;
-    const price = listingPriceEx(entry, rates);
+    const price = listingPriceFromEntry(entry, rates);
     if (!price || price.exalted <= 0) { diagnostics.noPrice++; continue; }
     const stats = parseItemStats(itemTextFromTradeEntry(entry));
     const preserveCheck = preserveStatsSatisfied(stats, preserveStats);
@@ -2897,6 +3000,20 @@ const server = http.createServer(async (req, res) => {
         text: result.text,
         analysis: analyzeGearSearch(result.text),
       }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/gear-search/listing-link" && req.method === "POST") {
+      const input = await readJson(req);
+      try {
+        send(res, 200, JSON.stringify(await gearListingLink(input)), "application/json; charset=utf-8");
+      } catch (err) {
+        if (String(err && err.message).includes("rate limited")) {
+          send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8");
+          return;
+        }
+        throw err;
+      }
       return;
     }
 

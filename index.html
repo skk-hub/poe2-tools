@@ -256,18 +256,9 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--ff-mono)}
     <div class="pagehead">
       <div>
         <h1>Craft Price Checker</h1>
-        <p class="sub">
-          Live poe.ninja prices for the current league.
-          Backup: <a href="poe2-craft-pricer.snapshot.html">snapshot</a> &middot; <a href="poe2-craft-pricer.ps1">PowerShell generator</a>.
-        </p>
-      </div>
-      <div class="controls">
-        <input id="league" value="Runes of Aldur" aria-label="League">
-        <button id="refresh" type="button">Refresh prices</button>
-        <div id="status" class="status">No prices loaded yet.</div>
+        <p class="sub">This tool is being rebuilt. Check back soon.</p>
       </div>
     </div>
-    <div class="grid" id="grid"></div>
   </section>
 
   <section id="rune-picker" class="view" data-view="rune-picker">
@@ -450,14 +441,22 @@ function confBadge(item){
   const suffix=(u!=null&&item.confidence!=="high")?" "+u:"";
   return '<span class="conf '+m[0]+'" title="'+esc(tip)+'">'+m[1]+suffix+'</span>';
 }
-function setStatus(text,kind){statusEl.textContent=text;statusEl.className="status "+(kind||"")}
+function setStatus(text,kind){if(!statusEl)return;statusEl.textContent=text;statusEl.className="status "+(kind||"")}
 function setRuneStatus(text,kind){runeStatus.textContent=text;runeStatus.className="status "+(kind||"")}
+
+// European-style date/time display (DD/MM/YYYY, 24h) for trade-limit timestamps.
+function fmtEuTime(value){
+  if(value===""||value===null||value===undefined) return "";
+  const d=new Date(value);
+  if(isNaN(d.getTime())) return String(value);
+  return d.toLocaleString("en-GB",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+}
 
 function updateTradeLimitUi(){
   const remaining=Math.ceil((tradeLimitedUntil-Date.now())/1000);
   if(remaining>0){
-    const until=new Date(tradeLimitedUntil).toLocaleTimeString();
-    setRuneStatus("Trade2 limited until "+until+". Trade queue waits "+remaining+"s; poe.ninja checks still work.", "err");
+    const until=fmtEuTime(tradeLimitedUntil);
+    setRuneStatus("Trade2 limited until "+until+" ("+remaining+"s). Trade queue waits; poe.ninja checks still work.", "err");
     return true;
   }
   tradeLimitedUntil=0;
@@ -506,6 +505,7 @@ function showView(){
 }
 
 function render(){
+  if(!grid) return;
   grid.innerHTML="";
   for(const craft of CRAFTS){
     let tot=0,all=0;
@@ -642,7 +642,7 @@ async function checkRunes(){
     const data=await r.json();
     renderRuneResults(data);
     const queued=(data.results||[]).filter(item=>item.category==="TRADE QUEUED").length;
-    const limited=data.tradeLimitedUntil?" Trade2 limited until "+new Date(data.tradeLimitedUntil).toLocaleTimeString()+".":"";
+    const limited=data.tradeLimitedUntil?" Trade2 limited until "+fmtEuTime(data.tradeLimitedUntil)+".":"";
     setRuneStatus("Checked "+data.count+" picks"+(queued?"; "+queued+" trade rows queued":"")+(data.truncated?" (first 30 lines only)":"")+"."+limited, data.tradeLimitedUntil?"err":"ok");
     if(data.tradeLimitedUntil) setTradeLimit(data.tradeLimitedUntil);
     if(queued) processTradeQueue(data.results,league);
@@ -725,6 +725,7 @@ pasteZoneEl.addEventListener("click",()=>{
 });
 
 async function refreshPrices(){
+  if(!grid||!leagueInput||!refreshBtn) return;
   const league=leagueInput.value.trim()||"Runes of Aldur";
   if(location.protocol==="file:"){
     setStatus("Live refresh needs Start PoE2 Craft Pricer.cmd so the page can use localhost.", "err");
@@ -750,7 +751,7 @@ async function refreshPrices(){
   }
 }
 
-refreshBtn.addEventListener("click",refreshPrices);
+if(refreshBtn) refreshBtn.addEventListener("click",refreshPrices);
 checkRunesBtn.addEventListener("click",checkRunes);
 pasteRunesBtn.addEventListener("click",pasteRunes);
 window.addEventListener("hashchange",showView);

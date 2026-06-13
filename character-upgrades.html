@@ -120,6 +120,14 @@
     .lock-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
     .lock-toggle { width: auto; min-height: 30px; padding: 0 10px; font: 700 11px var(--ff-mono); text-transform: uppercase; }
     .lock-toggle.active { color: var(--gd); border-color: oklch(80% 0.15 74 / .5); background: var(--gd-a); }
+    .view-trade { width: auto; min-height: 30px; padding: 0 10px; font: 700 11px var(--ff-mono); text-transform: uppercase; }
+    .view-trade:disabled { opacity: .6; cursor: default; }
+    .badge { display: inline-block; padding: 1px 6px; margin-right: 6px; border: 1px solid var(--bd); border-radius: 2px; font: 700 10px var(--ff-mono); text-transform: uppercase; letter-spacing: .04em; vertical-align: middle; }
+    .badge.online { color: var(--gr); border-color: oklch(67% 0.14 148 / .5); }
+    .badge.afk, .badge.dnd { color: var(--gd); border-color: oklch(80% 0.15 74 / .5); }
+    .badge.offline { color: var(--mu); }
+    .badge.stale { color: var(--rd); border-color: oklch(62% 0.14 20 / .5); }
+    .badge.fresh { color: var(--gr); border-color: oklch(67% 0.14 148 / .5); }
     .projection-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     .projection-table th, .projection-table td { padding: 7px 9px; border-bottom: 1px solid var(--bd); text-align: right; font: 11px var(--ff-mono); }
     .projection-table th:first-child, .projection-table td:first-child { text-align: left; font-family: var(--ff-ui); color: var(--mu); }
@@ -665,12 +673,45 @@
       });
     }
 
+    // Relative "x ago" for a listing's index time, plus a staleness flag. PoE
+    // re-indexes stashes periodically, so an old index time means the item is
+    // more likely already sold/moved (the seller can still be online).
+    function fmtAgo(value) {
+      if (!value) return "";
+      const t = new Date(value).getTime();
+      if (isNaN(t)) return "";
+      const sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+      if (sec < 60) return sec + "s ago";
+      const min = Math.round(sec / 60);
+      if (min < 60) return min + "m ago";
+      const hr = Math.round(min / 60);
+      if (hr < 24) return hr + "h ago";
+      return Math.round(hr / 24) + "d ago";
+    }
+    function ageBucket(value) {
+      const t = new Date(value || 0).getTime();
+      if (isNaN(t) || !value) return "";
+      const hours = (Date.now() - t) / 3600000;
+      if (hours < 1) return "fresh";
+      if (hours >= 12) return "stale";
+      return "";
+    }
+    const SELLER_STATUS_LABEL = { online: "online", afk: "afk", dnd: "dnd", offline: "offline" };
+
+    // European-style date/time display (DD/MM/YYYY, 24h) for trade-limit timestamps.
+    function fmtEuTime(value) {
+      if (value === "" || value === null || value === undefined) return "";
+      const d = new Date(value);
+      if (isNaN(d.getTime())) return String(value);
+      return d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+    }
+
     async function refreshStatus() {
       try {
         const status = await api("/api/trade-status");
         const q = status.queue || {};
         els.status.innerHTML = status.limited
-          ? `Trade queue: <b>limited</b><br>${escapeHtml(status.tradeLimitedUntil)}`
+          ? `Trade queue: <b>limited</b><br>until ${escapeHtml(fmtEuTime(status.tradeLimitedUntil))}${status.secondsRemaining ? ` (${status.secondsRemaining}s)` : ""}`
           : `Trade queue: <b>ready</b><br>${q.queued || 0} queued / ${q.active || 0} active / ${q.minGapMs || 0}ms`;
       } catch (err) {
         els.status.innerHTML = `Trade queue: <b>offline</b>`;
@@ -1104,7 +1145,7 @@
       state.result = result;
       renderSummary(result);
       if (result.limited) {
-        els.results.innerHTML = `<div class="empty">Trade2 is rate limited until ${escapeHtml(result.tradeStatus && result.tradeStatus.tradeLimitedUntil)}.</div>`;
+        els.results.innerHTML = `<div class="empty">Trade2 is rate limited until ${escapeHtml(fmtEuTime(result.tradeStatus && result.tradeStatus.tradeLimitedUntil))}.</div>`;
         return;
       }
       if (!result.listings || !result.listings.length) {
@@ -1127,10 +1168,15 @@
             <div class="listing-head">
               <div>
                 <div class="listing-title">${escapeHtml(item.name)}</div>
-                <div class="muted">${escapeHtml(item.seller || "unknown seller")} ${item.listedAt ? " / " + escapeHtml(item.listedAt) : ""}</div>
+                <div class="muted">
+                  ${item.sellerStatus ? `<span class="badge ${escapeHtml(item.sellerStatus)}" title="Seller account status (not item availability)">${escapeHtml(SELLER_STATUS_LABEL[item.sellerStatus] || item.sellerStatus)}</span>` : ""}
+                  ${escapeHtml(item.seller || "unknown seller")}
+                  ${item.listedAt ? `<span class="badge ${ageBucket(item.listedAt)}" title="Listed ${escapeHtml(fmtEuTime(item.listedAt))} — older listings are more likely stale">${escapeHtml(fmtAgo(item.listedAt))}</span>` : ""}
+                </div>
               </div>
               <div class="lock-actions">
                 <div class="price">${escapeHtml(item.rawPrice)}<br><span class="muted">${fmt(item.priceDiv || 0)} div</span></div>
+                ${item.tradeSpec ? `<button class="view-trade" type="button" data-listing-view="${escapeHtml(item.id)}" data-listing-slot="${escapeHtml(item.slot)}" title="Open this item in the official PoE2 Trade UI">View on Trade</button>` : ""}
                 <button class="lock-toggle ${isLocked ? "active" : ""}" type="button" data-listing-lock="${escapeHtml(item.id)}" data-listing-slot="${escapeHtml(item.slot)}" title="${isLocked ? "Unlock item" : "Lock item"}">
                   <span aria-hidden="true">${isLocked ? "🔒" : "🔓"}</span>${isLocked ? "Unlock" : "Lock"}
                 </button>
@@ -1149,6 +1195,40 @@
           const id = button.getAttribute("data-listing-lock");
           const listing = (result.listings || []).find((item) => item.slot === slot && item.id === id);
           if (listing) lockListing(listing);
+        });
+      });
+      els.results.querySelectorAll("[data-listing-view]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const slot = button.getAttribute("data-listing-slot");
+          const id = button.getAttribute("data-listing-view");
+          const listing = (result.listings || []).find((item) => item.slot === slot && item.id === id);
+          if (!listing || !listing.tradeSpec) return;
+          // Open the tab synchronously so the popup blocker allows it, then
+          // point it at the search the server builds for this single item.
+          const win = window.open("", "_blank");
+          const original = button.textContent;
+          button.disabled = true;
+          button.textContent = "Opening...";
+          try {
+            const data = await api("/api/gear-search/listing-link", { spec: listing.tradeSpec, league: result.league });
+            if (data.limited) {
+              if (win) win.close();
+              button.textContent = "Rate limited";
+            } else if (data.url) {
+              if (win) { win.location = data.url; } else { window.open(data.url, "_blank"); }
+              button.textContent = "Opened";
+            } else {
+              if (win) win.close();
+              button.textContent = "No link";
+            }
+          } catch (err) {
+            if (win) win.close();
+            button.textContent = "Failed";
+          } finally {
+            button.disabled = false;
+            setTimeout(() => { button.textContent = original; }, 1500);
+            refreshStatus();
+          }
         });
       });
     }
