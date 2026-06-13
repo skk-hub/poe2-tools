@@ -685,6 +685,94 @@ async function fetchCurrencyRates(league) {
   return rates;
 }
 
+// ── Waystone market-weight sweep (Map Juicer "refresh weights") ─────────────
+// Re-derives how much the market pays for each waystone reward stat by reading
+// the cheapest exalted-priced Tier-N listing at increasing stat thresholds.
+// Goes through the shared adaptive Trade2 queue; cached to a file + rate-limit
+// + cooldown guarded so a button click can't exhaust the shared limit.
+const WAYSTONE_WEIGHTS_FILE = path.join(ROOT, ".waystone-weights.json");
+const WAYSTONE_SWEEP_COOLDOWN_MS = 10 * 60 * 1000;
+const WAYSTONE_SWEEP = {
+  tier: 16,
+  // Kept lean (7 searches incl. baseline) to stay gentle on the shared limit.
+  stats: [
+    { key: "packSize", label: "Pack Size", filter: "map_packsize", thresholds: [25, 35], tip: "Density — the top-paid stat." },
+    { key: "monsterEffectiveness", label: "Monster Effectiveness", filter: "map_magic_monsters", thresholds: [30], tip: "Magic-monster density/effectiveness." },
+    { key: "itemRarity", label: "Item Rarity", filter: "map_iir", thresholds: [35, 50], tip: "Pays mainly at high rolls." },
+    { key: "monsterRarity", label: "Monster Rarity", filter: "map_rare_monsters", thresholds: [30], tip: "Cheapest reward stat." },
+  ],
+};
+
+function readWaystoneWeights() {
+  try { return JSON.parse(fs.readFileSync(WAYSTONE_WEIGHTS_FILE, "utf8")); }
+  catch { return null; }
+}
+
+// Robust floor: dodge a single AFK/mispriced listing by preferring the 2nd
+// cheapest when the cheapest is less than half of it.
+function robustWaystoneFloor(prices) {
+  const sorted = prices.slice().sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  if (sorted.length >= 2 && sorted[0] < sorted[1] * 0.5) return sorted[1];
+  return sorted[0];
+}
+
+async function waystoneFloor(league, mapFilters) {
+  const body = JSON.stringify({
+    query: {
+      status: { option: "any" },
+      filters: {
+        type_filters: { filters: { category: { option: "map.waystone" } } },
+        map_filters: { filters: Object.assign({ map_tier: { min: WAYSTONE_SWEEP.tier, max: WAYSTONE_SWEEP.tier } }, mapFilters) },
+        trade_filters: { filters: { price: { option: "exalted" } } },
+      },
+    },
+    sort: { price: "asc" },
+  });
+  const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
+  const search = await fetchTrade(searchUrl, { method: "POST", body });
+  const ids = (search.result || []).slice(0, 6);
+  const total = (search.result || []).length;
+  if (!ids.length) return { total: 0, floor: null };
+  const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id);
+  const fetched = await fetchTrade(fetchUrl);
+  const prices = (fetched.result || [])
+    .filter((e) => e && e.listing && e.listing.price && e.listing.price.currency === "exalted")
+    .map((e) => Number(e.listing.price.amount))
+    .filter((n) => n > 0);
+  return { total, floor: robustWaystoneFloor(prices) };
+}
+
+async function runWaystoneSweep(league) {
+  const baseline = await waystoneFloor(league, {});
+  const base = baseline.floor || 1;
+  const stats = [];
+  for (const s of WAYSTONE_SWEEP.stats) {
+    const floors = [];
+    for (const t of s.thresholds) {
+      const r = await waystoneFloor(league, { [s.filter]: { min: t } });
+      if (r.floor != null) floors.push([t, Math.round(r.floor)]);
+    }
+    stats.push({ key: s.key, label: s.label, tip: s.tip, floors });
+  }
+  const topFloor = (st) => (st.floors.length ? st.floors[st.floors.length - 1][1] : 0);
+  const maxTop = Math.max(1, ...stats.map(topFloor));
+  for (const st of stats) {
+    st.weight = Math.round((topFloor(st) / maxTop) * 100) / 100;
+    const prem = st.floors.find(([, ex]) => ex >= Math.max(base * 3, 10));
+    st.premiumAt = prem ? prem[0] : null;
+  }
+  stats.sort((a, b) => b.weight - a.weight);
+  return {
+    source: "PoE2 Trade2 — Waystone (Tier " + WAYSTONE_SWEEP.tier + ") price-floor sweep (live refresh)",
+    analyzed: new Date().toISOString().slice(0, 10),
+    league,
+    baselineEx: Math.round(base),
+    stats,
+    updated: new Date().toISOString(),
+  };
+}
+
 async function fetchPrices(league) {
   const prices = {};
   let divineRate = 0;
@@ -2931,6 +3019,37 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/trade-status") {
       send(res, 200, JSON.stringify(tradeStatus()), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/waystone/market-weights") {
+      send(res, 200, JSON.stringify({ weights: readWaystoneWeights(), tradeStatus: tradeStatus() }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/waystone/market-weights/refresh" && req.method === "POST") {
+      const input = await readJson(req);
+      const league = input.league || "Runes of Aldur";
+      const cached = readWaystoneWeights();
+      const status = tradeStatus();
+      if (status.limited) {
+        send(res, 200, JSON.stringify({ limited: true, weights: cached, tradeStatus: status, tradeLimitedUntil: status.tradeLimitedUntil }), "application/json; charset=utf-8");
+        return;
+      }
+      // Cooldown so a button can't hammer the shared limit (override with force).
+      if (!input.force && cached && cached.updated && Date.now() - new Date(cached.updated).getTime() < WAYSTONE_SWEEP_COOLDOWN_MS) {
+        send(res, 200, JSON.stringify({ cooldown: true, weights: cached, tradeStatus: status }), "application/json; charset=utf-8");
+        return;
+      }
+      try {
+        const weights = await runWaystoneSweep(league);
+        try { fs.writeFileSync(WAYSTONE_WEIGHTS_FILE, JSON.stringify(weights, null, 2)); } catch {}
+        send(res, 200, JSON.stringify({ refreshed: true, weights, tradeStatus: tradeStatus() }), "application/json; charset=utf-8");
+      } catch (err) {
+        const limited = /rate limited/i.test(String(err && err.message));
+        // Never overwrite a good cache on a partial/failed sweep.
+        send(res, 200, JSON.stringify({ limited, error: limited ? undefined : String(err && err.message), weights: cached, tradeStatus: tradeStatus() }), "application/json; charset=utf-8");
+      }
       return;
     }
 

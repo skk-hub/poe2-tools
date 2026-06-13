@@ -82,6 +82,9 @@
   .mw-bar{height:6px;background:var(--bg);border:1px solid var(--bd);border-radius:2px;margin:5px 0 4px;overflow:hidden}
   .mw-bar span{display:block;height:100%;background:var(--gd);opacity:.8}
   .mw-tip{color:var(--mu);font:11px var(--ff)}
+  .mw-refresh{margin-left:auto;height:24px;font-size:10px}
+  .mw-refresh:disabled{opacity:.5;cursor:default}
+  .mw-status{color:var(--gd);font:11px var(--ff-mono);margin-bottom:8px}
   .scoreline{display:flex;align-items:baseline;gap:8px;margin:6px 0 2px;color:var(--mu);font:12px var(--ff-mono)}
   .scoreline b{color:var(--gd);font-size:14px}
   .foot{color:var(--mu);font:12px var(--ff);margin-top:24px;padding-top:14px;border-top:1px solid var(--bd)}
@@ -128,6 +131,11 @@
 <script>
   const D = window.WAYSTONE_DATA;
   const T = D.tokens;
+  // Market weights: baked default from data.js, optionally overridden live by
+  // the server "refresh from market" sweep (/api/waystone/market-weights).
+  let liveWeights = null;
+  let weightStatus = "";
+  function MW(){ return liveWeights || D.marketWeights; }
   const els = {
     tabs: document.getElementById("tabs"),
     panel: document.getElementById("panel"),
@@ -168,8 +176,9 @@
   // Market-derived value ranking of waystone reward stats (baked from a live
   // Trade2 Tier-16 price-floor sweep — see waystone-data.js marketWeights).
   function marketCard(){
-    const mw = D.marketWeights;
+    const mw = MW();
     if (!mw || !mw.stats || !mw.stats.length) return "";
+    const live = /live refresh/i.test(mw.source || "") || !!liveWeights;
     const max = Math.max(...mw.stats.map(s => s.weight)) || 1;
     const rows = mw.stats.map(s => {
       const pct = Math.round((s.weight / max) * 100);
@@ -189,10 +198,15 @@
     }).join("");
     return `
       <div class="card">
-        <div class="card-head"><span class="card-title">Mod value — what the market pays for</span><span class="card-kind">market</span></div>
+        <div class="card-head">
+          <span class="card-title">Mod value — what the market pays for</span>
+          <span class="card-kind">${live ? "live" : "baked"}</span>
+          <button class="copy mw-refresh" id="weightRefresh" type="button" title="Re-sweep live Trade2 prices (rate-limited)">Refresh from market</button>
+        </div>
         <div class="card-body">
           <div class="mw-list">${rows}</div>
-          <div class="note">From a live Trade2 Tier-16 price-floor sweep (${esc(mw.analyzed)}, ${esc(mw.league)}). Bar = relative value vs Pack Size. Stats correlate, so this is a ranking, not a price tag. Re-run the sweep each patch.</div>
+          ${weightStatus ? `<div class="mw-status">${esc(weightStatus)}</div>` : ""}
+          <div class="note">Trade2 Tier-16 price-floor sweep — ${live ? "live" : "baked"} (${esc(mw.analyzed)}, ${esc(mw.league)}). Bar = relative value vs the top stat. Stats correlate, so this is a ranking, not a price tag. <b>Refresh</b> re-runs the sweep against the live market (shared rate limit — once every ~10 min).</div>
         </div>
       </div>`;
   }
@@ -238,6 +252,55 @@
         ["Any top reward mod already rolled", "no risky suffixes"]) +
       juice + omens;
     bindCopy();
+    bindWeightRefresh();
+  }
+
+  function rerenderActive(){ renderPanel(D.contentTypes.find(c=>c.id===active) || D.contentTypes[0]); }
+
+  function bindWeightRefresh(){
+    const btn = els.panel.querySelector("#weightRefresh");
+    if (!btn) return;
+    btn.addEventListener("click", () => refreshWeights(false));
+  }
+
+  let refreshing = false;
+  async function refreshWeights(force){
+    if (refreshing) return;
+    refreshing = true;
+    weightStatus = "Sweeping live market prices… (~1 min, shared rate limit)";
+    rerenderActive();
+    const btn = els.panel.querySelector("#weightRefresh");
+    if (btn) btn.disabled = true;
+    try {
+      const r = await fetch("/api/waystone/market-weights/refresh", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: !!force }),
+      });
+      const d = await r.json();
+      if (d.weights) liveWeights = d.weights;
+      if (d.limited) weightStatus = "Trade2 rate-limited — showing last result. Try again in a few minutes.";
+      else if (d.cooldown) weightStatus = "Refreshed recently — showing latest (cooldown ~10 min).";
+      else if (d.refreshed) weightStatus = "Updated from live market just now.";
+      else if (d.error) weightStatus = "Refresh failed: " + d.error;
+      else weightStatus = "No market data returned.";
+    } catch (e) {
+      weightStatus = "Refresh failed (is the local server running?).";
+    } finally {
+      refreshing = false;
+      rerenderActive();
+    }
+  }
+
+  // On load, pick up any server-cached weights (no Trade2 call).
+  async function loadCachedWeights(){
+    try {
+      const r = await fetch("/api/waystone/market-weights");
+      const d = await r.json();
+      if (d && d.weights && d.weights.stats && d.weights.stats.length){
+        liveWeights = d.weights;
+        rerenderActive();
+      }
+    } catch { /* offline / served statically — keep baked weights */ }
   }
 
   function bindCopy(){
@@ -294,7 +357,7 @@
   // Score a pasted waystone by market weight: contribution = weight × rolled%.
   // Returns total score, the best (most valuable) rolled stat, and per-stat rows.
   function marketScore(text){
-    const stats = (D.marketWeights && D.marketWeights.stats) || [];
+    const stats = (MW() && MW().stats) || [];
     let score = 0, best = null, rows = [];
     for (const s of stats){
       const re = STAT_RE[s.key]; if (!re) continue;
@@ -363,6 +426,7 @@
 
   renderTabs();
   renderPanel(D.contentTypes[0]);
+  loadCachedWeights();
 </script>
 </body>
 </html>
