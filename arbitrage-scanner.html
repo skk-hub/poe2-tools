@@ -4,14 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Arbitrage Scanner — PoE Tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="theme.css">
 <style>
-  :root{
-    --bg:oklch(10% 0.025 42); --s1:oklch(13% 0.024 42); --s2:oklch(16% 0.022 42);
-    --s3:oklch(20% 0.020 42); --bd:oklch(31% 0.018 42); --tx:oklch(84% 0.012 55);
-    --mu:oklch(58% 0.010 55); --gd:oklch(80% 0.15 74); --gd-a:oklch(80% 0.15 74 / .10);
-    --gr:oklch(67% 0.14 148); --rd:oklch(62% 0.14 20); --cy:oklch(68% 0.11 210);
-    --ff:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
-  }
+  /* Design tokens come from theme.css; page-specific styles follow. */
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.5 var(--ff);padding-bottom:48px}
   a{color:var(--gd);text-decoration:none}
@@ -19,14 +16,14 @@
   .appbar{border-bottom:1px solid var(--bd);background:var(--s1)}
   .appbarin{max-width:1180px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:14px}
   .mark{width:30px;height:30px;border:1px solid oklch(80% 0.15 74 / .55);background:var(--gd-a);color:var(--gd);display:grid;place-items:center;font:700 13px var(--ff);letter-spacing:.05em}
-  .brandname{color:var(--gd);font:700 15px/1.1 var(--ff);letter-spacing:.08em}
+  .brandname{color:var(--gd);font:700 15px/1.1 var(--ff-display);letter-spacing:.08em}
   .nav{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
   .navbtn{height:28px;font-size:11px;color:var(--mu);border:1px solid transparent;background:transparent;padding:0 11px;text-decoration:none;display:inline-flex;align-items:center;border-radius:2px}
   .navbtn:hover{color:var(--tx);background:var(--s2);border-color:var(--bd)}
   .navbtn.active{color:var(--gd);background:var(--gd-a);border-color:oklch(80% 0.15 74 / .35)}
   .shell{max-width:1180px;margin:0 auto;padding:18px 16px}
   .pagehead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:6px 0 18px}
-  h1{margin:0;color:var(--gd);font:700 23px/1.1 var(--ff);letter-spacing:.04em}
+  h1{margin:0;color:var(--gd);font:700 23px/1.1 var(--ff-display);letter-spacing:.04em}
   .sub{color:var(--mu);font:12px var(--mono);margin:6px 0 0}
   .statusline{color:var(--mu);font:11px var(--mono);text-align:right}
   .statusline.ok{color:var(--gr)} .statusline.err{color:var(--rd)} .statusline.warn{color:var(--gd)}

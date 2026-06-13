@@ -4,14 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Map Juicer — PoE Tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="theme.css">
 <style>
-  :root{
-    --bg:oklch(14% 0.01 60); --s1:oklch(17% 0.012 60); --s2:oklch(20% 0.014 60);
-    --bd:oklch(30% 0.015 60); --tx:oklch(86% 0.01 80); --mu:oklch(62% 0.012 70);
-    --gd:oklch(80% 0.15 74); --gd-a:oklch(80% 0.15 74 / 0.10);
-    --gr:oklch(67% 0.14 148); --rd:oklch(62% 0.14 20);
-    --ff:'Inter',system-ui,sans-serif; --ff-mono:'JetBrains Mono',ui-monospace,monospace;
-  }
+  /* Design tokens come from theme.css; page-specific styles follow. */
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 var(--ff);padding:0 0 60px}
   a{color:var(--gd)}
@@ -19,12 +16,12 @@
   .appbar{border-bottom:1px solid var(--bd);background:var(--s1)}
   .appbarin{max-width:1040px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:14px}
   .mark{width:30px;height:30px;border:1px solid oklch(80% 0.15 74 / .55);background:var(--gd-a);color:var(--gd);display:grid;place-items:center;font:700 13px var(--ff);letter-spacing:.05em}
-  .brandname{color:var(--gd);font:700 15px/1.1 var(--ff);letter-spacing:.08em}
+  .brandname{color:var(--gd);font:700 15px/1.1 var(--ff-display);letter-spacing:.08em}
   .nav{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
   .navbtn{height:28px;font-size:11px;color:var(--mu);border:1px solid transparent;background:transparent;padding:0 11px;text-decoration:none;display:inline-flex;align-items:center;border-radius:2px}
   .navbtn:hover{color:var(--tx);background:var(--s2);border-color:var(--bd)}
   .navbtn.active{color:var(--gd);background:var(--gd-a);border-color:oklch(80% 0.15 74 / .35)}
-  h1{margin:0;color:var(--gd);font:700 22px/1.1 var(--ff);letter-spacing:.04em}
+  h1{margin:0;color:var(--gd);font:700 22px/1.1 var(--ff-display);letter-spacing:.04em}
   .sub{color:var(--mu);font:12px var(--ff-mono);margin:6px 0 0}
   .pagehead{margin:6px 0 18px}
   .fxchip{display:inline-block;margin-top:8px;color:var(--gd);font:11px var(--ff-mono);border:1px solid oklch(80% 0.15 74 / .4);background:var(--gd-a);padding:2px 8px;border-radius:2px}

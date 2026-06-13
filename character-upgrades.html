@@ -6,27 +6,10 @@
   <title>Gear Search — PoE Tools</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="theme.css">
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: oklch(8.5% 0.030 40);
-      --s1: oklch(11% 0.028 40);
-      --s2: oklch(14.5% 0.026 40);
-      --s3: oklch(18% 0.024 40);
-      --bd: oklch(27% 0.022 40);
-      --bd2: oklch(42% 0.020 40);
-      --gd: oklch(80% 0.15 74);
-      --gd-a: oklch(80% 0.15 74 / 0.10);
-      --tx: oklch(82% 0.014 50);
-      --mu: oklch(50% 0.010 50);
-      --gr: oklch(67% 0.14 148);
-      --rd: oklch(62% 0.14 20);
-      --cy: oklch(68% 0.11 210);
-      --ff-display: 'Cinzel', Georgia, serif;
-      --ff-ui: 'Inter', system-ui, sans-serif;
-      --ff-mono: 'JetBrains Mono', monospace;
-    }
+    /* Design tokens come from theme.css; page-specific styles follow. */
+    :root { color-scheme: dark; }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--tx); font: 13px var(--ff-ui); -webkit-font-smoothing: antialiased; }
     a { color: var(--cy); text-decoration: none; }

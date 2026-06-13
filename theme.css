@@ -38,6 +38,7 @@
   /* aliases so any page's existing var names resolve to the system */
   --ff:var(--ff-ui); --ui:var(--ff-ui); --display:var(--ff-display);
   --mono:var(--ff-mono); --text:var(--tx); --muted:var(--mu); --gold:var(--gd);
+  --green:var(--gr); --red:var(--rd); --cyan:var(--cy);
 
   /* ---- Radius / elevation / motion ---- */
   --r:3px; --r-lg:5px;
@@ -63,6 +64,9 @@ body{ -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
 
 /* Numbers read as data: tabular figures wherever mono is used */
 .num,[class*="mono"],code,kbd{ font-variant-numeric:tabular-nums; }
+
+/* Form controls pick up the brand accent instead of browser default blue/red */
+input[type=checkbox],input[type=radio]{ accent-color:var(--gd); }
 
 /* ---- Motion: entrance + interaction (transform/opacity only) ---- */
 @keyframes fadeUp{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
