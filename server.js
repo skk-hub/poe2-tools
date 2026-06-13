@@ -691,7 +691,7 @@ async function fetchCurrencyRates(league) {
 // Goes through the shared adaptive Trade2 queue; cached to a file + rate-limit
 // + cooldown guarded so a button click can't exhaust the shared limit.
 const WAYSTONE_WEIGHTS_FILE = path.join(ROOT, ".waystone-weights.json");
-const WAYSTONE_SWEEP_COOLDOWN_MS = 10 * 60 * 1000;
+const WAYSTONE_SWEEP_COOLDOWN_MS = 2 * 60 * 1000;
 const WAYSTONE_SWEEP = {
   tier: 16,
   // Kept lean (7 searches incl. baseline) to stay gentle on the shared limit.

@@ -206,7 +206,7 @@
         <div class="card-body">
           <div class="mw-list">${rows}</div>
           ${weightStatus ? `<div class="mw-status">${esc(weightStatus)}</div>` : ""}
-          <div class="note">Trade2 Tier-16 price-floor sweep — ${live ? "live" : "baked"} (${esc(mw.analyzed)}, ${esc(mw.league)}). Bar = relative value vs the top stat. Stats correlate, so this is a ranking, not a price tag. <b>Refresh</b> re-runs the sweep against the live market (shared rate limit — once every ~10 min).</div>
+          <div class="note">Trade2 Tier-16 price-floor sweep — ${live ? "live" : "baked"} (${esc(mw.analyzed)}, ${esc(mw.league)}). Bar = relative value vs the top stat. Stats correlate, so this is a ranking, not a price tag. <b>Refresh</b> re-runs the sweep against the live market (shared rate limit — at most once every ~2 min).</div>
         </div>
       </div>`;
   }
@@ -279,7 +279,7 @@
       const d = await r.json();
       if (d.weights) liveWeights = d.weights;
       if (d.limited) weightStatus = "Trade2 rate-limited — showing last result. Try again in a few minutes.";
-      else if (d.cooldown) weightStatus = "Refreshed recently — showing latest (cooldown ~10 min).";
+      else if (d.cooldown) weightStatus = "Refreshed recently — showing latest (cooldown ~2 min).";
       else if (d.refreshed) weightStatus = "Updated from live market just now.";
       else if (d.error) weightStatus = "Refresh failed: " + d.error;
       else weightStatus = "No market data returned.";
