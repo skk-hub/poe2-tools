@@ -119,7 +119,7 @@
 
     <div class="eval">
       <h2>Evaluate a waystone or tablet</h2>
-      <p class="sub">Copy an item in-game (Ctrl+C) and paste it here to judge it.</p>
+      <p class="sub">Copy an item in-game (Ctrl+C) and paste it — get its approx. value and the content type it's best paired with.</p>
       <textarea id="evalInput" spellcheck="false" placeholder="Paste copied item text here…&#10;(includes the 'Rarity:' line and its modifiers)"></textarea>
       <button class="primary" id="evalBtn" type="button">Evaluate</button>
       <div id="evalOut"></div>
@@ -415,11 +415,30 @@
       const ex = Math.round(curveEx(s.curve, value));
       const tagCls = ex >= 60 ? "good" : ex >= 15 ? "mid" : "bad";
       const tagTxt = ex >= 60 ? "premium" : ex >= 15 ? "good roll" : "low value";
-      rows.push({ label: s.label, value, ex, tagCls, tagTxt });
+      rows.push({ key: s.key, label: s.label, value, ex, tagCls, tagTxt, ceiling: s.ceiling || 0 });
       if (!best || ex > best.ex) best = { label: s.label, value, ex };
     }
     rows.sort((a,b)=>b.ex - a.ex);
     return { headlineEx: best ? best.ex : 0, best, rows };
+  }
+
+  function statLabel(key){ const s = (MW().stats || []).find(x => x.key === key); return s ? s.label : key; }
+
+  // Which content type benefits most from this map's rolls (synergy hint —
+  // waystone mods are content-agnostic; the mechanic comes from the tablet).
+  // `rolls` = { statKey: rolledValue }. Normalises each roll by its ceiling.
+  function contentFit(rolls){
+    const ceil = {}; (MW().stats || []).forEach(s => { ceil[s.key] = s.ceiling || 100; });
+    return (D.contentTypes || []).filter(c => c.scalesWith).map(ct => {
+      let fit = 0, top = null;
+      for (const [k, w] of Object.entries(ct.scalesWith)){
+        const norm = Math.min(1, (rolls[k] || 0) / (ceil[k] || 100));
+        const contrib = w * norm;
+        fit += contrib;
+        if (contrib > 0 && (!top || contrib > top.c)) top = { k, c: contrib };
+      }
+      return { ct, fit, top };
+    }).filter(x => x.fit > 0).sort((a, b) => b.fit - a.fit);
   }
 
   function evaluate(){
@@ -434,15 +453,27 @@
     const ms = marketScore(text);
 
     let cls="warn", head="", lines=[], scoreHtml="";
+    // rolled %s keyed by stat, for the content-pairing suggestion
+    const rolls = {}; ms.rows.forEach(r => { rolls[r.key] = r.value; });
+    const fits = contentFit(rolls);
 
     if (isTablet){
       const ct = detectContent(text);
       const name = ct ? ct.label : "Generic / Precursor";
       const n = ms.rows.length;
-      if (ms.rows.some(r=>r.label==="Pack Size") && n>=2){ cls="good"; head=`✓ Good ${name} tablet — use it (Pack Size + extras)`; }
-      else if (n>=2){ cls="good"; head=`✓ Good ${name} tablet — use it`; }
-      else if (n===1){ cls="warn"; head=`~ Usable ${name} tablet — low roll`; }
+      // approximate value band from how strong the rolls are vs their ceilings
+      const norm = ms.rows.map(r => r.ceiling ? Math.min(1, r.value / r.ceiling) : 0);
+      const q = norm.length ? norm.reduce((a,b)=>a+b,0)/norm.length : 0;
+      const band = (n>=2 && q>=0.5) ? "Strong" : (n>=2 || q>=0.4) ? "Decent" : n>=1 ? "Light" : "Weak";
+      if (band==="Strong"){ cls="good"; head=`✓ Strong ${name} tablet — use it`; }
+      else if (band==="Decent"){ cls="good"; head=`✓ Decent ${name} tablet — worth using`; }
+      else if (band==="Light"){ cls="warn"; head=`~ Light ${name} tablet — low roll, okay for cheap runs`; }
       else { cls="bad"; head=`✗ Weak ${name} tablet — sell/skip`; }
+      scoreHtml = `<div class="scoreline">Approx. value <b>${esc(band)}</b><span>${ct?`for ${esc(ct.label)} content`:`generic`} · roll quality ${Math.round(q*100)}%</span></div>`;
+      for (const r of ms.rows){
+        lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""}`);
+      }
+      if (ct) lines.push(`<span class="tag mid">content</span>This is a <b>${esc(ct.label)}</b> tablet — socket it in a Tower covering maps you run for ${esc(ct.label)}.`);
     } else if (isWaystone){
       // %-aware verdict: a map's value ≈ its single best stat priced off the
       // curve, so a near-max Rarity roll reads premium even alone.
@@ -459,11 +490,18 @@
         else if (dangers.length){ cls="bad"; head="⚠ Risky rare, weak rewards — cheap throwaway only"; }
         else { cls="warn"; head=`Mediocre rare (best: ${bestTxt}) — okay to run, low market value`; }
       }
-      scoreHtml = `<div class="scoreline">Est. floor value <b>≈ ${Math.round(ex)} ex</b><span>(its best stat priced off the live curve)</span></div>`;
+      scoreHtml = `<div class="scoreline">Est. floor value <b>≈ ${Math.round(ex)} ex</b><span>(its best stat priced off the curve)</span></div>`;
       for (const r of ms.rows){
         lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""} <span style="color:var(--mu)">≈ ${r.ex}ex</span>`);
       }
       if (sustain) lines.push(`<span class="tag mid">sustain</span>Waystone drop chance — utility, not priced`);
+      // Synergy hint: which content this map's mods suit best.
+      if (fits.length && fits[0].fit > 0.15){
+        const top = fits[0], driver = top.top ? statLabel(top.top.k) : "";
+        let pair = `<span class="tag mid">pair</span>Best for <b>${esc(top.ct.label)}</b>${driver?` (${esc(driver)}-heavy)`:""} — socket ${esc(top.ct.label)} tablets`;
+        if (fits[1] && fits[1].fit >= top.fit * 0.8) pair += `, or ${esc(fits[1].ct.label)}`;
+        lines.push(pair);
+      }
     } else {
       cls="warn"; head="Couldn't tell if this is a waystone or tablet — paste the full copied item text";
     }

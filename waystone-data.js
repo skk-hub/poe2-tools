@@ -134,11 +134,16 @@ window.WAYSTONE_DATA = {
       use: "Gamble a finished map for a corrupt upgrade (extra mod / tier shift). High risk, no take-backs." },
   ],
 
+  // `scalesWith`: how much each content type benefits from a waystone's reward
+  // stats (0–1 per stat). Used by the evaluator to suggest the best content to
+  // PAIR a pasted map with (waystone mods are content-agnostic in 0.5; the
+  // mechanic comes from the tablet, so this is a synergy hint).
   contentTypes: [
     {
       id: "breach",
       label: "Breach",
       tabletToken: "reach",
+      scalesWith: { packSize: 1.0, monsterRarity: 0.85, itemRarity: 0.4 },
       blurb: "Breaches drop Splinters & Clasped Hands; scale hard with Pack Size, Rare Monsters and Rarity. Stack Breach atlas nodes + Breach tablets.",
       juiceNote: "Pair with Breach Precursor Tablets (rolled Rarity/Quantity/Monsters). Pack size & rare-monster mods convert directly into Breach loot.",
       omenPicks: [
@@ -150,6 +155,7 @@ window.WAYSTONE_DATA = {
       id: "abyss",
       label: "Abyss",
       tabletToken: "byss",
+      scalesWith: { packSize: 1.0, monsterEffectiveness: 0.7 },
       blurb: "Abyss pits lead to Abyssal Depths; reward scales with monster density / pack size. Atlas: From Below, Dark Depths, then Lord of the Pit.",
       juiceNote: "Pair with Abyss Precursor Tablets + monster-effectiveness. Density and pack size matter more than raw quantity.",
       omenPicks: [
@@ -161,6 +167,7 @@ window.WAYSTONE_DATA = {
       id: "delirium",
       label: "Delirium",
       tabletToken: "eliri",
+      scalesWith: { packSize: 1.0, monsterEffectiveness: 0.65 },
       blurb: "Delirium fog grants reward per % progress; scales with Pack Size and monster density. Delirium tablets add Mirrors of Delirium in range.",
       juiceNote: "Pair with Delirium Precursor Tablets. Prioritise Pack Size + clear speed so you push deep into the fog before it ends.",
       omenPicks: [
@@ -171,6 +178,7 @@ window.WAYSTONE_DATA = {
       id: "expedition",
       label: "Expedition",
       tabletToken: "xpediti",
+      scalesWith: { itemRarity: 1.0, packSize: 0.35 },
       blurb: "Expedition Remnants & Logbooks; among the strongest this league when stacked with the Runes of Aldur mechanic.",
       juiceNote: "Pair with Expedition Precursor Tablets. Quantity/Rarity on the waystone plus Remnant-scaling on the tablet.",
       omenPicks: [
@@ -181,6 +189,7 @@ window.WAYSTONE_DATA = {
       id: "ritual",
       label: "Ritual",
       tabletToken: "itual",
+      scalesWith: { monsterRarity: 1.0, packSize: 0.6 },
       blurb: "Ritual altars give Tribute to spend; scales with rare-monster density. Ritual tablets add altars / increase Tribute & rerolls.",
       juiceNote: "Pair with Ritual Precursor Tablets. Rare-monster and pack-size mods raise Tribute generated.",
       omenPicks: [
@@ -191,6 +200,7 @@ window.WAYSTONE_DATA = {
       id: "general",
       label: "General (Rarity farm)",
       tabletToken: "recursor",
+      scalesWith: { itemRarity: 1.0, packSize: 0.5 },
       blurb: "Pure rarity/quantity farming with no specific mechanic — generic Precursor Tablets (Rarity/Quantity/Pack) on max-reward waystones.",
       juiceNote: "Use generic Precursor Tablets. Stack Rarity first, then Quantity and Pack Size.",
       omenPicks: [
