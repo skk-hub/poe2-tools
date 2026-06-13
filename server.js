@@ -284,6 +284,26 @@ const tradeQueue = createTradeQueue({
   timeoutMs: TRADE_TIMEOUT_MS,
 });
 const comparableCache = new Map();
+const ARBITRAGE_CACHE_FILE = path.join(ROOT, ".arbitrage-scan-cache.json");
+const ARBITRAGE_CACHE_MS = 2 * 60 * 1000;
+const EXALTED_ID = "exalted";
+const ARBITRAGE_ITEMS = [
+  { id: "divine", name: "Divine Orb", category: "currency", enabled: true },
+  { id: "chaos", name: "Chaos Orb", category: "currency", enabled: true },
+  { id: "regal", name: "Regal Orb", category: "currency", enabled: true },
+  { id: "vaal", name: "Vaal Orb", category: "currency", enabled: true },
+  { id: "alch", name: "Orb of Alchemy", category: "currency", enabled: true },
+  { id: "chance", name: "Orb of Chance", category: "currency", enabled: true },
+  { id: "annul", name: "Orb of Annulment", category: "currency", enabled: true },
+  { id: "artificers", name: "Artificer's Orb", category: "currency", enabled: true, aliases: ["Artificers Orb"] },
+  { id: "gcp", name: "Gemcutter's Prism", category: "currency", enabled: true, aliases: ["Gemcutters Prism"] },
+  { id: "simulacrum-splinter", name: "Simulacrum Splinter", category: "fragments", enabled: true },
+  { id: "breach-splinter", name: "Breach Splinter", category: "fragments", enabled: true },
+  { id: "cowards-fate", name: "Coward's Fate", category: "fragments", enabled: false },
+  { id: "deadly-fate", name: "Deadly Fate", category: "fragments", enabled: false },
+  { id: "victorious-fate", name: "Victorious Fate", category: "fragments", enabled: false },
+];
+let arbitrageStaticCache = null;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -344,6 +364,250 @@ function readRawBody(req, maxBytes = 10 * 1024 * 1024) {
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
+}
+
+function readJsonFile(file, fallback = null) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonFile(file, value) {
+  fs.writeFileSync(file, JSON.stringify(value, null, 2));
+}
+
+function clampNumber(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function round2(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function round4(n) {
+  return Math.round((Number(n) || 0) * 10000) / 10000;
+}
+
+function normalizeExchangeOffer(raw, haveId, wantId) {
+  const offer = raw && raw.exchange && raw.item ? raw : raw && raw.offer ? raw.offer : null;
+  if (!offer || !offer.exchange || !offer.item) return null;
+  const pay = offer.exchange;
+  const receive = offer.item;
+  const currencyId = (side) => {
+    const cur = side.currency;
+    if (cur && typeof cur === "object") return String(cur.id || cur.currency || cur.text || "");
+    return String(cur || side.id || "");
+  };
+  const payCurrency = currencyId(pay).toLowerCase();
+  const receiveCurrency = currencyId(receive).toLowerCase();
+  if (payCurrency && payCurrency !== String(haveId).toLowerCase()) return null;
+  if (receiveCurrency && receiveCurrency !== String(wantId).toLowerCase()) return null;
+  const payAmount = Number(pay.amount);
+  const receiveAmount = Number(receive.amount);
+  if (!(payAmount > 0) || !(receiveAmount > 0)) return null;
+  return {
+    payAmount,
+    receiveAmount,
+    receiveStock: Number(receive.stock) || receiveAmount,
+    payStock: Number(pay.stock) || payAmount,
+    account: offer.account && offer.account.name ? offer.account.name : "",
+  };
+}
+
+function collectExchangeOffers(data, haveId, wantId) {
+  const out = [];
+  const seen = new Set();
+  const visit = (value) => {
+    if (!value || typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    const offer = normalizeExchangeOffer(value, haveId, wantId);
+    if (offer) out.push(offer);
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    for (const key of ["result", "offers", "listing", "listings", "entries", "data"]) {
+      if (value[key]) visit(value[key]);
+    }
+    for (const child of Object.values(value)) {
+      if (child && typeof child === "object") visit(child);
+    }
+  };
+  visit(data);
+  return out;
+}
+
+function bestExchangeOffer(data, haveId, wantId, minStock) {
+  const stockForItem = (offer) => String(haveId).toLowerCase() === EXALTED_ID ? offer.receiveStock : offer.payStock;
+  const offers = collectExchangeOffers(data, haveId, wantId)
+    .filter((offer) => stockForItem(offer) >= minStock);
+  if (!offers.length) return null;
+  offers.sort((a, b) => (a.payAmount / a.receiveAmount) - (b.payAmount / b.receiveAmount));
+  const best = offers[0];
+  return {
+    payAmount: best.payAmount,
+    receiveAmount: best.receiveAmount,
+    payPerReceive: best.payAmount / best.receiveAmount,
+    receivePerPay: best.receiveAmount / best.payAmount,
+    receiveStock: best.receiveStock,
+    payStock: best.payStock,
+    account: best.account,
+  };
+}
+
+function normalizeNameKey(value) {
+  return String(value || "").toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function collectStaticEntries(data) {
+  const entries = [];
+  const seen = new Set();
+  const visit = (value) => {
+    if (!value || typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    if (value.id && (value.text || value.name || value.label)) {
+      entries.push({ id: String(value.id), name: String(value.text || value.name || value.label) });
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    for (const key of ["result", "entries", "items", "children", "data"]) {
+      if (value[key]) visit(value[key]);
+    }
+  };
+  visit(data);
+  return entries;
+}
+
+async function resolveArbitrageItems(league) {
+  if (arbitrageStaticCache && Date.now() - arbitrageStaticCache.loadedAt < 60 * 60 * 1000) {
+    return arbitrageStaticCache.items;
+  }
+  const byName = new Map();
+  try {
+    const endpoint = "https://www.pathofexile.com/api/trade2/data/static";
+    const data = await tradeQueue.request(endpoint, { method: "GET" });
+    for (const entry of collectStaticEntries(data)) {
+      byName.set(normalizeNameKey(entry.name), entry.id);
+    }
+  } catch {
+    // Static-data lookup is a convenience. Hardcoded fallbacks keep the scanner usable.
+  }
+  const items = ARBITRAGE_ITEMS.map((item) => {
+    const names = [item.name, ...(item.aliases || [])];
+    const resolved = names.map((name) => byName.get(normalizeNameKey(name))).find(Boolean);
+    return { ...item, id: resolved || item.id, fallbackId: item.id };
+  });
+  arbitrageStaticCache = { loadedAt: Date.now(), items };
+  return items;
+}
+
+async function fetchExchangeBest(league, haveId, wantId, minStock) {
+  const endpoint = "https://www.pathofexile.com/api/trade2/exchange/poe2/" + encodeURIComponent(league);
+  const body = JSON.stringify({
+    exchange: {
+      status: { option: "online" },
+      have: [haveId],
+      want: [wantId],
+    },
+    engine: "new",
+  });
+  const data = await tradeQueue.request(endpoint, { method: "POST", body });
+  return bestExchangeOffer(data, haveId, wantId, minStock);
+}
+
+function arbitrageCacheFresh(cache) {
+  return cache && cache.updated && Date.now() - new Date(cache.updated).getTime() < ARBITRAGE_CACHE_MS;
+}
+
+async function scanArbitrage(input = {}) {
+  const league = String(input.league || "Runes of Aldur");
+  const budgetEx = clampNumber(input.budgetEx, 100, 1, 100000);
+  const minProfitEx = clampNumber(input.minProfitEx, 5, 0, 100000);
+  const minProfitPct = clampNumber(input.minProfitPct, 3, 0, 1000);
+  const minStock = clampNumber(input.minStock, 5, 1, 1000000);
+  const slippagePct = clampNumber(input.slippagePct, 2, 0, 50);
+  const categories = input.categories && typeof input.categories === "object" ? input.categories : { currency: true, fragments: true };
+  const status = tradeStatus();
+  const cached = readJsonFile(ARBITRAGE_CACHE_FILE, null);
+  if (status.limited) {
+    return { limited: true, stale: Boolean(cached), cachedAt: cached && cached.updated, tradeStatus: status, ...(cached || { opportunities: [], errors: [] }) };
+  }
+  if (!input.force && arbitrageCacheFresh(cached)) {
+    return { ...cached, cached: true, tradeStatus: status };
+  }
+
+  const resolvedItems = await resolveArbitrageItems(league);
+  const items = resolvedItems.filter((item) => item.enabled && categories[item.category] !== false && item.id !== EXALTED_ID);
+  const opportunities = [];
+  const errors = [];
+
+  for (const item of items) {
+    try {
+      const buy = await fetchExchangeBest(league, EXALTED_ID, item.id, minStock);
+      const sell = await fetchExchangeBest(league, item.id, EXALTED_ID, minStock);
+      if (!buy || !sell) {
+        errors.push({ item: item.name, reason: "missing-side" });
+        continue;
+      }
+      const askExPerItem = buy.payPerReceive;
+      const bidExPerItem = sell.receivePerPay;
+      const netBidExPerItem = bidExPerItem * (1 - slippagePct / 100);
+      const executableByBudget = Math.floor(budgetEx / askExPerItem);
+      const executableByBuyStock = Math.floor(buy.receiveStock);
+      const executableBySellStock = Math.floor(sell.payStock || sell.receiveAmount || executableByBudget);
+      const executableItems = Math.max(0, Math.min(executableByBudget, executableByBuyStock, executableBySellStock));
+      const spendEx = executableItems * askExPerItem;
+      const grossProfitEx = executableItems * (bidExPerItem - askExPerItem);
+      const netProfitEx = executableItems * (netBidExPerItem - askExPerItem);
+      const roiPct = spendEx > 0 ? (netProfitEx / spendEx) * 100 : 0;
+      const flags = [];
+      if (buy.receiveStock < minStock * 2 || executableBySellStock < minStock * 2) flags.push("thin-stock");
+      if (grossProfitEx > 0 && netProfitEx <= 0) flags.push("slippage-eats-spread");
+      if (netProfitEx >= minProfitEx && roiPct >= minProfitPct && executableItems > 0) {
+        opportunities.push({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          askExPerItem: round4(askExPerItem),
+          bidExPerItem: round4(bidExPerItem),
+          netBidExPerItem: round4(netBidExPerItem),
+          executableItems,
+          spendEx: round2(spendEx),
+          grossProfitEx: round2(grossProfitEx),
+          netProfitEx: round2(netProfitEx),
+          roiPct: round2(roiPct),
+          buyStock: round2(buy.receiveStock),
+          sellStock: round2(executableBySellStock),
+          flags,
+        });
+      }
+    } catch (err) {
+      const limited = /rate limited/i.test(String(err && err.message));
+      errors.push({ item: item.name, reason: limited ? "rate-limited" : String(err && err.message).slice(0, 180) });
+      if (limited) break;
+    }
+  }
+
+  opportunities.sort((a, b) => (b.netProfitEx - a.netProfitEx) || (b.roiPct - a.roiPct) || (b.buyStock - a.buyStock));
+  const result = {
+    league,
+    updated: new Date().toISOString(),
+    settings: { budgetEx, minProfitEx, minProfitPct, minStock, slippagePct, categories },
+    universe: items.map((item) => ({ id: item.id, name: item.name, category: item.category })),
+    opportunities,
+    errors,
+    tradeStatus: tradeStatus(),
+  };
+  try { writeJsonFile(ARBITRAGE_CACHE_FILE, result); } catch {}
+  return result;
 }
 
 function base64Url(buffer) {
@@ -3118,6 +3382,24 @@ const server = http.createServer(async (req, res) => {
         const limited = /rate limited/i.test(String(err && err.message));
         // Never overwrite a good cache on a partial/failed sweep.
         send(res, 200, JSON.stringify({ limited, error: limited ? undefined : String(err && err.message), weights: cached, tradeStatus: tradeStatus() }), "application/json; charset=utf-8");
+      }
+      return;
+    }
+
+    if (url.pathname === "/api/arbitrage/scan" && req.method === "POST") {
+      const input = await readJson(req);
+      try {
+        send(res, 200, JSON.stringify(await scanArbitrage(input)), "application/json; charset=utf-8");
+      } catch (err) {
+        const cached = readJsonFile(ARBITRAGE_CACHE_FILE, null);
+        const limited = /rate limited/i.test(String(err && err.message));
+        send(res, 200, JSON.stringify({
+          limited,
+          stale: Boolean(cached),
+          error: limited ? undefined : String(err && err.message),
+          tradeStatus: tradeStatus(),
+          ...(cached || { opportunities: [], errors: [] }),
+        }), "application/json; charset=utf-8");
       }
       return;
     }
