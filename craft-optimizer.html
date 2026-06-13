@@ -33,6 +33,7 @@ button:disabled{opacity:.45;cursor:default}
 .status.ok{color:var(--green)}
 .status.err{color:var(--red)}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:14px;align-items:start}
+.grid>*{min-width:0}
 .panel{background:var(--s1);border:1px solid var(--bd)}
 .panelhead{background:var(--s2);border-bottom:1px solid var(--bd);padding:12px 14px}
 .paneltitle{font:700 12px/1.25 var(--display);letter-spacing:.05em;color:var(--gold);text-transform:uppercase}
@@ -60,7 +61,8 @@ th{background:var(--s2);color:var(--muted);font-size:10px;text-transform:upperca
 .materials{display:grid;gap:6px;margin-top:9px}
 .material{display:flex;justify-content:space-between;gap:10px;font-size:11px}
 .material span:last-child{font-family:var(--mono);color:var(--gold)}
-@media(max-width:900px){.head,.barin{display:block}.controls{justify-content:flex-start;margin-top:12px}.status{text-align:left}.grid{grid-template-columns:1fr}input{width:100%}}
+@media(max-width:900px){.head,.barin{display:block}.controls{justify-content:flex-start;margin-top:12px}.status{text-align:left}.grid{grid-template-columns:1fr}.controls input,.controls select{width:100%}}
+@media(max-width:560px){.shell{padding:16px 12px 36px}.barin{padding:10px 14px}.controls{gap:6px}}
 </style>
 </head>
 <body>

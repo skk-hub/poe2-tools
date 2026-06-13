@@ -94,3 +94,32 @@ input[type=checkbox],input[type=radio]{ accent-color:var(--gd); }
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
 }
+
+/* ============================================================================
+   Responsive — shared rules. Scoped under .appbar/.bar (higher specificity than
+   a bare .nav) so they win over per-page styles regardless of load order.
+   ============================================================================ */
+
+/* Never let media (images/tables/pre) force horizontal page scroll */
+img,svg,video{ max-width:100%; height:auto; }
+
+@media (max-width: 820px){
+  /* App bar stacks: brand row on top, nav becomes a tidy single scroll-row.
+     display:flex overrides per-page `display:block` so the mark + wordmark
+     stay inline instead of stacking. */
+  .appbar .appbarin,.bar .barin{ display:flex; flex-wrap:wrap; align-items:center; row-gap:8px; }
+  .appbar .nav,.bar .nav{
+    width:100%; margin-top:4px; flex-wrap:nowrap; overflow-x:auto;
+    justify-content:flex-start; gap:3px; -webkit-overflow-scrolling:touch;
+    scrollbar-width:none; -ms-overflow-style:none;
+    mask-image:linear-gradient(90deg,#000 92%,transparent); /* hint there's more to scroll */
+  }
+  .appbar .nav::-webkit-scrollbar,.bar .nav::-webkit-scrollbar{ display:none; }
+  .appbar .navbtn,.bar .navbtn{ flex:0 0 auto; white-space:nowrap; }
+}
+
+/* Touch targets a touch bigger on coarse pointers */
+@media (pointer: coarse){
+  .navbtn{ min-height:34px; }
+  button,.toolbtn,.copy,.primary,.tab{ min-height:38px; }
+}
