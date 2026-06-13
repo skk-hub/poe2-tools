@@ -1,5 +1,6 @@
 .trade-status.json
 .waystone-weights.json
+.waystone-exchange.json
 .poe-oauth.json
 .poe-oauth-state.json
 .upgrade-trade-cache.json

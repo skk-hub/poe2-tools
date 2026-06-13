@@ -26,6 +26,8 @@
   h1{margin:0;color:var(--gd);font:700 22px/1.1 var(--ff);letter-spacing:.04em}
   .sub{color:var(--mu);font:12px var(--ff-mono);margin:6px 0 0}
   .pagehead{margin:6px 0 18px}
+  .fxchip{display:inline-block;margin-top:8px;color:var(--gd);font:11px var(--ff-mono);border:1px solid oklch(80% 0.15 74 / .4);background:var(--gd-a);padding:2px 8px;border-radius:2px}
+  .fxchip.stale{color:var(--mu);border-color:var(--bd);background:transparent}
   .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
   .tab{height:32px;padding:0 14px;border:1px solid var(--bd);background:var(--s2);color:var(--tx);font:700 12px var(--ff-mono);cursor:pointer;border-radius:2px;text-transform:uppercase;letter-spacing:.03em}
   .tab.active{color:var(--gd);background:var(--gd-a);border-color:oklch(80% 0.15 74 / .5)}
@@ -107,6 +109,7 @@
     <div class="pagehead">
       <h1>Map Juicer</h1>
       <p class="sub" id="patchline">Waystone juicing &amp; stash regex.</p>
+      <span class="fxchip" id="fxRate" style="display:none"></span>
     </div>
 
     <div class="tabs" id="tabs"></div>
@@ -140,6 +143,7 @@
     tabs: document.getElementById("tabs"),
     panel: document.getElementById("panel"),
     patchline: document.getElementById("patchline"),
+    fx: document.getElementById("fxRate"),
     footPatch: document.getElementById("footPatch"),
     evalInput: document.getElementById("evalInput"),
     evalBtn: document.getElementById("evalBtn"),
@@ -291,6 +295,25 @@
     }
   }
 
+  // Live div↔ex from the official Currency Exchange (not poe.ninja). The server
+  // caches it (≤1 trade call / 5 min) and falls back to the last value.
+  async function loadExchange(){
+    const el = els.fx; if (!el) return;
+    try {
+      const r = await fetch("/api/waystone/exchange");
+      const d = await r.json();
+      if (d && d.exPerDiv){
+        el.textContent = `1 div ≈ ${d.exPerDiv} ex` + (d.stale ? " (stale)" : "");
+        el.title = `Official Currency Exchange · ${d.offers||"?"} offers` + (d.cached?" · cached":"") + (d.stale?" · rate-limited, last known":" · live");
+        el.classList.toggle("stale", !!d.stale);
+        el.style.display = "";
+      } else if (d && d.limited){
+        el.textContent = "div↔ex: trade rate-limited";
+        el.classList.add("stale"); el.style.display = "";
+      } else { el.style.display = "none"; }
+    } catch { el.style.display = "none"; /* served statically */ }
+  }
+
   // On load, pick up any server-cached weights (no Trade2 call).
   async function loadCachedWeights(){
     try {
@@ -427,6 +450,7 @@
   renderTabs();
   renderPanel(D.contentTypes[0]);
   loadCachedWeights();
+  loadExchange();
 </script>
 </body>
 </html>

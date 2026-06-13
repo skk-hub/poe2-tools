@@ -773,6 +773,62 @@ async function runWaystoneSweep(league) {
   };
 }
 
+// ── Official Currency Exchange rate (Map Juicer div↔ex readout) ────────────
+// Reads GGG's live bulk Currency Exchange (the in-game book), NOT poe.ninja.
+// Cached with a TTL so a page load triggers at most one trade call per window;
+// falls back to the last cached value (or {limited}) when the queue is blocked.
+const WAYSTONE_EXCHANGE_FILE = path.join(ROOT, ".waystone-exchange.json");
+const EXCHANGE_TTL_MS = 5 * 60 * 1000;
+
+function readExchangeCache() {
+  try { return JSON.parse(fs.readFileSync(WAYSTONE_EXCHANGE_FILE, "utf8")); }
+  catch { return null; }
+}
+
+// Best buyer rate (cheapest exalted-per-divine) with non-trivial stock, so a
+// single tiny-stock outlier can't skew the headline number.
+function bestExchangeRate(result) {
+  const offers = [];
+  for (const k of Object.keys(result || {})) {
+    const o = result[k];
+    const arr = (o.listing && o.listing.offers) || o.offers || (Array.isArray(o) ? o : []);
+    for (const off of arr) {
+      if (off && off.exchange && off.item && off.item.amount > 0) {
+        offers.push({ rate: off.exchange.amount / off.item.amount, stock: Number(off.item.stock) || 0 });
+      }
+    }
+  }
+  if (!offers.length) return null;
+  offers.sort((a, b) => a.rate - b.rate);
+  const solid = offers.find((o) => o.stock >= 5) || offers[0];
+  return Math.round(solid.rate * 100) / 100;
+}
+
+async function fetchExchangeRate(league) {
+  const url = "https://www.pathofexile.com/api/trade2/exchange/poe2/" + encodeURIComponent(league);
+  const body = JSON.stringify({ query: { status: { option: "online" }, have: ["exalted"], want: ["divine"] }, sort: { have: "asc" }, engine: "new" });
+  const d = await fetchTrade(url, { method: "POST", body });
+  return { exPerDiv: bestExchangeRate(d.result), offers: d.total || 0, updated: new Date().toISOString() };
+}
+
+async function getWaystoneExchange(league) {
+  const cached = readExchangeCache();
+  if (cached && cached.updated && Date.now() - new Date(cached.updated).getTime() < EXCHANGE_TTL_MS) {
+    return { ...cached, cached: true };
+  }
+  if (tradeStatus().limited) {
+    return cached ? { ...cached, stale: true, limited: true } : { limited: true };
+  }
+  try {
+    const fresh = await fetchExchangeRate(league);
+    if (fresh.exPerDiv) { try { fs.writeFileSync(WAYSTONE_EXCHANGE_FILE, JSON.stringify(fresh, null, 2)); } catch {} }
+    return { ...fresh, cached: false };
+  } catch (err) {
+    const limited = /rate limited/i.test(String(err && err.message));
+    return cached ? { ...cached, stale: true, limited } : { limited, error: limited ? undefined : String(err && err.message) };
+  }
+}
+
 async function fetchPrices(league) {
   const prices = {};
   let divineRate = 0;
@@ -3024,6 +3080,12 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/waystone/market-weights") {
       send(res, 200, JSON.stringify({ weights: readWaystoneWeights(), tradeStatus: tradeStatus() }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/waystone/exchange") {
+      const league = url.searchParams.get("league") || "Runes of Aldur";
+      send(res, 200, JSON.stringify(await getWaystoneExchange(league)), "application/json; charset=utf-8");
       return;
     }
 
