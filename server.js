@@ -3739,7 +3739,13 @@ const server = http.createServer(async (req, res) => {
         send(res, 404, "Not found");
         return;
       }
-      send(res, 200, data, MIME[path.extname(fullPath).toLowerCase()] || "application/octet-stream");
+      // Local dev tool that changes often: never let the browser serve a stale
+      // page/stylesheet from cache (this is why edits looked like "nothing changed").
+      res.writeHead(200, {
+        "Content-Type": MIME[path.extname(fullPath).toLowerCase()] || "application/octet-stream",
+        "Cache-Control": "no-store, must-revalidate",
+      });
+      res.end(data);
     });
   } catch (err) {
     send(res, 500, JSON.stringify({ error: err.message }), "application/json; charset=utf-8");
