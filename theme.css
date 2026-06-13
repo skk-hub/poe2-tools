@@ -61,17 +61,18 @@
   --t:160ms var(--ease);
   --t-slow:240ms var(--ease);
 
-  /* ===== Legacy aliases → new system (so existing pages recolour cleanly) ===== */
+  /* ===== Legacy aliases → new system (old names → new primaries only;
+     never re-declare a primary as itself — that creates a CSS cycle and
+     blanks the token). ===== */
   --s1:var(--surface-1); --s2:var(--surface-2); --s3:var(--surface-3);
   --bd:var(--border); --bd2:var(--border-strong);
-  --tx:var(--text); --mu:var(--text-muted); --muted:var(--text-muted); --text:var(--text);
+  --tx:var(--text); --mu:var(--text-muted); --muted:var(--text-muted);
   --gd:var(--gold); --gd-2:var(--gold-deep); --gd-a:var(--gold-soft); --gd-b:var(--border-gold);
-  --gold:var(--gold); --gr:var(--green); --rd:var(--red); --cy:var(--info); --pu:var(--violet);
-  --green:var(--green); --red:var(--red); --cyan:var(--info);
+  --gr:var(--green); --rd:var(--red); --cy:var(--info); --pu:var(--violet); --cyan:var(--info);
   --ff-ui:var(--font-ui); --ff:var(--font-ui); --ui:var(--font-ui);
   --ff-mono:var(--font-mono); --mono:var(--font-mono);
   --ff-display:var(--font-display); --display:var(--font-display);
-  --glow:var(--shadow-gold); --ease:var(--ease);
+  --glow:var(--shadow-gold);
 }
 
 /* ---- Base ---- */
@@ -170,6 +171,27 @@ input[type=checkbox],input[type=radio]{ accent-color:var(--gold); }
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
 }
+
+/* ============================================================================
+   Shared app header — modern nav + brand mark for the standalone pages.
+   Scoped under .appbar/.bar (0,2,0) so it overrides their older inline styles.
+   ============================================================================ */
+.appbar,.bar{ background:oklch(15% 0.006 270 / 0.78) !important; backdrop-filter:saturate(140%) blur(14px); -webkit-backdrop-filter:saturate(140%) blur(14px); border-bottom:1px solid var(--border); box-shadow:none; }
+.appbar .mark,.bar .mark{
+  border-radius:9px; border:0;
+  background:linear-gradient(150deg,var(--gold-bright),var(--gold-deep));
+  color:oklch(20% 0.04 70); box-shadow:var(--shadow-sm),inset 0 1px 0 oklch(100% 0 0 / .3);
+}
+.appbar .brandname,.bar .brand{ color:var(--text); font-family:var(--font-display); }
+.appbar .navbtn,.bar .navbtn{
+  position:relative; height:34px; display:inline-flex; align-items:center; padding:0 13px;
+  border:0 !important; background:transparent; border-radius:var(--r);
+  font:500 13px var(--font-ui) !important; letter-spacing:0; color:var(--text-muted);
+  transition:color var(--t),background var(--t);
+}
+.appbar .navbtn:hover,.bar .navbtn:hover{ color:var(--text); background:var(--surface-2); }
+.appbar .navbtn.active,.bar .navbtn.active{ color:var(--gold-bright); background:var(--gold-soft); }
+.appbar .navbtn.active::after,.bar .navbtn.active::after{ content:""; position:absolute; left:13px; right:13px; bottom:-9px; height:2px; border-radius:2px; background:var(--gold); }
 
 /* ============================================================================
    Responsive — shared. Scoped under .appbar/.bar so it beats per-page styles.
