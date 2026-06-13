@@ -18,7 +18,7 @@
   .mark{width:30px;height:30px;border:1px solid oklch(80% 0.15 74 / .55);background:var(--gd-a);color:var(--gd);display:grid;place-items:center;font:700 13px var(--ff);letter-spacing:.05em}
   .brandname{color:var(--gd);font:700 15px/1.1 var(--ff-display);letter-spacing:.08em}
   .nav{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
-  .navbtn{height:28px;font-size:11px;color:var(--mu);border:1px solid transparent;background:transparent;padding:0 11px;text-decoration:none;display:inline-flex;align-items:center;border-radius:2px}
+  .navbtn{height:28px;font-size:11px;color:var(--mu);border:1px solid transparent;background:transparent;padding:0 11px;text-decoration:none;display:inline-flex;align-items:center;border-radius:var(--r-sm)}
   .navbtn:hover{color:var(--tx);background:var(--s2);border-color:var(--bd)}
   .navbtn.active{color:var(--gd);background:var(--gd-a);border-color:oklch(80% 0.15 74 / .35)}
   .shell{max-width:1180px;margin:0 auto;padding:18px 16px}
@@ -27,19 +27,20 @@
   .sub{color:var(--mu);font:12px var(--mono);margin:6px 0 0}
   .statusline{color:var(--mu);font:11px var(--mono);text-align:right}
   .statusline.ok{color:var(--gr)} .statusline.err{color:var(--rd)} .statusline.warn{color:var(--gd)}
-  .panel{border:1px solid var(--bd);background:var(--s1);margin-bottom:14px}
+  .panel{border:1px solid var(--bd);background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));margin-bottom:14px;border-radius:var(--r-md);box-shadow:var(--shadow-sm);overflow:hidden}
   .panel-head{padding:10px 12px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;gap:10px}
   .panel-title{color:var(--gd);font:700 12px var(--ff);text-transform:uppercase;letter-spacing:.05em}
   .panel-body{padding:12px}
   .controls{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;align-items:end}
   label{display:block;color:var(--mu);font:10px var(--mono);text-transform:uppercase;letter-spacing:.04em}
-  input{width:100%;height:34px;margin-top:5px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);padding:0 9px;font:13px var(--mono);border-radius:2px}
+  input{width:100%;height:34px;margin-top:5px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);padding:0 9px;font:13px var(--mono);border-radius:var(--r-sm)}
   input:focus{outline:none;border-color:oklch(80% 0.15 74 / .6)}
   .checks{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .check{display:inline-flex;align-items:center;gap:6px;color:var(--tx);font:12px var(--ff)}
   .check input{width:14px;height:14px;margin:0}
-  button{height:34px;border:1px solid oklch(80% 0.15 74 / .5);background:var(--gd-a);color:var(--gd);font:700 12px var(--mono);text-transform:uppercase;cursor:pointer;border-radius:2px;padding:0 14px}
-  button:disabled{opacity:.5;cursor:default}
+  button{height:38px;border:1px solid transparent;background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));color:oklch(22% 0.04 70);font:700 12px var(--mono);text-transform:uppercase;cursor:pointer;border-radius:var(--r);padding:0 16px;transition:filter var(--t),transform var(--t),box-shadow var(--t)}
+  button:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:var(--shadow-gold)}
+  button:disabled{opacity:.5;cursor:default;transform:none;filter:none}
   .hint{margin-top:10px;color:var(--mu);font:12px var(--ff);border-left:2px solid var(--bd);padding-left:10px}
   .summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
   .metric{border:1px solid var(--bd);background:var(--s2);padding:10px 12px}
@@ -55,7 +56,7 @@
   .profit{color:var(--gr);font-weight:700}
   .warn{color:var(--gd)}
   .bad{color:var(--rd)}
-  .flag{display:inline-block;border:1px solid var(--bd);color:var(--mu);font:700 10px var(--mono);text-transform:uppercase;padding:1px 5px;margin-right:4px;border-radius:2px}
+  .flag{display:inline-block;border:1px solid var(--bd);color:var(--mu);font:700 10px var(--mono);text-transform:uppercase;padding:1px 5px;margin-right:4px;border-radius:var(--r-sm)}
   .empty{color:var(--mu);padding:18px;border:1px dashed var(--bd);background:var(--s1)}
   .errors{margin-top:12px;color:var(--mu);font:11px var(--mono)}
   .errors b{color:var(--gd)}
