@@ -1067,24 +1067,81 @@ async function fetchExchangeData(league) {
   return { league, rates, items, updated: new Date().toISOString() };
 }
 
+// Single-flight background refresh: only one live exchange fetch runs at a time,
+// no matter how many readers ask. Writes the cache on success; never throws to
+// callers that don't await it.
+let exchangeRefreshInFlight = null;
+function refreshExchangeData(league) {
+  if (exchangeRefreshInFlight) return exchangeRefreshInFlight;
+  exchangeRefreshInFlight = (async () => {
+    try {
+      const data = await fetchExchangeData(league);
+      if (data.items.length > 1) { try { fs.writeFileSync(CURRENCY_RATES_FILE, JSON.stringify(data, null, 2)); } catch {} }
+      return data;
+    } finally {
+      exchangeRefreshInFlight = null;
+    }
+  })();
+  return exchangeRefreshInFlight;
+}
+
+// THE key to fast-AND-correct: never block a user request on the throttled
+// Trade2 queue. If we have ANY cache for this league we serve it immediately and
+// kick off a background refresh (stale-while-revalidate) — Trade2 accuracy at
+// cache speed. Only the explicit ↻ button (force) waits for fresh numbers, and a
+// true cold start (no cache at all) fetches once. A background warmer keeps the
+// cache fresh so the cold path almost never hits a user. (Rune/currency prices
+// don't move second-to-second, so a few-minutes-stale rate is correct enough.)
 async function getExchangeData(league, force) {
   league = sanitizeLeague(league);
   const cached = readCurrencyRatesCache();
   const fresh = cached && cached.league === league && cached.updated &&
     Date.now() - new Date(cached.updated).getTime() < CURRENCY_RATES_TTL_MS;
   if (cached && fresh && !force) return { ...cached, cached: true };
-  if (tradeStatus().limited) {
-    return cached ? { ...cached, cached: true, stale: true, limited: true } : { league, rates: { exalted: 1 }, items: [], limited: true };
+
+  const haveCacheForLeague = cached && cached.league === league;
+
+  // Explicit refresh (home ↻): wait for fresh data.
+  if (force) {
+    if (tradeStatus().limited) {
+      return haveCacheForLeague ? { ...cached, cached: true, stale: true, limited: true } : { league, rates: { exalted: 1 }, items: [], limited: true };
+    }
+    try {
+      const data = await refreshExchangeData(league);
+      return { ...data, cached: false };
+    } catch (err) {
+      const limited = /rate limited/i.test(String(err && err.message));
+      if (haveCacheForLeague) return { ...cached, cached: true, stale: true, limited };
+      return { league, rates: { exalted: 1 }, items: [], limited, error: limited ? undefined : String(err && err.message).slice(0, 180) };
+    }
   }
+
+  // Stale-while-revalidate: stale cache exists → return it now, refresh in bg.
+  if (haveCacheForLeague) {
+    if (!tradeStatus().limited) refreshExchangeData(league).catch(() => {});
+    return { ...cached, cached: true, stale: true };
+  }
+
+  // Cold start (no cache for this league): we have to fetch once.
+  if (tradeStatus().limited) return { league, rates: { exalted: 1 }, items: [], limited: true };
   try {
-    const data = await fetchExchangeData(league);
-    if (data.items.length > 1) { try { fs.writeFileSync(CURRENCY_RATES_FILE, JSON.stringify(data, null, 2)); } catch {} }
+    const data = await refreshExchangeData(league);
     return { ...data, cached: false };
   } catch (err) {
     const limited = /rate limited/i.test(String(err && err.message));
-    if (cached) return { ...cached, cached: true, stale: true, limited };
     return { league, rates: { exalted: 1 }, items: [], limited, error: limited ? undefined : String(err && err.message).slice(0, 180) };
   }
+}
+
+// Background warmer: refresh the cache shortly BEFORE its TTL expires so user
+// requests almost always hit a fresh (or at worst instantly-served stale) cache,
+// never the slow path. Single-flight + rate-limit aware = gentle on the shared IP.
+async function warmExchange(league = DEFAULT_LEAGUE) {
+  const cached = readCurrencyRatesCache();
+  const ageMs = cached && cached.updated ? Date.now() - new Date(cached.updated).getTime() : Infinity;
+  if (ageMs < CURRENCY_RATES_TTL_MS - 2 * 60 * 1000) return;  // still comfortably fresh
+  if (tradeStatus().limited) return;
+  try { await refreshExchangeData(sanitizeLeague(league)); } catch {}
 }
 
 // Drop-in for the old poe.ninja fetchCurrencyRates: just the id/name→ex map.
@@ -3855,6 +3912,13 @@ if (require.main === module) {
     console.log("PoE Tools running at " + url);
     if (!process.env.POE2_NO_OPEN) exec('start "" "' + url + '"');
   });
+  // Keep the currency-rate cache warm in the BACKGROUND so the Rune Picker, home
+  // strip, and Gear Search never wait on the throttled Trade2 queue. Warm once on
+  // boot, then check every 2 min (the warmer only actually refreshes when the
+  // cache is near expiry, and it's single-flight + rate-limit aware).
+  warmExchange().catch(() => {});
+  const warmTimer = setInterval(() => { warmExchange().catch(() => {}); }, 2 * 60 * 1000);
+  if (warmTimer.unref) warmTimer.unref();
 }
 
 module.exports = {
