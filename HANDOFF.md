@@ -5,7 +5,7 @@ Scratch resume note. **Canonical context is `AGENTS.md`** (read it first); this 
 ## State
 - Branch `main`, **clean and pushed**. HEAD = the currency-widen commit (advanced past `b5398b3` this session).
 - Run: `node server.js` → http://127.0.0.1:17777 (fixed PORT 17777). Zero-dep Node (http/fs/path only).
-- Test: `node smoke-test.js` → **67/67** (static + HTTP + Playwright browser checks; browser checks auto-skip if Playwright/Chromium absent).
+- Test: `node smoke-test.js` → **68/68** (static + HTTP + Playwright browser checks; browser checks auto-skip if Playwright/Chromium absent).
 - Recent commits: `b5398b3` unify currency→Trade2, `453a561` craft pricer + currency strip + regex, `216f465` rune CSS parity, `6f9537c`/`c9d3949` modularization.
 
 ## Architecture (1 line)

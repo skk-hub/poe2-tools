@@ -7,6 +7,8 @@ window.__viewInit["home"] = function () {
   const chips = document.getElementById("fxStripChips");
   const meta = document.getElementById("fxStripMeta");
   const btn = document.getElementById("fxStripRefresh");
+  const heroStat = document.getElementById("homePriceStatus");
+  const heroLabel = document.getElementById("homePriceLabel");
   if (!strip || !chips) return;
   const LEAGUE = "Runes of Aldur";
 
@@ -33,6 +35,11 @@ window.__viewInit["home"] = function () {
     // Anything worth more than a single Divine reads better in divine.
     const divineItem = d.items.find((i) => i.id === "divine");
     const divineEx = divineItem && divineItem.ex > 0 ? divineItem.ex : 0;
+    // Surface the live Divine price in the hero stat (was a static "Ready").
+    if (heroStat && divineEx) {
+      heroStat.textContent = fmtEx(divineEx) + " ex";
+      if (heroLabel) heroLabel.textContent = "per Divine" + (d.stale ? " · stale" : "");
+    }
     chips.innerHTML = d.items.map((c) => {
       const base = c.id === "exalted";
       const val = base
