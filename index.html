@@ -374,6 +374,9 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
   .toolroot-gs .delta-neg{color: var(--rd);}
   .toolroot-gs .empty{padding: 18px; border: 1px solid var(--bd); background: var(--s1); color: var(--mu);}
 @media (max-width: 980px){
+  .toolroot-gs main{grid-template-columns: 1fr;}
+  .toolroot-gs .pagehead{flex-direction: column; align-items: flex-start; gap: 8px;}
+  .toolroot-gs .status{text-align: left; white-space: normal;}
   .toolroot-gs aside{margin-bottom: 14px;}
   .toolroot-gs .summary{grid-template-columns: repeat(2, minmax(0, 1fr));}
   .toolroot-gs .filter-row, .toolroot-gs .triple, .toolroot-gs .import-progress, .toolroot-gs .slot-actions, .toolroot-gs .import-savebar{grid-template-columns: 1fr;}
