@@ -9,6 +9,9 @@ services:
       - POE_CONTACT=REDACTED-USER
     ports:
       - "17777:17777"
-    volumes:
-      - ./server.js:/app/server.js:ro
-      - ./index.html:/app/index.html:ro
+    # No bind mounts on purpose. The image (Dockerfile `COPY . .`) is the single
+    # source of truth, so `docker compose up -d --build` always serves a fully
+    # consistent file set. The old partial mounts (only server.js + index.html)
+    # let `git pull` refresh those two files while every other asset (theme.css,
+    # tool css/js, fonts/) stayed baked at the last build — which silently served
+    # a stale, unstyled site. Deploy = `git pull && docker compose up -d --build`.

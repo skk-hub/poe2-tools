@@ -12,7 +12,7 @@ Read this first. Self-hosted Path of Exile 2 (PoE2) browser utility suite: prici
 ## Deploy
 - Repo: private GitHub skk-hub/poe-tools.
 - Dev on Main PC at C:\Users\User\dev\poe2-craft-pricer-project (dir name differs from deployed name poe-tools).
-- Flow: push from PC -> on Docker VM: git pull && docker compose up -d --build.
+- Flow: push from PC -> on Docker VM: `git pull && docker compose up -d --build`. The `--build` is MANDATORY: the image bakes ALL files via `COPY . .`, so without a rebuild the container keeps serving stale assets. (2026-06-14: removed the old partial bind-mounts that only live-updated server.js + index.html — they masked staleness: a `git pull` without `--build` refreshed those two files while theme.css/tool-css/tool-js/fonts stayed at the last build, serving a half-new, UNSTYLED site. Image is now the single source of truth.)
 - Runs as container poe-tools on :17777. Access: LAN REDACTED-LAN-HOST:17777; Tailscale docker:17777.
 - Monitor: Uptime Kuma HTTP check on /api/trade-status (no external calls).
 
