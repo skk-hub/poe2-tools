@@ -297,6 +297,16 @@ const ARBITRAGE_ITEMS = [
   { id: "annul", name: "Orb of Annulment", category: "currency", enabled: true },
   { id: "artificers", name: "Artificer's Orb", category: "currency", enabled: true, aliases: ["Artificers Orb"] },
   { id: "gcp", name: "Gemcutter's Prism", category: "currency", enabled: true, aliases: ["Gemcutters Prism"] },
+  // Rate-only currencies (enabled:false → kept OUT of the arbitrage scanner by the
+  // `item.enabled` filter, but still picked up by fetchExchangeData's currency
+  // filter so Gear Search listings priced in these don't get dropped for lack of a
+  // rate). poe.ninja used to cover every currency; the Trade2 move narrowed it to
+  // the 9 scanner currencies, so these backfill the common exotic gear-price orbs.
+  // Append more here as needed — each adds at most a fraction of a chunked call.
+  { id: "mirror", name: "Mirror of Kalandra", category: "currency", enabled: false },
+  { id: "transmute", name: "Orb of Transmutation", category: "currency", enabled: false },
+  { id: "aug", name: "Orb of Augmentation", category: "currency", enabled: false },
+  { id: "fracturing-orb", name: "Fracturing Orb", category: "currency", enabled: false, aliases: ["Orb of Fracturing"] },
   { id: "simulacrum-splinter", name: "Simulacrum Splinter", category: "fragments", enabled: true },
   { id: "breach-splinter", name: "Breach Splinter", category: "fragments", enabled: true },
   { id: "cowards-fate", name: "Coward's Fate", category: "fragments", enabled: false },
@@ -949,51 +959,6 @@ async function getTradePrice(name, league, currencyRates, deadline = 0) {
     if (String(err && err.message).includes("rate limited")) return { limited: true };
     return null;
   }
-}
-
-async function fetchCurrencyRates(league) {
-  const rates = { exalted: 1 };
-  const apiUrl = "https://poe.ninja/poe2/api/economy/exchange/current/overview?league=" +
-    encodeURIComponent(league) + "&type=Currency";
-  const response = await fetchWithTimeout(apiUrl, {}, NINJA_TIMEOUT_MS);
-  if (!response.ok) return rates;
-  const data = await response.json();
-
-  if (data.core && data.core.rates && data.core.rates.exalted) {
-    rates.divine = Number(data.core.rates.exalted);
-  }
-  if (data.core && data.core.rates && data.core.rates.chaos) {
-    rates.chaos = Math.round((1 / Number(data.core.rates.chaos)) * 1000000) / 1000000;
-  }
-
-  const lineById = new Map((data.lines || []).map((line) => [line.id, line]));
-  for (const item of data.items || []) {
-    const line = lineById.get(item.id);
-    const priceEx = getDisplayPriceExalted(line, rates);
-    if (priceEx > 0) {
-      rates[item.id] = priceEx;
-      rates[normalizeName(item.name)] = priceEx;
-    }
-  }
-
-  for (const [alias, target] of Object.entries({
-    alch: "orb of alchemy",
-    alchemy: "orb of alchemy",
-    regal: "regal orb",
-    annul: "orb of annulment",
-    chance: "orb of chance",
-    transmute: "orb of transmutation",
-    augmentation: "orb of augmentation",
-    aug: "orb of augmentation",
-    vaal: "vaal orb",
-    gcp: "gemcutter's prism",
-    gemcutter: "gemcutter's prism",
-  })) {
-    const targetRate = rates[normalizeName(target)];
-    if (targetRate) rates[alias] = targetRate;
-  }
-
-  return rates;
 }
 
 // ── Unified currency exchange rates (Trade2, cached) ────────────────────────
