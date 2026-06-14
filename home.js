@@ -10,12 +10,13 @@ window.__viewInit["home"] = function () {
   if (!strip || !chips) return;
   const LEAGUE = "Runes of Aldur";
 
+  // Compact, never more than 2 decimals: big values round to a whole number,
+  // mid values get 1 dp, small values 2 dp.
   function fmtEx(v) {
     if (!isFinite(v) || v <= 0) return "—";
     if (v >= 100) return Math.round(v).toLocaleString();
     if (v >= 10) return v.toFixed(1);
-    if (v >= 1) return v.toFixed(2);
-    return v.toFixed(3);
+    return v.toFixed(2);
   }
   function ago(iso) {
     const ms = Date.now() - new Date(iso).getTime();
@@ -29,9 +30,16 @@ window.__viewInit["home"] = function () {
 
   function render(d) {
     if (!d || !d.items || !d.items.length) { strip.hidden = true; return; }
+    // Anything worth more than a single Divine reads better in divine.
+    const divineItem = d.items.find((i) => i.id === "divine");
+    const divineEx = divineItem && divineItem.ex > 0 ? divineItem.ex : 0;
     chips.innerHTML = d.items.map((c) => {
       const base = c.id === "exalted";
-      const val = base ? '1 <small>ex (base)</small>' : fmtEx(c.ex) + ' <small>ex</small>';
+      const val = base
+        ? '1 <small>ex (base)</small>'
+        : divineEx && c.ex > divineEx
+          ? fmtEx(c.ex / divineEx) + ' <small>div</small>'
+          : fmtEx(c.ex) + ' <small>ex</small>';
       const icon = c.icon ? '<img class="fxicon" src="' + c.icon + '" alt="" loading="lazy" decoding="async">' : '';
       return '<span class="fxchip' + (c.id === "divine" ? " gold" : "") + '">' + icon +
         '<span class="fxname">' + shortName(c.name) + '</span>' +
