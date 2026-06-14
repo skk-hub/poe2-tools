@@ -132,7 +132,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
 
 /* ===== Arbitrage Scanner (inlined view) — scoped so its classes can't leak ===== */
 @scope (.toolroot-arb){
-  :scope{ display:block; padding:32px 24px 56px; max-width:1180px; margin:0 auto; }
+  :scope{ display:block; }
   .pagehead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:0 0 18px}
   h1{margin:0;color:var(--gd);font:700 23px/1.1 var(--ff-display);letter-spacing:.04em}
   .sub{color:var(--mu);font:12px var(--mono);margin:6px 0 0}
@@ -168,12 +168,12 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
   .errors{margin-top:12px;color:var(--mu);font:11px var(--mono)}
   .errors b{color:var(--gd)}
   @media(max-width:820px){ .pagehead{display:block} .statusline{text-align:left;margin-top:8px} .controls{grid-template-columns:repeat(2,minmax(0,1fr))} .summary{grid-template-columns:repeat(2,minmax(0,1fr))} }
-  @media(max-width:560px){ :scope{padding:20px 14px 40px} .controls,.summary{grid-template-columns:1fr} }
+  @media(max-width:560px){ .controls,.summary{grid-template-columns:1fr} }
 }
 
 /* ===== Map Juicer (inlined view) — scoped; header/body rules inside are inert ===== */
 @scope (.toolroot-mj){
-  :scope{ display:block; max-width:1040px; margin:0 auto; padding:32px 24px 56px; }
+  :scope{ display:block; }
   *{box-sizing:border-box}
   a{color:var(--gd)}
   h1{margin:0;color:var(--gd);font:700 22px/1.1 var(--ff-display);letter-spacing:.04em}
@@ -246,6 +246,148 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
   .scoreline{display:flex;align-items:baseline;gap:8px;margin:6px 0 2px;color:var(--mu);font:12px var(--ff-mono)}
   .scoreline b{color:var(--gd);font-size:14px}
   .foot{color:var(--mu);font:12px var(--ff);margin-top:24px;padding-top:14px;border-top:1px solid var(--bd)}
+}
+
+/* ===== Gear Search (inlined view) — scoped ===== */
+@scope (.toolroot-gs){
+  :scope{ display:block; }
+
+    /* Design tokens come from theme.css; page-specific styles follow. */
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--tx); font: 13px var(--ff-ui); -webkit-font-smoothing: antialiased; }
+    a { color: var(--cy); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .appbar { position: sticky; top: 0; z-index: 20; background: var(--s3); border-bottom: 1px solid var(--bd); box-shadow: 0 4px 24px oklch(0 0 0 / .65); }
+    .appbarin { max-width: 1500px; margin: 0 auto; padding: 11px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 11px; color: inherit; min-width: 0; }
+    .brand:hover { text-decoration: none; }
+    .mark { width: 30px; height: 30px; border: 1px solid oklch(80% 0.15 74 / .55); background: var(--gd-a); color: var(--gd); display: grid; place-items: center; font: 700 13px var(--ff-display); letter-spacing: .05em; }
+    .brandname { display: block; color: var(--gd); font: 700 15px/1.1 var(--ff-display); letter-spacing: .08em; }
+    .brandmeta { display: block; margin-top: 3px; color: var(--mu); font-size: 10px; white-space: nowrap; }
+    .nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; }
+    .navbtn { min-height: 28px; padding: 0 11px; display: inline-flex; align-items: center; border: 1px solid transparent; color: var(--mu); font-size: 11px; border-radius: var(--r-sm); }
+    .navbtn:hover { color: var(--tx); background: var(--s2); border-color: var(--bd); text-decoration: none; }
+    .navbtn.active { color: var(--gd); background: var(--gd-a); border-color: oklch(80% 0.15 74 / .35); }
+    .shell { max-width: 1500px; margin: 0 auto; padding: 24px; }
+    .pagehead { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 16px; }
+    h1 { margin: 0; color: var(--gd); font: 700 22px/1.1 var(--ff-display); letter-spacing: .04em; }
+    .sub { margin-top: 6px; color: var(--mu); font-size: 11px; line-height: 1.5; }
+    .status { min-width: 300px; padding: 10px 12px; background: var(--s1); border: 1px solid var(--bd); text-align: right; color: var(--mu); font: 11px var(--ff-mono); }
+    .status b { color: var(--gd); }
+    main { display: grid; grid-template-columns: minmax(350px, 450px) minmax(0, 1fr); gap: 14px; align-items: start; }
+    aside, .panel { background: var(--s1); border: 1px solid var(--bd); padding: 14px; }
+    .stack { display: grid; gap: 12px; }
+    h2, h3 { margin: 0 0 10px; color: var(--gd); font: 700 12px var(--ff-display); letter-spacing: .06em; text-transform: uppercase; }
+    label { display: block; margin-bottom: 7px; color: var(--mu); font-size: 11px; }
+    textarea, input, select, button { width: 100%; border: 1px solid var(--bd); background: var(--s2); color: var(--tx); border-radius: var(--r-sm); font: inherit; }
+    textarea { min-height: 330px; resize: vertical; padding: 10px; line-height: 1.5; font: 11px var(--ff-mono); }
+    input, select, button { min-height: 36px; padding: 0 10px; }
+    textarea:focus, input:focus, select:focus { outline: none; border-color: var(--bd2); }
+    button { cursor: pointer; font-weight: 700; }
+    button:hover { border-color: var(--bd2); background: var(--s3); }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .primary { background: var(--gd-a); color: var(--gd); border-color: oklch(80% 0.15 74 / .5); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .triple { display: grid; grid-template-columns: 1fr 105px 105px; gap: 8px; align-items: end; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .actions button, .actions a { width: auto; min-height: 34px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--bd); background: var(--s2); color: var(--tx); border-radius: var(--r-sm); font-weight: 700; }
+    .actions a.primary { color: var(--gd); background: var(--gd-a); border-color: oklch(80% 0.15 74 / .5); }
+    .muted { color: var(--mu); }
+    .good { color: var(--gr); }
+    .bad { color: var(--rd); }
+    .filters { display: grid; gap: 8px; }
+    .filter-row { display: grid; grid-template-columns: minmax(130px, 1fr) 80px 80px 32px; gap: 8px; align-items: end; }
+    .iconbtn { min-height: 36px; padding: 0; }
+    .import-shell { padding: 0; overflow: hidden; }
+    .import-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; background: var(--s2); border-bottom: 1px solid var(--bd); }
+    .import-bar h2 { margin-bottom: 3px; }
+    .import-bar .sub { margin: 0; max-width: 42ch; }
+    .import-toggle { width: 36px; min-width: 36px; padding: 0; display: inline-grid; place-items: center; font: 700 16px/1 var(--ff-ui); }
+    .import-toggle .glyph { display: inline-block; transform: translateY(-1px); }
+    .import-body { padding: 14px; display: grid; gap: 10px; }
+    .import-shell.collapsed .import-body { display: none; }
+    .import-help { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--bd); background: oklch(9.5% 0.028 40); color: var(--mu); font-size: 11px; line-height: 1.45; }
+    .import-progress { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+    .progress-track { height: 8px; border: 1px solid var(--bd); background: var(--s2); overflow: hidden; }
+    .progress-fill { height: 100%; width: 0%; background: var(--gd); transition: width 180ms cubic-bezier(0.23, 1, 0.32, 1); }
+    .progress-copy { color: var(--mu); font: 700 11px var(--ff-mono); white-space: nowrap; }
+    .slot-grid { display: grid; gap: 8px; }
+    .slot-card { border: 1px solid var(--bd); background: var(--s2); padding: 10px; display: grid; gap: 8px; }
+    .slot-card.filled { border-color: oklch(67% 0.14 148 / .55); background: oklch(67% 0.14 148 / .08); }
+    .slot-card.warn { border-color: oklch(80% 0.15 74 / .5); background: var(--gd-a); }
+    .slot-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+    .slot-title { font-weight: 800; color: var(--tx); }
+    .slot-state { font: 700 10px var(--ff-mono); color: var(--mu); text-transform: uppercase; }
+    .slot-card.filled .slot-state { color: var(--gr); }
+    .slot-card.warn .slot-state { color: var(--gd); }
+    .slot-card textarea { min-height: 64px; max-height: 140px; }
+    .slot-actions { display: grid; grid-template-columns: 1fr 74px; gap: 8px; }
+    .slot-card .hint { color: var(--mu); font-size: 10px; line-height: 1.4; }
+    .import-savebar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+    .import-savebar label { margin-bottom: 5px; }
+    .advanced-import { border-top: 1px solid var(--bd); padding-top: 10px; }
+    .advanced-import summary { cursor: pointer; color: var(--mu); font-weight: 800; }
+    .advanced-import[open] summary { color: var(--gd); }
+    .advanced-import textarea { margin-top: 10px; min-height: 180px; }
+    .console-helper { display: grid; gap: 8px; margin: 10px 0; padding: 10px; border: 1px solid var(--bd); background: oklch(9.5% 0.028 40); }
+    .console-helper .sub { margin: 0; }
+    .console-code { max-height: 150px; }
+    .locked-panel { display: grid; gap: 10px; }
+    .locked-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .locked-card, .lock-card { border: 1px solid var(--bd); background: var(--s2); }
+    .locked-card { padding: 10px; }
+    .locked-card .label, .lock-card .label { color: var(--mu); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+    .locked-card b, .lock-card b { display: block; margin-top: 4px; color: var(--gd); font: 700 18px var(--ff-mono); }
+    .locked-grid { display: grid; gap: 8px; }
+    .lock-card { padding: 10px; display: grid; gap: 8px; }
+    .lock-card-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+    .lock-title { font-weight: 800; overflow-wrap: anywhere; }
+    .lock-sub { color: var(--mu); font: 11px var(--ff-mono); }
+    .lock-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+    .lock-toggle { width: auto; min-height: 30px; padding: 0 10px; font: 700 11px var(--ff-mono); text-transform: uppercase; }
+    .lock-toggle.active { color: var(--gd); border-color: oklch(80% 0.15 74 / .5); background: var(--gd-a); }
+    .view-trade { width: auto; min-height: 30px; padding: 0 10px; font: 700 11px var(--ff-mono); text-transform: uppercase; }
+    .view-trade:disabled { opacity: .6; cursor: default; }
+    .badge { display: inline-block; padding: 1px 6px; margin-right: 6px; border: 1px solid var(--bd); border-radius: var(--r-sm); font: 700 10px var(--ff-mono); text-transform: uppercase; letter-spacing: .04em; vertical-align: middle; }
+    .badge.online { color: var(--gr); border-color: oklch(67% 0.14 148 / .5); }
+    .badge.afk, .badge.dnd { color: var(--gd); border-color: oklch(80% 0.15 74 / .5); }
+    .badge.offline { color: var(--mu); }
+    .badge.stale { color: var(--rd); border-color: oklch(62% 0.14 20 / .5); }
+    .badge.fresh { color: var(--gr); border-color: oklch(67% 0.14 148 / .5); }
+    .projection-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .projection-table th, .projection-table td { padding: 7px 9px; border-bottom: 1px solid var(--bd); text-align: right; font: 11px var(--ff-mono); }
+    .projection-table th:first-child, .projection-table td:first-child { text-align: left; font-family: var(--ff-ui); color: var(--mu); }
+    .items { display: grid; gap: 8px; max-height: 300px; overflow: auto; }
+    .item-row { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 8px; padding: 9px; border: 1px solid var(--bd); background: oklch(9.5% 0.028 40); cursor: pointer; }
+    .item-row.active { border-color: var(--gd); background: var(--gd-a); }
+    .item-row strong { overflow-wrap: anywhere; }
+    .pill { display: inline-flex; align-items: center; min-height: 22px; padding: 0 7px; border: 1px solid var(--bd); color: var(--mu); font: 10px var(--ff-mono); text-transform: uppercase; }
+    pre { margin: 0; max-height: 280px; overflow: auto; padding: 10px; border: 1px solid var(--bd); background: oklch(7.5% 0.025 40); color: var(--tx); font: 10px/1.45 var(--ff-mono); white-space: pre-wrap; }
+    .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .metric { padding: 10px; border: 1px solid var(--bd); background: var(--s2); }
+    .metric b { display: block; color: var(--gd); font: 700 18px var(--ff-mono); }
+    .results { display: grid; gap: 10px; }
+    .listing { border: 1px solid var(--bd); background: var(--s1); }
+    .listing-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-bottom: 1px solid var(--bd); }
+    .listing-title { font-weight: 800; overflow-wrap: anywhere; }
+    .price { color: var(--gd); font: 700 16px var(--ff-mono); text-align: right; }
+    .comparison { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .comparison th, .comparison td { padding: 7px 9px; border-bottom: 1px solid var(--bd); text-align: right; font: 11px var(--ff-mono); }
+    .comparison th:first-child, .comparison td:first-child { text-align: left; font-family: var(--ff-ui); color: var(--mu); }
+    .comparison tr:last-child td { border-bottom: 0; }
+    .delta-pos { color: var(--gr); }
+    .delta-neg { color: var(--rd); }
+    .empty { padding: 18px; border: 1px solid var(--bd); background: var(--s1); color: var(--mu); }
+    @media (max-width: 980px) {
+      .appbarin, .pagehead, main { display: block; }
+      .nav, .status { margin-top: 10px; text-align: left; }
+      aside { margin-bottom: 14px; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .filter-row, .triple, .import-progress, .slot-actions, .import-savebar { grid-template-columns: 1fr; }
+      .locked-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  
 }
 </style>
 </head>
@@ -425,8 +567,135 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     </div>
   </section>
 
-  <section id="gear-search" class="view frameview" data-view="gear-search">
-    <iframe class="toolframe" data-src="character-upgrades.html?embed=gear-search" title="Gear Search" loading="lazy"></iframe>
+    <section id="gear-search" class="view" data-view="gear-search">
+    <div class="toolroot toolroot-gs">
+<div class="pagehead">
+      <div>
+        <h1>Gear Search</h1>
+        <div class="sub">Import equipped gear, build slot-aware Trade2 filters, inspect the query, and compare candidate listings against your current item.</div>
+      </div>
+      <div class="status" id="status">Trade queue: <b>checking</b></div>
+    </div>
+
+    <main>
+      <aside class="stack">
+        <section class="import-shell" id="importShell">
+          <div class="import-bar">
+            <div>
+              <h2>Gear Import</h2>
+              <div class="sub">Paste copied item text, character JSON, or browser export HTML.</div>
+            </div>
+            <button class="import-toggle" id="importToggle" type="button" aria-label="Toggle gear import" title="Toggle gear import">
+              <span class="glyph" aria-hidden="true">⌄</span>
+            </button>
+          </div>
+          <div class="import-body" id="importBody">
+            <details class="advanced-import" id="advancedImport">
+              <summary>Advanced raw import</summary>
+              <div class="console-helper">
+                <div class="sub">Open your PoE2 character/equipment page, paste this in the browser console, then paste the copied export below.</div>
+                <div class="actions">
+                  <button id="copyConsoleBtn" type="button">Copy Console Code</button>
+                  <a href="https://pathofexile2.com/my-account/characters" target="_blank" rel="noreferrer">Open PoE2 Characters</a>
+                </div>
+                <pre class="console-code" id="consoleSnippet"></pre>
+              </div>
+              <label for="gearText">Raw item text, character JSON, or browser export HTML</label>
+              <textarea id="gearText" spellcheck="false" placeholder="Paste copied item text, character JSON, or browser export HTML"></textarea>
+              <div class="actions" style="margin-top:10px">
+                <button id="importBtn" type="button">Import Export</button>
+                <button id="syncSlotsBtn" type="button">Fill Slots From Raw</button>
+              </div>
+            </details>
+            <div class="import-help">
+              <div>In game: hover an equipped item, press Ctrl+C, then paste it into the matching slot below.</div>
+              <div class="import-progress">
+                <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="importProgressFill"></div></div>
+                <div class="progress-copy" id="importProgressText">0 / 10 slots</div>
+              </div>
+            </div>
+            <div class="slot-grid" id="slotImportGrid"></div>
+            <div class="import-savebar">
+              <div>
+                <label for="importSaveName">Save name</label>
+                <input id="importSaveName" type="text" autocomplete="off" placeholder="Player or character name">
+              </div>
+              <div>
+                <label for="importProfileSelect">Saved imports</label>
+                <select id="importProfileSelect"></select>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="primary" id="analyzeBtn">Analyze Gear</button>
+              <button id="saveBtn">Save Import</button>
+              <button id="loadBtn">Load Import</button>
+              <button id="deleteSaveBtn">Delete Save</button>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Locked Loadout</h2>
+          <div class="locked-panel" id="lockedPanel">
+            <div class="empty">Lock candidate items to build a projected character overview.</div>
+          </div>
+        </section>
+      </aside>
+
+      <section class="stack">
+        <div class="panel">
+          <h2>Search Controls</h2>
+          <div class="row">
+            <div>
+              <label for="slotSelect">Slot</label>
+              <select id="slotSelect"></select>
+            </div>
+            <div>
+              <label for="budget">Max price, divine</label>
+              <input id="budget" type="number" min="0" step="1" value="100">
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <div>
+              <label for="matchMode">Match mode</label>
+              <select id="matchMode">
+                <option value="count">Count of filters</option>
+                <option value="all" selected>All filters</option>
+              </select>
+            </div>
+            <div>
+              <label for="minMatches">Min count</label>
+              <input id="minMatches" type="number" min="1" step="1">
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <h3>Stat Filters</h3>
+            <div class="filters" id="filters"></div>
+            <div class="actions" style="margin-top:8px">
+              <button id="addFilterBtn">Add Filter</button>
+              <button class="primary" id="searchBtn">Search Trade2</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="summary" id="summary">
+          <div class="metric"><span class="muted">Selected</span><b>-</b></div>
+          <div class="metric"><span class="muted">Budget</span><b>-</b></div>
+          <div class="metric"><span class="muted">Total</span><b>-</b></div>
+          <div class="metric"><span class="muted">Fetched</span><b>-</b></div>
+        </div>
+
+        <div class="panel">
+          <h2>Trade2 Query Preview</h2>
+          <pre id="queryPreview">{}</pre>
+        </div>
+
+        <div class="results" id="results">
+          <div class="empty">Run a search to fetch the first 20 listings.</div>
+        </div>
+      </section>
+    </main>
+    </div>
   </section>
   <section id="map-juicer" class="view" data-view="map-juicer">
     <div class="toolroot toolroot-mj">
@@ -683,7 +952,7 @@ function currentView(){
   return views.some(v=>v.dataset.view===key)?key:"home";
 }
 
-const FRAME_VIEWS=["gear-search"];
+const FRAME_VIEWS=[];
 const shellEl=document.querySelector(".shell");
 // Inlined tool views register a one-time init here; run it the first time the
 // view is shown (isolates each tool's globals + defers any network to open).
@@ -1345,5 +1614,6 @@ window.__viewInit["map-juicer"]=function(){
   loadExchange();
 };
 </script>
+<script src="gear-search.js"></script>
 </body>
 </html>
