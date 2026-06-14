@@ -108,6 +108,10 @@
   .toolroot-gs .comparison th, .toolroot-gs .comparison td{padding: 7px 9px; border-bottom: 1px solid var(--bd); text-align: right; font: 11px var(--ff-mono);}
   .toolroot-gs .comparison th:first-child, .toolroot-gs .comparison td:first-child{text-align: left; font-family: var(--ff-ui); color: var(--mu);}
   .toolroot-gs .comparison tr:last-child td{border-bottom: 0;}
+  /* Zebra + row-hover parity with the shared .tablewrap tables. */
+  .toolroot-gs .projection-table tbody tr, .toolroot-gs .comparison tbody tr{transition: background var(--t);}
+  .toolroot-gs .projection-table tbody tr:nth-child(even), .toolroot-gs .comparison tbody tr:nth-child(even){background: oklch(100% 0 0 / .032);}
+  .toolroot-gs .projection-table tbody tr:hover, .toolroot-gs .comparison tbody tr:hover{background: var(--gold-soft);}
   .toolroot-gs .delta-pos{color: var(--gr);}
   .toolroot-gs .delta-neg{color: var(--rd);}
   .toolroot-gs .empty{padding: 18px; border: 1px solid var(--bd); background: var(--s1); color: var(--mu);}
