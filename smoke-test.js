@@ -78,6 +78,11 @@ function staticChecks() {
   check(/revives available: 0/.test(wd) && /line:\s*{/.test(wd), "waystone-data has revives + colon-format line tokens");
   check(/\\\\\+\(\$\{tens/.test(mj) || /atLeast\(/.test(mj), "map-juicer builds %-aware threshold regex");
   check(/noRevivesRegex/.test(mj), "map-juicer has the 0-revives regex generator");
+  // Unification: one Trade2 exchange-rate provider; no poe.ninja currency calls.
+  const srv = read("server.js");
+  check(/async function getExchangeData/.test(srv) && /async function getExchangeRates/.test(srv), "server has the unified Trade2 exchange-rate provider");
+  check(!/await fetchCurrencyRates\(/.test(srv), "no poe.ninja fetchCurrencyRates calls remain (currency unified on Trade2)");
+  check(/iconsById/.test(srv), "server resolves currency icons from Trade2 static data");
   check(!/let P=\{\}|function showView\(\)\{[^]*CRAFTS/.test(idx) && !idx.includes("const CRAFTS="), "index is shell-only (tool logic externalised)");
   // CSS parity: rune-only selectors must have left index's <style> for rune-picker.css
   const idxStyle = (idx.match(/<style>([\s\S]*?)<\/style>/) || [, ""])[1];
@@ -191,11 +196,12 @@ async function browserChecks() {
       let hits = 0;
       await p.route("**/api/currency/overview**", route => { hits++; route.fulfill({ contentType: "application/json", body: JSON.stringify({
         league: "Runes of Aldur", updated: new Date().toISOString(), cached: true,
-        items: [{ id: "divine", name: "Divine Orb", ex: 320 }, { id: "exalted", name: "Exalted Orb", ex: 1 }, { id: "chaos", name: "Chaos Orb", ex: 2.4 }],
+        items: [{ id: "divine", name: "Divine Orb", ex: 320, icon: "https://web.poecdn.com/divine.png" }, { id: "exalted", name: "Exalted Orb", ex: 1, base: true, icon: "https://web.poecdn.com/ex.png" }, { id: "chaos", name: "Chaos Orb", ex: 2.4, icon: "https://web.poecdn.com/chaos.png" }],
       }) }); });
       await p.goto(BASE + "/index.html#home", { waitUntil: "networkidle" }); await p.waitForTimeout(600);
-      const strip = await p.evaluate(() => { const s = document.getElementById("fxStrip"); const c = document.getElementById("fxStripChips"); return { shown: s && !s.hidden, chips: c ? c.children.length : 0 }; });
+      const strip = await p.evaluate(() => { const s = document.getElementById("fxStrip"); const c = document.getElementById("fxStripChips"); return { shown: s && !s.hidden, chips: c ? c.children.length : 0, icons: c ? c.querySelectorAll("img.fxicon").length : 0 }; });
       check(strip.shown && strip.chips === 3, "home currency strip renders chips from cache");
+      check(strip.icons === 3, "home currency chips render currency icons");
       await p.click("#fxStripRefresh"); await p.waitForTimeout(400);
       check(hits >= 2, "home currency refresh button re-fetches (force)");
       await p.close();

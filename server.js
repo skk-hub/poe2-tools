@@ -472,7 +472,7 @@ function collectStaticEntries(data) {
     if (seen.has(value)) return;
     seen.add(value);
     if (value.id && (value.text || value.name || value.label)) {
-      entries.push({ id: String(value.id), name: String(value.text || value.name || value.label) });
+      entries.push({ id: String(value.id), name: String(value.text || value.name || value.label), image: value.image || value.icon || "" });
     }
     if (Array.isArray(value)) {
       value.forEach(visit);
@@ -491,11 +491,13 @@ async function resolveArbitrageItems(league) {
     return arbitrageStaticCache.items;
   }
   const byName = new Map();
+  const iconsById = {};
   try {
     const endpoint = "https://www.pathofexile.com/api/trade2/data/static";
     const data = await tradeQueue.request(endpoint, { method: "GET" });
     for (const entry of collectStaticEntries(data)) {
       byName.set(normalizeNameKey(entry.name), entry.id);
+      if (entry.image) iconsById[String(entry.id)] = entry.image;
     }
   } catch {
     // Static-data lookup is a convenience. Hardcoded fallbacks keep the scanner usable.
@@ -505,7 +507,7 @@ async function resolveArbitrageItems(league) {
     const resolved = names.map((name) => byName.get(normalizeNameKey(name))).find(Boolean);
     return { ...item, id: resolved || item.id, fallbackId: item.id };
   });
-  arbitrageStaticCache = { loadedAt: Date.now(), items };
+  arbitrageStaticCache = { loadedAt: Date.now(), items, iconsById };
   return items;
 }
 
@@ -994,50 +996,90 @@ async function fetchCurrencyRates(league) {
   return rates;
 }
 
-// ── Home currency overview (cached) ─────────────────────────────────────────
-// Headline ex-values for the main currencies, sourced from poe.ninja (NOT the
-// rate-limited Trade2 exchange, so the refresh button is safe to press). Cached
-// to a file so the home page reads it instantly; ?refresh=1 forces a re-fetch.
-const CURRENCY_OVERVIEW_FILE = path.join(ROOT, ".currency-overview.json");
-const CURRENCY_OVERVIEW_TTL_MS = 10 * 60 * 1000;
-const CURRENCY_MAIN = [
-  { id: "divine", name: "Divine Orb" },
-  { id: "exalted", name: "Exalted Orb" },
-  { id: "chaos", name: "Chaos Orb" },
-  { id: "annul", name: "Orb of Annulment" },
-  { id: "regal", name: "Regal Orb" },
-  { id: "vaal", name: "Vaal Orb" },
-  { id: "chance", name: "Orb of Chance" },
-  { id: "alch", name: "Orb of Alchemy" },
-];
+// ── Unified currency exchange rates (Trade2, cached) ────────────────────────
+// THE single source of currency ex-values for the whole app: home strip, Gear
+// Search price conversion, Rune Picker currency pricing. Reads GGG's live Trade2
+// Currency Exchange (NOT poe.ninja) via the one shared queue (trade-queue.js),
+// reusing the arbitrage exchange machinery. File-cached with a TTL so reads are
+// instant and the shared rate limit isn't touched unless data is stale / forced;
+// when limited it serves the last cache. `rates` is keyed by trade currency id
+// AND normalised name (drop-in for the old fetchCurrencyRates); `items` carries
+// per-currency ex value + stock + icon for display.
+const CURRENCY_RATES_FILE = path.join(ROOT, ".currency-rates.json");
+const CURRENCY_RATES_TTL_MS = 10 * 60 * 1000;
+const CURRENCY_ALIASES = {
+  alch: "orb of alchemy", alchemy: "orb of alchemy", regal: "regal orb",
+  annul: "orb of annulment", chance: "orb of chance", transmute: "orb of transmutation",
+  augmentation: "orb of augmentation", aug: "orb of augmentation", vaal: "vaal orb",
+  gcp: "gemcutter's prism", gemcutter: "gemcutter's prism", artificers: "artificer's orb",
+};
 
-function readCurrencyOverview() {
-  try { return JSON.parse(fs.readFileSync(CURRENCY_OVERVIEW_FILE, "utf8")); }
+function normalizeIconUrl(src) {
+  const s = String(src || "");
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith("/")) return "https://www.pathofexile.com" + s;
+  return s;
+}
+
+function readCurrencyRatesCache() {
+  try { return JSON.parse(fs.readFileSync(CURRENCY_RATES_FILE, "utf8")); }
   catch { return null; }
 }
 
-async function buildCurrencyOverview(league) {
-  const rates = await fetchCurrencyRates(league);
-  const items = CURRENCY_MAIN
-    .map((c) => ({ id: c.id, name: c.name, ex: c.id === "exalted" ? 1 : (Number(rates[c.id]) || 0) }))
-    .filter((c) => c.ex > 0);
-  return { league, items, divineToEx: Number(rates.divine) || 0, updated: new Date().toISOString() };
+// One batched ex→currency exchange call; the best (cheapest) offer per currency
+// gives its ex-per-unit value. Goes through fetchExchangeChunked (cap 3) + the
+// shared queue, so a full refresh is ~3 calls for the 9 main currencies.
+async function fetchExchangeData(league) {
+  const resolved = await resolveArbitrageItems(league);
+  const icons = (arbitrageStaticCache && arbitrageStaticCache.iconsById) || {};
+  const currencies = resolved.filter((it) => it.category === "currency" && it.id !== EXALTED_ID);
+  const buyData = await fetchExchangeChunked(league, EXALTED_ID, currencies.map((c) => c.id));
+  const rates = { exalted: 1 };
+  const items = [{ id: "exalted", name: "Exalted Orb", ex: 1, stock: 0, icon: normalizeIconUrl(icons.exalted), base: true }];
+  for (const c of currencies) {
+    // Prefer a reasonably-stocked offer so one thin lowball listing can't skew
+    // the rate; fall back to any offer for genuinely thin currencies.
+    const best = bestExchangeOffer(buyData, EXALTED_ID, c.id, 5) || bestExchangeOffer(buyData, EXALTED_ID, c.id, 1);
+    if (!best) continue;
+    const ex = round4(best.payPerReceive);
+    if (!(ex > 0)) continue;
+    rates[c.id] = ex;
+    rates[normalizeName(c.name)] = ex;
+    items.push({ id: c.id, name: c.name, ex, stock: Math.floor(best.receiveStock) || 0, icon: normalizeIconUrl(icons[c.id]) });
+  }
+  for (const [alias, target] of Object.entries(CURRENCY_ALIASES)) {
+    const t = rates[normalizeName(target)];
+    if (t) rates[alias] = t;
+  }
+  return { league, rates, items, updated: new Date().toISOString() };
 }
 
-async function getCurrencyOverview(league, force) {
-  const cached = readCurrencyOverview();
+async function getExchangeData(league, force) {
+  const cached = readCurrencyRatesCache();
   const fresh = cached && cached.league === league && cached.updated &&
-    Date.now() - new Date(cached.updated).getTime() < CURRENCY_OVERVIEW_TTL_MS;
+    Date.now() - new Date(cached.updated).getTime() < CURRENCY_RATES_TTL_MS;
   if (cached && fresh && !force) return { ...cached, cached: true };
+  if (tradeStatus().limited) {
+    return cached ? { ...cached, cached: true, stale: true, limited: true } : { league, rates: { exalted: 1 }, items: [], limited: true };
+  }
   try {
-    const data = await buildCurrencyOverview(league);
-    if (data.items.length) { try { fs.writeFileSync(CURRENCY_OVERVIEW_FILE, JSON.stringify(data, null, 2)); } catch {} }
+    const data = await fetchExchangeData(league);
+    if (data.items.length > 1) { try { fs.writeFileSync(CURRENCY_RATES_FILE, JSON.stringify(data, null, 2)); } catch {} }
     return { ...data, cached: false };
   } catch (err) {
-    if (cached) return { ...cached, cached: true, stale: true };
-    return { league, items: [], error: String(err && err.message) };
+    const limited = /rate limited/i.test(String(err && err.message));
+    if (cached) return { ...cached, cached: true, stale: true, limited };
+    return { league, rates: { exalted: 1 }, items: [], limited, error: limited ? undefined : String(err && err.message).slice(0, 180) };
   }
 }
+
+// Drop-in for the old poe.ninja fetchCurrencyRates: just the id/name→ex map.
+async function getExchangeRates(league) {
+  return (await getExchangeData(league)).rates;
+}
+// Back-compat alias for the home strip endpoint.
+const getCurrencyOverview = getExchangeData;
 
 // ── Waystone market-weight sweep (Map Juicer "refresh weights") ─────────────
 // Re-derives how much the market pays for each waystone reward stat by reading
@@ -1455,7 +1497,7 @@ async function fetchComparablePrices(target, league, currencyRates, fallback = f
 }
 
 async function fetchOptimizerMaterials(league) {
-  const currencyRates = await fetchCurrencyRates(league);
+  const currencyRates = await getExchangeRates(league);
   const categories = Array.from(new Set(RUNE_CATEGORIES.map((category) => category.type).concat(TYPES)));
   const byId = {};
   const byName = {};
@@ -1609,10 +1651,14 @@ async function fetchRunePrices(text, league) {
   let tradeFallbacks = 0;
 
   const loaded = [];
-  const currencyRates = { exalted: 1 };
-  let currencyData = null;
+  // Currency ex-values + the divine→ex rate come from the unified Trade2 exchange
+  // (NOT poe.ninja). poe.ninja still supplies the non-currency catalogs
+  // (runes/essences/soul cores/gems/etc.) that aren't on the currency exchange.
+  const exData = await getExchangeData(league);
+  const currencyRates = exData.rates;
 
-  const categoryResults = await Promise.allSettled(RUNE_CATEGORIES.map(async (category) => {
+  const ninjaCategories = RUNE_CATEGORIES.filter((category) => category.type !== "Currency");
+  const categoryResults = await Promise.allSettled(ninjaCategories.map(async (category) => {
     const apiUrl = "https://poe.ninja/poe2/api/economy/exchange/current/overview?league=" +
       encodeURIComponent(league) + "&type=" + encodeURIComponent(category.type);
     const response = await fetchWithTimeout(apiUrl, {}, NINJA_TIMEOUT_MS);
@@ -1624,41 +1670,6 @@ async function fetchRunePrices(text, league) {
     if (result.status !== "fulfilled") continue;
     const { category, data } = result.value;
     loaded.push({ category, data });
-    if (category.type === "Currency") currencyData = data;
-  }
-
-  if (currencyData) {
-    if (currencyData.core && currencyData.core.rates && currencyData.core.rates.exalted) {
-      currencyRates.divine = Number(currencyData.core.rates.exalted);
-    }
-    if (currencyData.core && currencyData.core.rates && currencyData.core.rates.chaos) {
-      currencyRates.chaos = Math.round((1 / Number(currencyData.core.rates.chaos)) * 1000000) / 1000000;
-    }
-    const lineById = new Map((currencyData.lines || []).map((line) => [line.id, line]));
-    for (const item of currencyData.items || []) {
-      const line = lineById.get(item.id);
-      const priceEx = getDisplayPriceExalted(line, currencyRates);
-      if (priceEx > 0) {
-        currencyRates[item.id] = priceEx;
-        currencyRates[normalizeName(item.name)] = priceEx;
-      }
-    }
-    for (const [alias, target] of Object.entries({
-      alch: "orb of alchemy",
-      alchemy: "orb of alchemy",
-      regal: "regal orb",
-      annul: "orb of annulment",
-      chance: "orb of chance",
-      transmute: "orb of transmutation",
-      augmentation: "orb of augmentation",
-      aug: "orb of augmentation",
-      vaal: "vaal orb",
-      gcp: "gemcutter's prism",
-      gemcutter: "gemcutter's prism",
-    })) {
-      const targetRate = currencyRates[normalizeName(target)];
-      if (targetRate) currencyRates[alias] = targetRate;
-    }
   }
 
   const all = [];
@@ -1683,6 +1694,24 @@ async function fetchRunePrices(text, league) {
         change7d: line.sparkline && line.sparkline.totalChange ? String(line.sparkline.totalChange) + "%" : "",
       });
     }
+  }
+
+  // Currency rewards (Exalted/Divine/Chaos/…) priced off the Trade2 exchange.
+  for (const it of exData.items || []) {
+    const key = it.name + "|Currency";
+    if (seenItemKey.has(key)) continue;
+    seenItemKey.add(key);
+    all.push({
+      name: it.name,
+      normalizedName: normalizeName(it.name),
+      category: "Currency",
+      slug: "currency",
+      price: it.ex,
+      volume: it.stock || 0,
+      units: it.stock || 0,
+      divineValue: currencyRates.divine ? Math.round((it.ex / currencyRates.divine) * 10000) / 10000 : 0,
+      change7d: "",
+    });
   }
 
   const seenCleanNames = new Set();
@@ -1751,7 +1780,7 @@ async function fetchRunePrices(text, league) {
         each: match.price,
         total,
         currency: "exalted",
-        source: "poe.ninja",
+        source: match.slug === "currency" ? "trade2 exchange" : "poe.ninja",
         rawPrice: "",
         divineValue: match.divineValue,
         change7d: match.change7d,
@@ -3166,7 +3195,7 @@ async function searchGear(input) {
   const status = tradeStatus();
   if (status.limited) return { ...preview, limited: true, listings: [], tradeStatus: status, updated: new Date().toISOString() };
 
-  const rates = await fetchCurrencyRates(league);
+  const rates = await getExchangeRates(league);
   const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
   const search = await fetchTrade(searchUrl, { method: "POST", body: JSON.stringify(query) });
   const resultUrl = "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(league) + "/" + search.id;
@@ -3250,7 +3279,7 @@ async function searchUpgradeSlot(input) {
   const excludedStats = Array.isArray(input.excludedStats) ? input.excludedStats : [];
   const preserveFilters = buildPreserveStatFilters(preserveStats);
   const query = buildUpgradeStatsFilters(slotId, maxPriceEx, resistanceBand, preserveStats, excludedStats);
-  const rates = await fetchCurrencyRates(league);
+  const rates = await getExchangeRates(league);
   const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
   const search = await fetchTrade(searchUrl, { method: "POST", body: JSON.stringify(query) });
   const resultUrl = "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(league) + "/" + search.id;
@@ -3523,7 +3552,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const rates = await fetchCurrencyRates(league);
+      const rates = await getExchangeRates(league);
       const price = await getTradePrice(name, league, rates, Date.now() + 12000);
       if (price && price.limited) {
         send(res, 200, JSON.stringify({ name, limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8");
@@ -3605,7 +3634,7 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/upgrades/currency-rates") {
       const league = url.searchParams.get("league") || "Runes of Aldur";
-      const rates = await fetchCurrencyRates(league);
+      const rates = await getExchangeRates(league);
       send(res, 200, JSON.stringify({
         league,
         divineToExalted: Number(rates.divine) || 0,

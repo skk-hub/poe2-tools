@@ -2,6 +2,7 @@
 .waystone-weights.json
 .waystone-exchange.json
 .currency-overview.json
+.currency-rates.json
 .arbitrage-scan-cache.json
 .poe-oauth.json
 .poe-oauth-state.json

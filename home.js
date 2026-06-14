@@ -32,7 +32,8 @@ window.__viewInit["home"] = function () {
     chips.innerHTML = d.items.map((c) => {
       const base = c.id === "exalted";
       const val = base ? '1 <small>ex (base)</small>' : fmtEx(c.ex) + ' <small>ex</small>';
-      return '<span class="fxchip' + (c.id === "divine" ? " gold" : "") + '">' +
+      const icon = c.icon ? '<img class="fxicon" src="' + c.icon + '" alt="" loading="lazy" decoding="async">' : '';
+      return '<span class="fxchip' + (c.id === "divine" ? " gold" : "") + '">' + icon +
         '<span class="fxname">' + shortName(c.name) + '</span>' +
         '<span class="fxval">' + val + '</span></span>';
     }).join("");

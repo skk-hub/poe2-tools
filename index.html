@@ -68,9 +68,12 @@ h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;l
 .fxstrip-refresh.spin{animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .fxstrip-chips{display:flex;flex-wrap:wrap;gap:8px}
-.fxchip{display:inline-flex;align-items:baseline;gap:7px;padding:7px 12px;background:oklch(100% 0 0 / .025);border:1px solid var(--border);border-radius:var(--r);min-width:0}
+.fxchip{display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 8px;background:oklch(100% 0 0 / .025);border:1px solid var(--border);border-radius:var(--r);min-width:0;transition:border-color var(--t),background var(--t)}
+.fxchip:hover{border-color:var(--border-strong)}
+.fxchip .fxicon{width:22px;height:22px;object-fit:contain;flex:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
 .fxchip .fxname{color:var(--text-muted);font:500 12px var(--font-ui);white-space:nowrap}
 .fxchip .fxval{color:var(--text);font:600 12.5px var(--font-mono);white-space:nowrap}
+.fxchip.gold{border-color:var(--border-gold);background:var(--gold-soft)}
 .fxchip.gold .fxval{color:var(--gold-bright)}
 .fxchip .fxval small{color:var(--text-faint);font-weight:500}
 
