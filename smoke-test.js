@@ -61,12 +61,12 @@ function staticChecks() {
   const themeCss = read("theme.css");
   check(/@font-face/.test(themeCss) && !/fonts\.googleapis\.com/.test(themeCss), "theme.css self-hosts fonts (no Google @import)");
   check(["inter", "cinzel", "jetbrains-mono"].every(f => themeCss.includes("/fonts/" + f + ".woff2")), "theme.css references all 3 self-hosted woff2");
-  const views = ["home", "craft-pricer", "rune-picker", "gear-search", "map-juicer", "arbitrage", "coming-soon"];
-  check(views.every(v => idx.includes(`id="${v}"`)), "index has all 7 view sections");
-  check(["toolroot-arb", "toolroot-mj", "toolroot-gs", "toolroot-rune", "toolroot-cp"].every(t => idx.includes(t)), "index has all 5 inline tool roots");
+  const views = ["home", "craft-pricer", "rune-picker", "gear-search", "map-juicer", "arbitrage"];
+  check(views.every(v => idx.includes(`id="${v}"`)), "index has all 6 view sections");
+  check(["toolroot-arb", "toolroot-mj", "toolroot-gs", "toolroot-rune"].every(t => idx.includes(t)), "index has all 4 active inline tool roots");
   check(idx.includes('id="fxStrip"') && idx.includes('id="fxStripRefresh"'), "home has currency strip + refresh button");
-  check(idx.includes('id="cpGrid"') && idx.includes('id="cpRefresh"'), "craft-pricer rebuilt (grid + refresh, not placeholder)");
-  check(!/being rebuilt/i.test(idx), "craft-pricer placeholder text removed");
+  check(/being rebuilt/i.test(idx) && !idx.includes('id="cpGrid"'), "craft-pricer is a blanked placeholder (no cpGrid)");
+  check(!/coming-soon/i.test(idx) && !/more tools/i.test(idx) && !/farming notes/i.test(idx), "More Tools + hallucinated placeholder pages removed");
   check(!/@scope\s*\(/.test(idx), "no @scope rules left (browser-portable scoping)");
   check(!/<iframe/.test(idx), "no iframes left (true inline views)");
   // every index inline <script> parses
@@ -135,7 +135,7 @@ async function browserChecks() {
     const errs = []; page.on("pageerror", e => errs.push(e.message)); page.on("console", m => { if (m.type() === "error") errs.push(m.text()); });
     await page.goto(BASE + "/#home", { waitUntil: "networkidle" });
     let maxOv = 0, ifr = 0;
-    for (const v of ["gear-search", "map-juicer", "arbitrage", "rune-picker", "craft-pricer", "coming-soon", "home"]) {
+    for (const v of ["gear-search", "map-juicer", "arbitrage", "rune-picker", "craft-pricer", "home"]) {
       await page.click(`[data-view-link="${v}"]`).catch(() => {});
       await page.waitForTimeout(500);
       maxOv = Math.max(maxOv, await page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth)));
@@ -250,12 +250,14 @@ async function browserChecks() {
       await p.close();
     }
 
-    // Craft Pricer rebuilt: opening it renders the route cards (static, no network needed)
+    // Craft Pricer blanked: opening it shows the rebuild placeholder, no script error
     {
       const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-      await p.goto(BASE + "/index.html#craft-pricer", { waitUntil: "networkidle" }); await p.waitForTimeout(900);
-      const cards = await p.evaluate(() => document.querySelectorAll(".toolroot-cp #cpGrid .card").length);
-      check(cards >= 6, "craft-pricer renders the route cards (" + cards + ")");
+      const errs = [];
+      p.on("pageerror", e => errs.push(String(e)));
+      await p.goto(BASE + "/index.html#craft-pricer", { waitUntil: "networkidle" }); await p.waitForTimeout(700);
+      const note = await p.evaluate(() => { const n = document.querySelector("#craft-pricer .rebuild-note"); return { shown: !!(n && n.offsetParent !== null), grid: !!document.querySelector("#cpGrid") }; });
+      check(note.shown && !note.grid && errs.length === 0, "craft-pricer shows the rebuild placeholder (no grid, no error)");
       await p.close();
     }
 

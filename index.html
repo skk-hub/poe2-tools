@@ -17,6 +17,9 @@
 .shell{padding:32px 24px 56px;max-width:1280px;margin:0 auto}
 .view{display:none}
 .view.active{display:block;animation:fadeIn .3s var(--ease) both}
+.rebuild-note{display:flex;flex-direction:column;gap:8px;padding:48px 28px;border:1px dashed var(--border);border-radius:var(--r-lg);background:var(--surface-1);text-align:center;box-shadow:var(--inset-hi)}
+.rebuild-note strong{color:var(--text);font:600 16px var(--font-ui)}
+.rebuild-note span{color:var(--text-faint);font:13px var(--font-mono)}
 a{color:var(--info);text-decoration:none}
 a:hover{text-decoration:underline}
 
@@ -153,7 +156,6 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <a class="navbtn" href="#gear-search" data-view-link="gear-search">Gear Search</a>
       <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Map Juicer</a>
       <a class="navbtn" href="#arbitrage" data-view-link="arbitrage">Arbitrage</a>
-      <a class="navbtn" href="#coming-soon" data-view-link="coming-soon">More Tools</a>
     </nav>
   </div>
 </header>
@@ -165,14 +167,13 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <h1>Your Path of Exile&nbsp;2 economy workbench.</h1>
         <p class="lead">Live poe.ninja and Trade2 pricing for crafting, runes, gear, maps, and currency flips — all in one place. Runs local: no login, no delay.</p>
         <div class="heroactions">
-          <a class="btn btn-primary" href="#craft-pricer" data-view-link="craft-pricer">Open Craft Pricer</a>
-          <a class="btn" href="#gear-search" data-view-link="gear-search">Gear Search</a>
-          <a class="btn btn-ghost" href="#coming-soon" data-view-link="coming-soon">More tools</a>
+          <a class="btn btn-primary" href="#gear-search" data-view-link="gear-search">Open Gear Search</a>
+          <a class="btn" href="#rune-picker" data-view-link="rune-picker">Rune Picker</a>
         </div>
       </div>
       <div class="hero-stats" aria-label="Status">
         <div class="stat"><b id="homeToolCount">4</b><span>Live tools</span></div>
-        <div class="stat"><b id="homeCraftCount">6</b><span>Craft routes</span></div>
+        <div class="stat"><b>Local</b><span>No login</span></div>
         <div class="stat"><b class="gold" id="homePriceStatus">Ready</b><span id="homePriceLabel">Economy data</span></div>
       </div>
     </div>
@@ -188,16 +189,15 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
 
     <div class="section-label">Tools</div>
     <div class="tools stagger">
-      <article class="tool ready">
+      <article class="tool soon">
         <div class="tool-top">
           <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L4.8 18A2 2 0 0 0 6.6 21h10.8a2 2 0 0 0 1.8-3L14 8.5V3"/><path d="M7 14h10"/></svg></span>
-          <span class="badge badge-live">Live</span>
+          <span class="badge badge-soon">Rebuilding</span>
         </div>
-        <h3 class="tool-name">Craft Price Checker</h3>
-        <p class="tool-desc">Material costs for bow, quiver, amulet, and helmet routes — required floors and full optional totals per route.</p>
+        <h3 class="tool-name">Craft Pricer</h3>
+        <p class="tool-desc">Being reimagined from scratch — a fresh take on craft cost planning is in the works.</p>
         <div class="tool-foot">
-          <span class="tool-meta">poe.ninja</span>
-          <a class="btn btn-sm btn-primary" href="#craft-pricer" data-view-link="craft-pricer">Open</a>
+          <span class="tool-meta">Soon</span>
         </div>
       </article>
       <article class="tool ready">
@@ -248,35 +248,20 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
           <a class="btn btn-sm btn-primary" href="#arbitrage" data-view-link="arbitrage">Open</a>
         </div>
       </article>
-      <article class="tool soon">
-        <div class="tool-top">
-          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-8"/><path d="M12 14c0-3.3 2.2-5.5 5.5-5.5C17.5 11.8 15.3 14 12 14Z"/><path d="M12 12c0-3.3-2.2-5.5-5.5-5.5C6.5 9.8 8.7 12 12 12Z"/></svg></span>
-          <span class="badge badge-soon">Planned</span>
-        </div>
-        <h3 class="tool-name">Farming Notes</h3>
-        <p class="tool-desc">League farming plans, target drops, and expected returns alongside the tools that price them.</p>
-        <div class="tool-foot">
-          <span class="tool-meta">Soon</span>
-        </div>
-      </article>
     </div>
   </section>
 
   <section id="craft-pricer" class="view" data-view="craft-pricer">
-   <div class="toolroot toolroot-cp">
     <div class="pagehead">
       <div>
-        <h1>Craft Price Checker</h1>
-        <p class="sub">Material costs for the main bow, quiver, amulet, and helmet routes — the required floor plus the full optional total per route, priced live from poe.ninja.</p>
-      </div>
-      <div class="controls">
-        <input id="cpLeague" value="Runes of Aldur" aria-label="League">
-        <button id="cpRefresh" type="button">Refresh prices</button>
-        <div id="cpStatus" class="status">Loading prices…</div>
+        <h1>Craft Pricer</h1>
+        <p class="sub">Being reimagined.</p>
       </div>
     </div>
-    <div id="cpGrid" class="cp-grid"></div>
-   </div>
+    <div class="rebuild-note">
+      <strong>Craft Pricer is being rebuilt from the ground up.</strong>
+      <span>A fresh take on craft cost planning is in the works — check back soon.</span>
+    </div>
   </section>
 
   <section id="rune-picker" class="view" data-view="rune-picker">
@@ -519,34 +504,6 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     </div>
   </section>
 
-  <section id="coming-soon" class="view" data-view="coming-soon">
-    <div class="pagehead">
-      <div>
-        <h1>More Tools</h1>
-        <p class="sub">Placeholder pages for tools in progress.</p>
-      </div>
-    </div>
-    <div class="tools stagger">
-      <article class="tool soon">
-        <div class="tool-top"><span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="badge badge-soon">Planned</span></div>
-        <h3 class="tool-name">Currency Watchlist</h3>
-        <p class="tool-desc">A saved list of market items with chaos and divine equivalents, refreshed on demand.</p>
-        <div class="tool-foot"><span class="tool-meta">Soon</span></div>
-      </article>
-      <article class="tool soon">
-        <div class="tool-top"><span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span><span class="badge badge-soon">Planned</span></div>
-        <h3 class="tool-name">Craft Planner</h3>
-        <p class="tool-desc">Step-by-step material planning with quantities, failure cases, and expected rerolls.</p>
-        <div class="tool-foot"><span class="tool-meta">Soon</span></div>
-      </article>
-      <article class="tool soon">
-        <div class="tool-top"><span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5a1 1 0 0 1 1-1h10l5 5v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M14 4v6h6M8 14h8M8 17h5"/></svg></span><span class="badge badge-soon">Planned</span></div>
-        <h3 class="tool-name">Profit Notes</h3>
-        <p class="tool-desc">Farming methods, costs, sale targets, and quick league notes in one log.</p>
-        <div class="tool-foot"><span class="tool-meta">Soon</span></div>
-      </article>
-    </div>
-  </section>
 </main>
 <script>
 // ===== App shell: hash-routed SPA. Each tool view registers a one-time init
