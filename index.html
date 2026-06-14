@@ -145,9 +145,9 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <a class="navbtn" href="#home" data-view-link="home">Home</a>
       <a class="navbtn" href="#craft-pricer" data-view-link="craft-pricer">Craft Pricer</a>
       <a class="navbtn" href="#rune-picker" data-view-link="rune-picker">Rune Picker</a>
-      <a class="navbtn" href="character-upgrades.html">Gear Search</a>
-      <a class="navbtn" href="waystone-juicer.html">Map Juicer</a>
-      <a class="navbtn" href="arbitrage-scanner.html">Arbitrage</a>
+      <a class="navbtn" href="#gear-search" data-view-link="gear-search">Gear Search</a>
+      <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Map Juicer</a>
+      <a class="navbtn" href="#arbitrage" data-view-link="arbitrage">Arbitrage</a>
       <a class="navbtn" href="#coming-soon" data-view-link="coming-soon">More Tools</a>
     </nav>
   </div>
@@ -161,7 +161,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <p class="lead">Live poe.ninja and Trade2 pricing for crafting, runes, gear, maps, and currency flips — all in one place. Runs local: no login, no delay.</p>
         <div class="heroactions">
           <a class="btn btn-primary" href="#craft-pricer" data-view-link="craft-pricer">Open Craft Pricer</a>
-          <a class="btn" href="character-upgrades.html">Gear Search</a>
+          <a class="btn" href="#gear-search" data-view-link="gear-search">Gear Search</a>
           <a class="btn btn-ghost" href="#coming-soon" data-view-link="coming-soon">More tools</a>
         </div>
       </div>
@@ -207,7 +207,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <p class="tool-desc">Import gear, build slot-aware Trade2 filters, preview the query, and compare your items against live listings.</p>
         <div class="tool-foot">
           <span class="tool-meta">Trade2</span>
-          <a class="btn btn-sm btn-primary" href="character-upgrades.html">Open</a>
+          <a class="btn btn-sm btn-primary" href="#gear-search" data-view-link="gear-search">Open</a>
         </div>
       </article>
       <article class="tool ready">
@@ -219,7 +219,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <p class="tool-desc">Waystone juicing planner by content type — best blue-to-juiced path and copy-paste stash regex for waystones and tablets.</p>
         <div class="tool-foot">
           <span class="tool-meta">Offline</span>
-          <a class="btn btn-sm btn-primary" href="waystone-juicer.html">Open</a>
+          <a class="btn btn-sm btn-primary" href="#map-juicer" data-view-link="map-juicer">Open</a>
         </div>
       </article>
       <article class="tool ready">
@@ -231,7 +231,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <p class="tool-desc">Manual Currency Exchange scan for ex-based flips across high-volume currency and fragments — stock capped, slippage buffered.</p>
         <div class="tool-foot">
           <span class="tool-meta">Trade2</span>
-          <a class="btn btn-sm btn-primary" href="arbitrage-scanner.html">Open</a>
+          <a class="btn btn-sm btn-primary" href="#arbitrage" data-view-link="arbitrage">Open</a>
         </div>
       </article>
       <article class="tool soon">
@@ -305,6 +305,16 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         </div>
       </div>
     </div>
+  </section>
+
+  <section id="gear-search" class="view frameview" data-view="gear-search">
+    <iframe class="toolframe" data-src="character-upgrades.html?embed=gear-search" title="Gear Search" loading="lazy"></iframe>
+  </section>
+  <section id="map-juicer" class="view frameview" data-view="map-juicer">
+    <iframe class="toolframe" data-src="waystone-juicer.html?embed=map-juicer" title="Map Juicer" loading="lazy"></iframe>
+  </section>
+  <section id="arbitrage" class="view frameview" data-view="arbitrage">
+    <iframe class="toolframe" data-src="arbitrage-scanner.html?embed=arbitrage" title="Arbitrage Scanner" loading="lazy"></iframe>
   </section>
 
   <section id="coming-soon" class="view" data-view="coming-soon">
@@ -504,16 +514,34 @@ function currentView(){
   return views.some(v=>v.dataset.view===key)?key:"home";
 }
 
+const FRAME_VIEWS=["gear-search","map-juicer","arbitrage"];
+const shellEl=document.querySelector(".shell");
+
+// Keep tool frames sized to the viewport below the (responsive) header.
+function syncHeaderHeight(){
+  const bar=document.querySelector(".appbar");
+  if(bar) document.documentElement.style.setProperty("--header-h",bar.offsetHeight+"px");
+}
+
 function showView(){
   const key=currentView();
   for(const view of views) view.classList.toggle("active",view.dataset.view===key);
   for(const link of viewLinks) link.classList.toggle("active",link.dataset.viewLink===key);
+  // Tool views fill the shell; load each frame once, then keep it alive (so
+  // switching back is instant — they function like the inline tools).
+  if(shellEl) shellEl.classList.toggle("framemode",FRAME_VIEWS.includes(key));
+  if(FRAME_VIEWS.includes(key)){
+    syncHeaderHeight();
+    const fr=document.querySelector('#'+key+' iframe[data-src]');
+    if(fr && !fr.src) fr.src=fr.getAttribute("data-src");
+  }
   if(key==="rune-picker") refreshTradeStatus();
   if(key==="craft-pricer"&&!hasAutoRefreshed){
     hasAutoRefreshed=true;
     refreshPrices();
   }
 }
+window.addEventListener("resize",syncHeaderHeight);
 
 function render(){
   if(!grid) return;

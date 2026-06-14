@@ -140,6 +140,17 @@ input[type=checkbox],input[type=radio]{ accent-color:var(--gold); }
   box-shadow:var(--shadow-sm),var(--inset-hi);
 }
 
+/* ---- Tables: shared polish (scoped under .tablewrap so it overrides every
+   page's plain table styles regardless of load order) ---- */
+.tablewrap table{ width:100%; border-collapse:collapse; }
+.tablewrap th{ position:sticky; top:0; z-index:1; background:var(--surface-2); color:var(--text-faint); font:600 10px var(--font-ui)!important; text-transform:uppercase; letter-spacing:.06em; text-align:left; padding:10px 12px!important; border-bottom:1px solid var(--border); white-space:nowrap; }
+.tablewrap td{ padding:9px 12px!important; border-bottom:1px solid var(--border)!important; color:var(--text); vertical-align:top; }
+.tablewrap tbody tr{ transition:background var(--t); }
+.tablewrap tbody tr:nth-child(even){ background:oklch(100% 0 0 / .018); }
+.tablewrap tbody tr:hover{ background:var(--gold-soft); }
+.tablewrap tbody tr:last-child td{ border-bottom:0!important; }
+.tablewrap td.num{ text-align:right; font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+
 /* ---- Inputs ---- */
 .field{
   height:38px; padding:0 12px; border-radius:var(--r);
@@ -147,6 +158,14 @@ input[type=checkbox],input[type=radio]{ accent-color:var(--gold); }
   font:500 13px var(--font-ui); transition:border-color var(--t),box-shadow var(--t);
 }
 .field:focus{ outline:none; border-color:var(--border-gold); box-shadow:0 0 0 3px var(--gold-glow); }
+
+/* ---- App shell: tools embedded as in-shell views so they function like the
+   inline Rune Picker (no full-page reload, one shared nav). ?embed hides the
+   tool's own header; the shell provides the single nav. ---- */
+html.embed .appbar,html.embed .bar{ display:none !important; }
+html.embed body{ padding-top:0 !important; }
+.toolframe{ display:block; width:100%; height:calc(100dvh - var(--header-h, 58px)); border:0; background:var(--bg); }
+.shell.framemode{ max-width:none; padding:0; }
 
 /* ============================================================================
    Motion
