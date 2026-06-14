@@ -60,7 +60,7 @@ function staticChecks() {
   check(/rel="stylesheet" href="theme.css"/.test(idx), "index links theme.css");
   const views = ["home", "craft-pricer", "rune-picker", "gear-search", "map-juicer", "arbitrage", "coming-soon"];
   check(views.every(v => idx.includes(`id="${v}"`)), "index has all 7 view sections");
-  check(["toolroot-arb", "toolroot-mj", "toolroot-gs"].every(t => idx.includes(t)), "index has all 3 inline tool roots");
+  check(["toolroot-arb", "toolroot-mj", "toolroot-gs", "toolroot-rune"].every(t => idx.includes(t)), "index has all 4 inline tool roots");
   check(!/@scope\s*\(/.test(idx), "no @scope rules left (browser-portable scoping)");
   check(!/<iframe/.test(idx), "no iframes left (true inline views)");
   // every index inline <script> parses
@@ -68,9 +68,15 @@ function staticChecks() {
   check(scripts.length > 0 && scripts.every((s, i) => parses(s, "index script #" + (i + 1))), "index inline scripts parse");
   const toolJs = ["arbitrage.js", "map-juicer.js", "gear-search.js", "rune-picker.js", "craft-pricer.js"];
   for (const f of toolJs) check(parses(read(f), f), f + " parses");
-  check(["arbitrage.css", "map-juicer.css", "gear-search.css"].every(c => idx.includes(`href="${c}"`)), "index links the 3 tool stylesheets");
+  check(["arbitrage.css", "map-juicer.css", "gear-search.css", "rune-picker.css"].every(c => idx.includes(`href="${c}"`)), "index links all 4 tool stylesheets");
   check(toolJs.every(j => idx.includes(`src="${j}"`)), "index loads all 5 tool scripts");
   check(!/let P=\{\}|function showView\(\)\{[^]*CRAFTS/.test(idx) && !idx.includes("const CRAFTS="), "index is shell-only (tool logic externalised)");
+  // CSS parity: rune-only selectors must have left index's <style> for rune-picker.css
+  const idxStyle = (idx.match(/<style>([\s\S]*?)<\/style>/) || [, ""])[1];
+  const runeOnly = [".toolpanel", ".bestbox", ".paste-zone", ".split", ".conf-hi"];
+  check(runeOnly.every(s => !idxStyle.includes(s)), "index <style> purged of rune-only selectors (CSS parity)");
+  const runeCss = read("rune-picker.css");
+  check(runeOnly.every(s => runeCss.includes(s)) && /\.toolroot-rune\s+\.toolpanel/.test(runeCss), "rune-picker.css holds the rune-only rules, prefix-scoped");
   // redirect stubs
   for (const [f, hash] of [["arbitrage-scanner.html", "#arbitrage"], ["waystone-juicer.html", "#map-juicer"], ["character-upgrades.html", "#gear-search"]]) {
     check(read(f).includes("index.html" + hash), `${f} redirects to ${hash}`);
@@ -84,7 +90,7 @@ function staticChecks() {
 // ---- 2) HTTP checks ----
 async function httpChecks() {
   console.log("HTTP checks:");
-  for (const [p, type] of [["/", "html"], ["/theme.css", "css"], ["/arbitrage.css", "css"], ["/map-juicer.css", "css"], ["/gear-search.css", "css"], ["/arbitrage.js", "javascript"], ["/map-juicer.js", "javascript"], ["/gear-search.js", "javascript"], ["/rune-picker.js", "javascript"], ["/craft-pricer.js", "javascript"], ["/waystone-data.js", "javascript"], ["/arbitrage-scanner.html", "html"]]) {
+  for (const [p, type] of [["/", "html"], ["/theme.css", "css"], ["/arbitrage.css", "css"], ["/map-juicer.css", "css"], ["/gear-search.css", "css"], ["/rune-picker.css", "css"], ["/arbitrage.js", "javascript"], ["/map-juicer.js", "javascript"], ["/gear-search.js", "javascript"], ["/rune-picker.js", "javascript"], ["/craft-pricer.js", "javascript"], ["/waystone-data.js", "javascript"], ["/arbitrage-scanner.html", "html"]]) {
     const r = await get(BASE + p); check(r.status === 200 && r.type.includes(type), `GET ${p} -> 200 ${type}`);
   }
   const ts = await get(BASE + "/api/trade-status"); check(ts.status === 200 && ts.body.includes("limited"), "GET /api/trade-status -> 200 JSON");
@@ -133,6 +139,13 @@ async function browserChecks() {
     {
       const p = await browser.newPage({ viewport: { width: 1280, height: 860 } });
       await p.goto(BASE + "/index.html#rune-picker", { waitUntil: "networkidle" }); await p.waitForTimeout(1200);
+      // extracted rune-picker.css applies: scoped .toolpanel is painted (not a bare transparent box)
+      const styled = await p.evaluate(() => {
+        const el = document.querySelector(".toolroot-rune .toolpanel"); if (!el) return false;
+        const cs = getComputedStyle(el);
+        return cs.backgroundImage !== "none" && cs.borderTopWidth !== "0px";
+      });
+      check(styled, "rune-picker.css applies on live view (.toolpanel painted)");
       await p.click("#checkRunes"); await p.waitForTimeout(600);
       const msg = await p.evaluate(() => (document.getElementById("runeStatus") || {}).textContent || "");
       check(/Paste item names/i.test(msg), "Rune Picker wired (empty check shows guard message)");

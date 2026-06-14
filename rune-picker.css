@@ -1,0 +1,37 @@
+/* ===== Rune Picker — view-scoped styles (prefix .toolroot-rune, wins by specificity) =====
+   Shared tool-view baseline (input/button/textarea/.pagehead/.sub/.controls/.status/
+   .tablewrap/table/.muted) lives in index.html's <style> because arb/map/gear reuse it. */
+
+.toolroot-rune #checkRunes{background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));color:oklch(22% 0.04 70);border-color:transparent;font-weight:700}
+.toolroot-rune #checkRunes:hover{filter:brightness(1.06);box-shadow:var(--shadow-gold)}
+
+.toolroot-rune .toolpanel{background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-sm)}
+.toolroot-rune .toolbar{background:oklch(100% 0 0 / .02);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.toolroot-rune .toolbody{padding:16px}
+.toolroot-rune .tooltitle{font:700 14px var(--font-ui);color:var(--text);letter-spacing:-.01em}
+
+.toolroot-rune .paste-zone{border:1.5px dashed var(--border-strong);border-radius:var(--r);padding:14px;text-align:center;color:var(--text-muted);font-size:12px;cursor:pointer;transition:border-color var(--t),background var(--t),color var(--t);margin-bottom:12px;display:flex;flex-direction:column;align-items:center;gap:8px;user-select:none}
+.toolroot-rune .paste-zone:hover{border-color:var(--gold);color:var(--text);background:var(--gold-soft)}
+.toolroot-rune .paste-zone.drag-over{border-color:var(--gold);background:var(--gold-soft)}
+.toolroot-rune .paste-zone.ocr-running{border-color:var(--info);color:var(--info)}
+.toolroot-rune .paste-zone.ocr-ok{border-color:var(--green);color:var(--green)}
+.toolroot-rune .paste-zone.ocr-err{border-color:var(--red);color:var(--red)}
+.toolroot-rune #pastePreview{display:none;max-height:72px;max-width:100%;object-fit:contain;opacity:.75}
+
+.toolroot-rune .split{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr);gap:16px;align-items:start}
+
+.toolroot-rune .bestbox{background:var(--green-soft);border:1px solid oklch(76% 0.17 152 / .3);border-radius:var(--r);padding:14px;margin-bottom:14px;color:var(--green)}
+.toolroot-rune .bestbox.empty{background:var(--surface-2);border-color:var(--border);color:var(--text-muted)}
+.toolroot-rune .bestbox b{display:block;color:var(--text);font-size:14px;margin-bottom:4px;font-weight:700}
+
+.toolroot-rune .conf{display:inline-block;font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;border:1px solid var(--border-strong);border-radius:var(--r-pill);white-space:nowrap;cursor:default}
+.toolroot-rune .conf-hi{color:var(--green);border-color:oklch(76% 0.17 152 / .4)}
+.toolroot-rune .conf-md{color:var(--gold);border-color:var(--border-gold)}
+.toolroot-rune .conf-lo{color:var(--red);border-color:oklch(67% 0.20 25 / .4)}
+.toolroot-rune .conf-no,.toolroot-rune .conf-unk{color:var(--text-faint);border-color:var(--border)}
+
+.toolroot-rune .sample{margin-top:8px;color:var(--text-faint);font-size:11.5px;line-height:1.5}
+
+@media(max-width:860px){
+  .toolroot-rune .split{grid-template-columns:1fr}
+}
