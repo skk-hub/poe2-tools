@@ -190,6 +190,26 @@ async function browserChecks() {
       await p.close();
     }
 
+    // arbitrage empty state shows near-miss spreads (no opportunities cleared filters)
+    {
+      const p = await browser.newPage({ viewport: { width: 1366, height: 900 } });
+      await p.route("**/api/arbitrage/scan", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+        updated: "now", universe: [{}, {}], opportunities: [], errors: [],
+        nearMiss: [
+          { name: "Divine Orb", category: "currency", askExPerItem: 150, bidExPerItem: 148, netProfitEx: -2.5, roiPct: -1.7 },
+          { name: "Chaos Orb", category: "currency", askExPerItem: 5, bidExPerItem: 4.9, netProfitEx: -6, roiPct: -2.1 },
+        ],
+      }) }));
+      await p.goto(BASE + "/index.html#arbitrage", { waitUntil: "networkidle" }); await p.waitForTimeout(800);
+      await p.click("#scanBtn"); await p.waitForTimeout(400);
+      const nm = await p.evaluate(() => {
+        const t = document.querySelector("#abResults .nearmiss table"); if (!t) return null;
+        return { rows: t.querySelectorAll("tbody tr").length, head: !!document.querySelector("#abResults .nearmiss-head") };
+      });
+      check(nm && nm.rows === 2 && nm.head, "arbitrage empty state shows near-miss spreads");
+      await p.close();
+    }
+
     // Home currency strip (mocked overview): chips render + refresh re-fetches
     {
       const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });

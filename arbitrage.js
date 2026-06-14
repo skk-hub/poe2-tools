@@ -38,6 +38,22 @@ function renderSummary(data){
     <div class="metric"><b>${best ? fmt(best.roiPct) : "0"}%</b><span>best ROI</span></div>
     <div class="metric"><b>${data.cached ? "Cache" : data.stale ? "Stale" : "Live"}</b><span>${esc(data.updated || data.cachedAt || "")}</span></div>`;
 }
+function nearMissBlock(data){
+  const rows = data.nearMiss || [];
+  if (!rows.length) return "";
+  return `<div class="nearmiss"><div class="nearmiss-head">Closest spreads found (below your filters)</div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Item</th><th>Buy</th><th>Sell</th><th>Net</th><th>ROI</th></tr></thead>
+      <tbody>${rows.map(row => `
+        <tr>
+          <td><div class="name">${esc(row.name)}</div></td>
+          <td class="num">${fmt(row.askExPerItem,4)} ex</td>
+          <td class="num">${fmt(row.bidExPerItem,4)} ex</td>
+          <td class="num ${row.netProfitEx < 0 ? "warn" : "profit"}">${fmt(row.netProfitEx)} ex</td>
+          <td class="num ${row.roiPct < 0 ? "warn" : ""}">${fmt(row.roiPct)}%</td>
+        </tr>`).join("")}</tbody>
+    </table></div></div>`;
+}
 function render(data){
   renderSummary(data);
   const rows = data.opportunities || [];
@@ -49,7 +65,8 @@ function render(data){
     els.results.innerHTML = data.limited
       ? "Trade2 is currently rate limited" + (until ? " until " + esc(until) : "") + " and no matching cached opportunities are available."
       : `Scanned ${scanned} pair${scanned === 1 ? "" : "s"} — none cleared your net-profit / ROI / stock filters. The Currency Exchange spread is usually negative for an instant round-trip, so profitable flips are brief mispricings; lower the thresholds or re-scan later.`
-        + (skipped ? ` (${skipped} had no offer on one side.)` : "");
+        + (skipped ? ` (${skipped} had no offer on one side.)` : "")
+        + nearMissBlock(data);
     return;
   }
   els.results.className = "";

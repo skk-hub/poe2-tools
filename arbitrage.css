@@ -37,6 +37,8 @@
   .toolroot-arb .empty{color:var(--mu);padding:18px;border:1px dashed var(--bd);background:var(--surface-1);border-radius:var(--r-md)}
   .toolroot-arb .errors{margin-top:12px;color:var(--mu);font:11px var(--mono)}
   .toolroot-arb .errors b{color:var(--gd)}
+  .toolroot-arb .nearmiss{margin-top:14px}
+  .toolroot-arb .nearmiss-head{color:var(--gd);font:700 11px var(--mono);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
 @media(max-width:820px){
   .toolroot-arb .pagehead{display:block}
   .toolroot-arb .statusline{text-align:left;margin-top:8px}

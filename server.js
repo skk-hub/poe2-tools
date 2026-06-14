@@ -584,6 +584,7 @@ async function scanArbitrage(input = {}) {
   const resolvedItems = await resolveArbitrageItems(league);
   const items = resolvedItems.filter((item) => item.enabled && categories[item.category] !== false && item.id !== EXALTED_ID);
   const opportunities = [];
+  const evaluated = [];
   const errors = [];
 
   // Two batched calls cover every item: all buy legs (give ex, get item) and
@@ -628,23 +629,25 @@ async function scanArbitrage(input = {}) {
       const flags = [];
       if (buy.receiveStock < minStock * 2 || executableBySellStock < minStock * 2) flags.push("thin-stock");
       if (grossProfitEx > 0 && netProfitEx <= 0) flags.push("slippage-eats-spread");
+      const record = {
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        askExPerItem: round4(askExPerItem),
+        bidExPerItem: round4(bidExPerItem),
+        netBidExPerItem: round4(netBidExPerItem),
+        executableItems,
+        spendEx: round2(spendEx),
+        grossProfitEx: round2(grossProfitEx),
+        netProfitEx: round2(netProfitEx),
+        roiPct: round2(roiPct),
+        buyStock: round2(buy.receiveStock),
+        sellStock: round2(executableBySellStock),
+        flags,
+      };
+      evaluated.push(record);
       if (netProfitEx >= minProfitEx && roiPct >= minProfitPct && executableItems > 0) {
-        opportunities.push({
-          id: item.id,
-          name: item.name,
-          category: item.category,
-          askExPerItem: round4(askExPerItem),
-          bidExPerItem: round4(bidExPerItem),
-          netBidExPerItem: round4(netBidExPerItem),
-          executableItems,
-          spendEx: round2(spendEx),
-          grossProfitEx: round2(grossProfitEx),
-          netProfitEx: round2(netProfitEx),
-          roiPct: round2(roiPct),
-          buyStock: round2(buy.receiveStock),
-          sellStock: round2(executableBySellStock),
-          flags,
-        });
+        opportunities.push(record);
       }
     } catch (err) {
       const limited = /rate limited/i.test(String(err && err.message));
@@ -654,12 +657,20 @@ async function scanArbitrage(input = {}) {
   }
 
   opportunities.sort((a, b) => (b.netProfitEx - a.netProfitEx) || (b.roiPct - a.roiPct) || (b.buyStock - a.buyStock));
+  // Best spreads that did NOT clear the thresholds — so an empty result still
+  // proves the scan ran and shows how close the market got (round-trip spreads
+  // are usually negative, which is the honest answer, not a broken scan).
+  const nearMiss = evaluated
+    .filter((r) => !opportunities.includes(r))
+    .sort((a, b) => (b.netProfitEx - a.netProfitEx) || (b.roiPct - a.roiPct))
+    .slice(0, 3);
   const result = {
     league,
     updated: new Date().toISOString(),
     settings: { budgetEx, minProfitEx, minProfitPct, minStock, slippagePct, categories },
     universe: items.map((item) => ({ id: item.id, name: item.name, category: item.category })),
     opportunities,
+    nearMiss,
     errors,
     tradeStatus: tradeStatus(),
   };
