@@ -994,6 +994,51 @@ async function fetchCurrencyRates(league) {
   return rates;
 }
 
+// ── Home currency overview (cached) ─────────────────────────────────────────
+// Headline ex-values for the main currencies, sourced from poe.ninja (NOT the
+// rate-limited Trade2 exchange, so the refresh button is safe to press). Cached
+// to a file so the home page reads it instantly; ?refresh=1 forces a re-fetch.
+const CURRENCY_OVERVIEW_FILE = path.join(ROOT, ".currency-overview.json");
+const CURRENCY_OVERVIEW_TTL_MS = 10 * 60 * 1000;
+const CURRENCY_MAIN = [
+  { id: "divine", name: "Divine Orb" },
+  { id: "exalted", name: "Exalted Orb" },
+  { id: "chaos", name: "Chaos Orb" },
+  { id: "annul", name: "Orb of Annulment" },
+  { id: "regal", name: "Regal Orb" },
+  { id: "vaal", name: "Vaal Orb" },
+  { id: "chance", name: "Orb of Chance" },
+  { id: "alch", name: "Orb of Alchemy" },
+];
+
+function readCurrencyOverview() {
+  try { return JSON.parse(fs.readFileSync(CURRENCY_OVERVIEW_FILE, "utf8")); }
+  catch { return null; }
+}
+
+async function buildCurrencyOverview(league) {
+  const rates = await fetchCurrencyRates(league);
+  const items = CURRENCY_MAIN
+    .map((c) => ({ id: c.id, name: c.name, ex: c.id === "exalted" ? 1 : (Number(rates[c.id]) || 0) }))
+    .filter((c) => c.ex > 0);
+  return { league, items, divineToEx: Number(rates.divine) || 0, updated: new Date().toISOString() };
+}
+
+async function getCurrencyOverview(league, force) {
+  const cached = readCurrencyOverview();
+  const fresh = cached && cached.league === league && cached.updated &&
+    Date.now() - new Date(cached.updated).getTime() < CURRENCY_OVERVIEW_TTL_MS;
+  if (cached && fresh && !force) return { ...cached, cached: true };
+  try {
+    const data = await buildCurrencyOverview(league);
+    if (data.items.length) { try { fs.writeFileSync(CURRENCY_OVERVIEW_FILE, JSON.stringify(data, null, 2)); } catch {} }
+    return { ...data, cached: false };
+  } catch (err) {
+    if (cached) return { ...cached, cached: true, stale: true };
+    return { league, items: [], error: String(err && err.message) };
+  }
+}
+
 // ── Waystone market-weight sweep (Map Juicer "refresh weights") ─────────────
 // Re-derives how much the market pays for each waystone reward stat by reading
 // the cheapest exalted-priced Tier-N listing at increasing stat thresholds.
@@ -3402,6 +3447,13 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/waystone/exchange") {
       const league = url.searchParams.get("league") || "Runes of Aldur";
       send(res, 200, JSON.stringify(await getWaystoneExchange(league)), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/currency/overview") {
+      const league = url.searchParams.get("league") || "Runes of Aldur";
+      const force = url.searchParams.get("refresh") === "1";
+      send(res, 200, JSON.stringify(await getCurrencyOverview(league, force)), "application/json; charset=utf-8");
       return;
     }
 

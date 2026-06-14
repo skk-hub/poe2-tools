@@ -18,9 +18,46 @@ window.__viewInit["map-juicer"]=function(){
   els.patchline.textContent = "Waystone juicing & stash regex · Patch " + D.patch + " · " + D.league;
   els.footPatch.textContent = D.patch;
   function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
-  function runRegex(){ return `"ack s" "agic monst|onster eff|rar" !"${T.danger}"`; }
-  function blueRegex(){ return `"${T.rewardBlue}" !"${T.danger}"`; }
+  const L = D.tokens.line;
+  // %-aware thresholds (default to the market curve: Rarity premium >60%, Pack aim >=30%).
+  let rarityMin = 60, packMin = 30;
+  // Range matching a number >= pct: a 2-digit number whose first digit is high
+  // enough, OR any 3-digit number. e.g. >=60 -> ([6-9].|1..)  (per forum guide).
+  function tens(pct){ const d = Math.max(2, Math.floor(pct / 10)); return d >= 2 && d <= 9 ? `[${d}-9].` : "\\d."; }
+  function atLeast(token, pct){ return `${token} \\+(${tens(pct)}|1..)%`; }
+  // Best maps to RUN: top Item Rarity OR strong Pack Size, with no risk suffixes.
+  function runRegex(){ return `"(${atLeast(L.itemRarity, rarityMin)}|${atLeast(L.packSize, packMin)})" "!${T.danger}"`; }
+  // Any reward mod present (worth upgrading a blue), no risk suffixes — presence-based.
+  function blueRegex(){ return `"(${L.itemRarity}|${L.packSize}|${L.magicMonsters}|${L.rareMonsters}|${L.waystoneDrop})" "!${T.danger}"`; }
+  // Fully-juiced 6-mod maps = 0 revives left.
+  function noRevivesRegex(){ return `"${T.revivesZero}"`; }
   function tabletRegex(token){ return `"${token}" "${T.tabletDesirable}"`; }
+  function regexRow(title, regex, sub){
+    const len = regex.length, over = len > D.regexLimit;
+    return `
+      <div class="rx">
+        <div class="rx-top"><span class="rx-title">${esc(title)}</span><span class="rx-len ${over?"over":""}">${len}/${D.regexLimit}</span></div>
+        <div class="regexrow"><code class="regexbox">${esc(regex)}</code><button class="copy" type="button" data-copy="${esc(regex)}">Copy</button></div>
+        ${sub?`<div class="rx-sub">${esc(sub)}</div>`:""}
+      </div>`;
+  }
+  function waystoneRegexCard(){
+    const opt = (v, cur) => `<option value="${v}"${v===cur?" selected":""}>${v}%</option>`;
+    return `
+      <div class="card">
+        <div class="card-head"><span class="card-title">Waystone stash regex (Ctrl-F)</span><span class="card-kind">%-aware</span></div>
+        <div class="card-body">
+          <div class="rx-thresholds">
+            <label>Min Item Rarity <select id="rxRarity">${[40,50,60,70].map(v=>opt(v,rarityMin)).join("")}</select></label>
+            <label>Min Pack Size <select id="rxPack">${[20,30,40].map(v=>opt(v,packMin)).join("")}</select></label>
+          </div>
+          ${regexRow(`Best maps to run — Rarity ≥${rarityMin}% or Pack ≥${packMin}%, no risk suffixes`, runRegex())}
+          ${regexRow("Only fully-juiced maps — 6 mods / 0 revives left", noRevivesRegex(), "Revives drop 6→0 as mods are added; 0 revives means a 6-mod map (one death = fail).")}
+          ${regexRow("Any reward mod — blue waystones worth upgrading", blueRegex())}
+          <div class="note">Matches the waystone's "<b>Label: +X%</b>" reward block (0.5). Each quoted block is an AND; <code>|</code>=OR; <code>"!…"</code>=exclude. Source: PoE2 forum regex guide. Verify wording in your stash.</div>
+        </div>
+      </div>`;
+  }
   function regexCard(title, kind, regex, mods){
     const len = regex.length;
     const over = len > D.regexLimit;
@@ -111,18 +148,22 @@ window.__viewInit["map-juicer"]=function(){
       marketCard() +
       regexCard(`Best ${ct.label} tablets`, "tablet", tabletRegex(ct.tabletToken),
         ["Pack Size / increased Monsters (content scaling)", "Rarity"]) +
-      regexCard("Best 6-mod waystones to run", "waystone", runRegex(), D.waystoneTargets) +
-      regexCard("Best blue waystones to upgrade", "waystone (magic)", blueRegex(),
-        ["Any top reward mod already rolled", "no risky suffixes"]) +
+      waystoneRegexCard() +
       juice + omens;
     bindCopy();
     bindWeightRefresh();
+    bindRegexThresholds();
   }
   function rerenderActive(){ renderPanel(D.contentTypes.find(c=>c.id===active) || D.contentTypes[0]); }
   function bindWeightRefresh(){
     const btn = els.panel.querySelector("#weightRefresh");
     if (!btn) return;
     btn.addEventListener("click", () => refreshWeights(false));
+  }
+  function bindRegexThresholds(){
+    const r = els.panel.querySelector("#rxRarity"), p = els.panel.querySelector("#rxPack");
+    if (r) r.addEventListener("change", () => { rarityMin = Number(r.value) || 60; rerenderActive(); });
+    if (p) p.addEventListener("change", () => { packMin = Number(p.value) || 30; rerenderActive(); });
   }
   let refreshing = false;
   async function refreshWeights(force){

@@ -24,19 +24,32 @@ window.WAYSTONE_DATA = {
   league: "Runes of Aldur",
   regexLimit: 250,
 
-  // Short tokens chosen to match the in-game mod text without colliding with
-  // unrelated mods (e.g. "ack s" matches "Pack Size" but not "Attack Speed").
-  // Order = market value (see marketWeights): Pack Size first, then Monster
-  // Effectiveness / Rarity. NOTE 0.5: waystones no longer roll "Quantity of
-  // Items" — that token was removed.
+  // ── Stash Ctrl-F regex tokens (PoE2 0.5) ────────────────────────────────
+  // A WAYSTONE shows its reward mods as a compact "Label: +X%" block, so the
+  // correct tokens bridge each label up to its colon and can be made %-AWARE by
+  // appending a value range — e.g. `i.+ty: \+([6-9].|1..)%` = Item Rarity ≥60%.
+  // (Verified against the official forum regex guide, view-thread/3858429, and
+  // poe2.re / poe2way.com. The old presence-only substrings like "ack s" were
+  // wrong: they ignored the % and could match unrelated text.) Each quoted
+  // block = one AND condition; `|` = OR inside a block; `"!…"` = exclude.
   tokens: {
-    // Desirable WAYSTONE reward mods (used for the magic/blue upgrade pick).
-    rewardBlue: "ack s|agic monst|onster eff|rar|aystone f",
-    // Desirable TABLET mods (pack size / monsters / rarity).
-    tabletDesirable: "ack s|onster|rar",
-    // Risky suffixes to exclude (less Recovery / reduced Flask Charges /
-    // -% maximum Player Resistances / less Cooldown Recovery).
+    // Per-label bridge tokens for the waystone "Label: +X%" reward block.
+    line: {
+      itemRarity:    "i.+ty:",   // Item Rarity: +X%
+      packSize:      "m.+e:",    // Monster Pack Size: +X%
+      magicMonsters: "ma.+s:",   // Magic Monsters: +X%
+      rareMonsters:  "r.+s:",    // Rare Monsters: +X%
+      waystoneDrop:  "w.+e:",    // Waystone Drop Chance: +X%
+    },
+    // A fully-juiced 6-modifier waystone has 0 revives — shown as this line.
+    // (Revives = 6 at 0 mods, down to 0 at 6+ mods; it is NOT a rolled mod.)
+    revivesZero: "revives available: 0",
+    // Risk SUFFIXES print as full debuff text (no colon), so match by substring:
+    // less Recovery / reduced Flask Charges / -max Player Resistances / less Cooldown.
     danger: "ess rec|educed flask|aximum player|ess cool",
+    // Tablets render their mods differently (not the colon block), so tablet
+    // matching stays presence-based on the content keyword + these.
+    tabletDesirable: "ack s|onster|rar",
   },
 
   // The avoid-list shown in the UI (matches `tokens.danger`).

@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="map-juicer.css">
 <link rel="stylesheet" href="gear-search.css">
 <link rel="stylesheet" href="rune-picker.css">
+<link rel="stylesheet" href="craft-pricer.css">
 <style>
 /* ===== Hub: modern dashboard, built on theme.css tokens ===== */
 .shell{padding:32px 24px 56px;max-width:1280px;margin:0 auto}
@@ -54,6 +55,24 @@ h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;l
 /* Section label */
 .section-label{display:flex;align-items:center;gap:12px;margin:0 2px 16px;color:var(--text-faint);font:600 11px var(--font-mono);letter-spacing:.14em;text-transform:uppercase}
 .section-label::after{content:"";flex:1;height:1px;background:var(--border)}
+
+/* Currency strip (home, under hero) */
+.fxstrip{background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 16px;margin-bottom:28px;box-shadow:var(--shadow-sm),var(--inset-hi);animation:fadeIn .4s var(--ease) both}
+.fxstrip-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.fxstrip-title{font:600 11px var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--gold)}
+.fxstrip-meta{color:var(--text-faint);font:500 11px var(--font-mono);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fxstrip-meta.stale{color:var(--gold)}
+.fxstrip-refresh{width:28px;height:28px;flex:none;display:grid;place-items:center;border-radius:var(--r);background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-size:15px;cursor:pointer;transition:transform var(--t),background var(--t),border-color var(--t),color var(--t)}
+.fxstrip-refresh:hover{background:var(--gold-soft);border-color:var(--border-gold);color:var(--gold-bright)}
+.fxstrip-refresh:active{transform:rotate(90deg)}
+.fxstrip-refresh.spin{animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.fxstrip-chips{display:flex;flex-wrap:wrap;gap:8px}
+.fxchip{display:inline-flex;align-items:baseline;gap:7px;padding:7px 12px;background:oklch(100% 0 0 / .025);border:1px solid var(--border);border-radius:var(--r);min-width:0}
+.fxchip .fxname{color:var(--text-muted);font:500 12px var(--font-ui);white-space:nowrap}
+.fxchip .fxval{color:var(--text);font:600 12.5px var(--font-mono);white-space:nowrap}
+.fxchip.gold .fxval{color:var(--gold-bright)}
+.fxchip .fxval small{color:var(--text-faint);font-weight:500}
 
 /* Tools grid — product cards */
 .tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
@@ -155,6 +174,15 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       </div>
     </div>
 
+    <div class="fxstrip" id="fxStrip" hidden aria-label="Currency values">
+      <div class="fxstrip-head">
+        <span class="fxstrip-title">Currency</span>
+        <span class="fxstrip-meta" id="fxStripMeta">Loading…</span>
+        <button class="fxstrip-refresh" id="fxStripRefresh" type="button" title="Refresh from poe.ninja" aria-label="Refresh currency values">↻</button>
+      </div>
+      <div class="fxstrip-chips" id="fxStripChips"></div>
+    </div>
+
     <div class="section-label">Tools</div>
     <div class="tools stagger">
       <article class="tool ready">
@@ -232,12 +260,20 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
   </section>
 
   <section id="craft-pricer" class="view" data-view="craft-pricer">
+   <div class="toolroot toolroot-cp">
     <div class="pagehead">
       <div>
         <h1>Craft Price Checker</h1>
-        <p class="sub">This tool is being rebuilt. Check back soon.</p>
+        <p class="sub">Material costs for the main bow, quiver, amulet, and helmet routes — the required floor plus the full optional total per route, priced live from poe.ninja.</p>
+      </div>
+      <div class="controls">
+        <input id="cpLeague" value="Runes of Aldur" aria-label="League">
+        <button id="cpRefresh" type="button">Refresh prices</button>
+        <div id="cpStatus" class="status">Loading prices…</div>
       </div>
     </div>
+    <div id="cpGrid" class="cp-grid"></div>
+   </div>
   </section>
 
   <section id="rune-picker" class="view" data-view="rune-picker">
@@ -539,6 +575,7 @@ window.addEventListener("DOMContentLoaded",()=>runViewInit(currentView()));
 
 <!-- Inlined tool views: external lazy-init modules (+ data dep) -->
 <script src="waystone-data.js"></script>
+<script src="home.js"></script>
 <script src="craft-pricer.js"></script>
 <script src="rune-picker.js"></script>
 <script src="arbitrage.js"></script>

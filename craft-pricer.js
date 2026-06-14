@@ -75,10 +75,10 @@ window.__viewInit["craft-pricer"] = function () {
 ];
   const BC={e:"be",o:"bo",b:"bc",k:"bk"};
 const BL={e:"essence",o:"omen",b:"currency",k:"catalyst"};
-  const grid=document.getElementById("grid");
-  const statusEl=document.getElementById("status");
-  const refreshBtn=document.getElementById("refresh");
-  const leagueInput=document.getElementById("league");
+  const grid=document.getElementById("cpGrid");
+  const statusEl=document.getElementById("cpStatus");
+  const refreshBtn=document.getElementById("cpRefresh");
+  const leagueInput=document.getElementById("cpLeague");
   const homeCraftCount=document.getElementById("homeCraftCount");
   const homePriceStatus=document.getElementById("homePriceStatus");
   function fc(v){return v>=10?Math.round(v)+"c":v.toFixed(1)+"c"}

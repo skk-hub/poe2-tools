@@ -22,6 +22,18 @@
   .toolroot-mj .copy:active{transform:translateY(1px)}
   .toolroot-mj .meta{display:flex;justify-content:space-between;margin-top:7px;color:var(--mu);font:11px var(--ff-mono)}
   .toolroot-mj .meta .over{color:var(--rd)}
+  .toolroot-mj .rx-thresholds{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+  .toolroot-mj .rx-thresholds label{display:inline-flex;align-items:center;gap:6px;color:var(--mu);font:11px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em}
+  .toolroot-mj .rx-thresholds select{font:600 12px var(--ff-mono);color:var(--tx);background:var(--bg-deep);border:1px solid var(--bd);border-radius:var(--r-sm);padding:5px 8px;cursor:pointer}
+  .toolroot-mj .rx-thresholds select:focus{outline:none;border-color:var(--border-gold)}
+  .toolroot-mj .rx{padding:12px 0;border-top:1px solid var(--bd)}
+  .toolroot-mj .rx:first-of-type{border-top:none;padding-top:0}
+  .toolroot-mj .rx-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
+  .toolroot-mj .rx-title{color:var(--tx);font:600 12.5px var(--ff)}
+  .toolroot-mj .rx-len{color:var(--mu);font:11px var(--ff-mono);white-space:nowrap}
+  .toolroot-mj .rx-len.over{color:var(--rd)}
+  .toolroot-mj .rx-sub{margin-top:6px;color:var(--mu);font:11.5px var(--ff);line-height:1.45}
+  .toolroot-mj .note code{font:11px var(--ff-mono);color:var(--gd);background:var(--gd-a);padding:1px 4px;border-radius:3px}
   .toolroot-mj .modlist{margin:8px 0 0;padding:0;list-style:none;color:var(--mu);font:12px var(--ff-mono)}
   .toolroot-mj .modlist li{padding:1px 0}
   .toolroot-mj .modlist li::before{content:"› ";color:var(--gd)}

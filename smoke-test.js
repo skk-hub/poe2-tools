@@ -60,16 +60,24 @@ function staticChecks() {
   check(/rel="stylesheet" href="theme.css"/.test(idx), "index links theme.css");
   const views = ["home", "craft-pricer", "rune-picker", "gear-search", "map-juicer", "arbitrage", "coming-soon"];
   check(views.every(v => idx.includes(`id="${v}"`)), "index has all 7 view sections");
-  check(["toolroot-arb", "toolroot-mj", "toolroot-gs", "toolroot-rune"].every(t => idx.includes(t)), "index has all 4 inline tool roots");
+  check(["toolroot-arb", "toolroot-mj", "toolroot-gs", "toolroot-rune", "toolroot-cp"].every(t => idx.includes(t)), "index has all 5 inline tool roots");
+  check(idx.includes('id="fxStrip"') && idx.includes('id="fxStripRefresh"'), "home has currency strip + refresh button");
+  check(idx.includes('id="cpGrid"') && idx.includes('id="cpRefresh"'), "craft-pricer rebuilt (grid + refresh, not placeholder)");
+  check(!/being rebuilt/i.test(idx), "craft-pricer placeholder text removed");
   check(!/@scope\s*\(/.test(idx), "no @scope rules left (browser-portable scoping)");
   check(!/<iframe/.test(idx), "no iframes left (true inline views)");
   // every index inline <script> parses
   const scripts = [...idx.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
   check(scripts.length > 0 && scripts.every((s, i) => parses(s, "index script #" + (i + 1))), "index inline scripts parse");
-  const toolJs = ["arbitrage.js", "map-juicer.js", "gear-search.js", "rune-picker.js", "craft-pricer.js"];
+  const toolJs = ["arbitrage.js", "map-juicer.js", "gear-search.js", "rune-picker.js", "craft-pricer.js", "home.js"];
   for (const f of toolJs) check(parses(read(f), f), f + " parses");
-  check(["arbitrage.css", "map-juicer.css", "gear-search.css", "rune-picker.css"].every(c => idx.includes(`href="${c}"`)), "index links all 4 tool stylesheets");
-  check(toolJs.every(j => idx.includes(`src="${j}"`)), "index loads all 5 tool scripts");
+  check(["arbitrage.css", "map-juicer.css", "gear-search.css", "rune-picker.css", "craft-pricer.css"].every(c => idx.includes(`href="${c}"`)), "index links all 5 tool stylesheets");
+  check(toolJs.every(j => idx.includes(`src="${j}"`)), "index loads all 6 view scripts");
+  // Map Juicer regex is %-aware (the fix): value range + the 0-revives regex.
+  const mj = read("map-juicer.js"), wd = read("waystone-data.js");
+  check(/revives available: 0/.test(wd) && /line:\s*{/.test(wd), "waystone-data has revives + colon-format line tokens");
+  check(/\\\\\+\(\$\{tens/.test(mj) || /atLeast\(/.test(mj), "map-juicer builds %-aware threshold regex");
+  check(/noRevivesRegex/.test(mj), "map-juicer has the 0-revives regex generator");
   check(!/let P=\{\}|function showView\(\)\{[^]*CRAFTS/.test(idx) && !idx.includes("const CRAFTS="), "index is shell-only (tool logic externalised)");
   // CSS parity: rune-only selectors must have left index's <style> for rune-picker.css
   const idxStyle = (idx.match(/<style>([\s\S]*?)<\/style>/) || [, ""])[1];
@@ -90,10 +98,11 @@ function staticChecks() {
 // ---- 2) HTTP checks ----
 async function httpChecks() {
   console.log("HTTP checks:");
-  for (const [p, type] of [["/", "html"], ["/theme.css", "css"], ["/arbitrage.css", "css"], ["/map-juicer.css", "css"], ["/gear-search.css", "css"], ["/rune-picker.css", "css"], ["/arbitrage.js", "javascript"], ["/map-juicer.js", "javascript"], ["/gear-search.js", "javascript"], ["/rune-picker.js", "javascript"], ["/craft-pricer.js", "javascript"], ["/waystone-data.js", "javascript"], ["/arbitrage-scanner.html", "html"]]) {
+  for (const [p, type] of [["/", "html"], ["/theme.css", "css"], ["/arbitrage.css", "css"], ["/map-juicer.css", "css"], ["/gear-search.css", "css"], ["/rune-picker.css", "css"], ["/craft-pricer.css", "css"], ["/arbitrage.js", "javascript"], ["/map-juicer.js", "javascript"], ["/gear-search.js", "javascript"], ["/rune-picker.js", "javascript"], ["/craft-pricer.js", "javascript"], ["/home.js", "javascript"], ["/waystone-data.js", "javascript"], ["/arbitrage-scanner.html", "html"]]) {
     const r = await get(BASE + p); check(r.status === 200 && r.type.includes(type), `GET ${p} -> 200 ${type}`);
   }
   const ts = await get(BASE + "/api/trade-status"); check(ts.status === 200 && ts.body.includes("limited"), "GET /api/trade-status -> 200 JSON");
+  const co = await get(BASE + "/api/currency/overview?league=Runes%20of%20Aldur"); check(co.status === 200 && /"items"/.test(co.body), "GET /api/currency/overview -> 200 JSON (items)");
 }
 
 // ---- 3) browser checks ----
@@ -176,11 +185,51 @@ async function browserChecks() {
       await p.close();
     }
 
+    // Home currency strip (mocked overview): chips render + refresh re-fetches
+    {
+      const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      let hits = 0;
+      await p.route("**/api/currency/overview**", route => { hits++; route.fulfill({ contentType: "application/json", body: JSON.stringify({
+        league: "Runes of Aldur", updated: new Date().toISOString(), cached: true,
+        items: [{ id: "divine", name: "Divine Orb", ex: 320 }, { id: "exalted", name: "Exalted Orb", ex: 1 }, { id: "chaos", name: "Chaos Orb", ex: 2.4 }],
+      }) }); });
+      await p.goto(BASE + "/index.html#home", { waitUntil: "networkidle" }); await p.waitForTimeout(600);
+      const strip = await p.evaluate(() => { const s = document.getElementById("fxStrip"); const c = document.getElementById("fxStripChips"); return { shown: s && !s.hidden, chips: c ? c.children.length : 0 }; });
+      check(strip.shown && strip.chips === 3, "home currency strip renders chips from cache");
+      await p.click("#fxStripRefresh"); await p.waitForTimeout(400);
+      check(hits >= 2, "home currency refresh button re-fetches (force)");
+      await p.close();
+    }
+
+    // Craft Pricer rebuilt: opening it renders the route cards (static, no network needed)
+    {
+      const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      await p.goto(BASE + "/index.html#craft-pricer", { waitUntil: "networkidle" }); await p.waitForTimeout(900);
+      const cards = await p.evaluate(() => document.querySelectorAll(".toolroot-cp #cpGrid .card").length);
+      check(cards >= 6, "craft-pricer renders the route cards (" + cards + ")");
+      await p.close();
+    }
+
+    // Map Juicer regex: %-aware run regex + 0-revives, and threshold select updates it
+    {
+      const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      await p.goto(BASE + "/index.html#map-juicer", { waitUntil: "networkidle" }); await p.waitForTimeout(900);
+      const rx = await p.evaluate(() => [...document.querySelectorAll(".toolroot-mj .regexbox")].map(e => e.textContent));
+      const blob = rx.join("\n");
+      check(/\\\+\(\[6-9\]\.\|1\.\.\)%/.test(blob), "map-juicer run regex is %-aware (Rarity ≥60% range)");
+      check(/"revives available: 0"/.test(blob), "map-juicer emits the 0-revives regex");
+      // change Min Item Rarity to 40 -> regex range becomes [4-9]
+      await p.selectOption(".toolroot-mj #rxRarity", "40"); await p.waitForTimeout(300);
+      const rx40 = await p.evaluate(() => [...document.querySelectorAll(".toolroot-mj .regexbox")].map(e => e.textContent).join("\n"));
+      check(/\\\+\(\[4-9\]\.\|1\.\.\)%/.test(rx40), "map-juicer threshold select rebuilds the regex");
+      await p.close();
+    }
+
     // mobile overflow
     const m = await browser.newContext({ viewport: { width: 390, height: 844 } });
-    const pm = await m.newPage(); await pm.goto(BASE + "/#home", { waitUntil: "networkidle" });
-    let mOv = 0;
-    for (const v of ["gear-search", "map-juicer", "arbitrage", "rune-picker"]) { await pm.click(`[data-view-link="${v}"]`); await pm.waitForTimeout(700); mOv = Math.max(mOv, await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth))); }
+    const pm = await m.newPage(); await pm.goto(BASE + "/#home", { waitUntil: "networkidle" }); await pm.waitForTimeout(400);
+    let mOv = await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth));
+    for (const v of ["craft-pricer", "gear-search", "map-juicer", "arbitrage", "rune-picker"]) { await pm.click(`[data-view-link="${v}"]`); await pm.waitForTimeout(700); mOv = Math.max(mOv, await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth))); }
     check(mOv === 0, "mobile: no horizontal overflow on tool views");
     await m.close();
   } finally { await browser.close(); }
