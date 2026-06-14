@@ -21,6 +21,7 @@ Read this first. Self-hosted Path of Exile 2 (PoE2) browser utility suite: prici
 - GGG pathofexile.com/api/trade2 fallback — currently disabled (MAX_TRADE_FALLBACKS=0).
 
 ## Tools — status
+- App shell (2026-06-14): index.html is now a single-page shell. Home/Craft Pricer/Rune Picker are inline views; **Gear Search / Map Juicer / Arbitrage load IN-SHELL via iframes** (`#gear-search`/`#map-juicer`/`#arbitrage`, lazy-loaded once + kept alive, no full-page reload) so they function like the inline Rune Picker under one shared nav. The standalone pages still exist and work on direct visit; `?embed=<view>` hides their own header (`html.embed` via theme.css) when shown inside the shell. Did NOT merge their JS/CSS inline (they share globals `esc/els/render/setStatus/fmt` and IDs `#status/#results/#summary`, and Gear Search is 1316 lines — inlining would collide; iframes isolate them safely).
 - Main hub: working
 - Craft pricer: BEING REBUILT (blanked 2026-06-13 — see log) — `#craft-pricer` view shows a placeholder
 - Rune picker: working
