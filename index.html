@@ -307,7 +307,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     .import-toggle .glyph { display: inline-block; transform: translateY(-1px); }
     .import-body { padding: 14px; display: grid; gap: 10px; }
     .import-shell.collapsed .import-body { display: none; }
-    .import-help { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--bd); background: oklch(9.5% 0.028 40); color: var(--mu); font-size: 11px; line-height: 1.45; }
+    .import-help { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--bd); background: var(--bg-deep); color: var(--mu); font-size: 11px; line-height: 1.45; }
     .import-progress { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
     .progress-track { height: 8px; border: 1px solid var(--bd); background: var(--s2); overflow: hidden; }
     .progress-fill { height: 100%; width: 0%; background: var(--gd); transition: width 180ms cubic-bezier(0.23, 1, 0.32, 1); }
@@ -330,7 +330,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     .advanced-import summary { cursor: pointer; color: var(--mu); font-weight: 800; }
     .advanced-import[open] summary { color: var(--gd); }
     .advanced-import textarea { margin-top: 10px; min-height: 180px; }
-    .console-helper { display: grid; gap: 8px; margin: 10px 0; padding: 10px; border: 1px solid var(--bd); background: oklch(9.5% 0.028 40); }
+    .console-helper { display: grid; gap: 8px; margin: 10px 0; padding: 10px; border: 1px solid var(--bd); background: var(--bg-deep); }
     .console-helper .sub { margin: 0; }
     .console-code { max-height: 150px; }
     .locked-panel { display: grid; gap: 10px; }
@@ -359,11 +359,11 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     .projection-table th, .projection-table td { padding: 7px 9px; border-bottom: 1px solid var(--bd); text-align: right; font: 11px var(--ff-mono); }
     .projection-table th:first-child, .projection-table td:first-child { text-align: left; font-family: var(--ff-ui); color: var(--mu); }
     .items { display: grid; gap: 8px; max-height: 300px; overflow: auto; }
-    .item-row { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 8px; padding: 9px; border: 1px solid var(--bd); background: oklch(9.5% 0.028 40); cursor: pointer; }
+    .item-row { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 8px; padding: 9px; border: 1px solid var(--bd); background: var(--bg-deep); cursor: pointer; }
     .item-row.active { border-color: var(--gd); background: var(--gd-a); }
     .item-row strong { overflow-wrap: anywhere; }
     .pill { display: inline-flex; align-items: center; min-height: 22px; padding: 0 7px; border: 1px solid var(--bd); color: var(--mu); font: 10px var(--ff-mono); text-transform: uppercase; }
-    pre { margin: 0; max-height: 280px; overflow: auto; padding: 10px; border: 1px solid var(--bd); background: oklch(7.5% 0.025 40); color: var(--tx); font: 10px/1.45 var(--ff-mono); white-space: pre-wrap; }
+    pre { margin: 0; max-height: 280px; overflow: auto; padding: 10px; border: 1px solid var(--bd); background: var(--bg); color: var(--tx); font: 10px/1.45 var(--ff-mono); white-space: pre-wrap; }
     .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
     .metric { padding: 10px; border: 1px solid var(--bd); background: var(--s2); }
     .metric b { display: block; color: var(--gd); font: 700 18px var(--ff-mono); }
@@ -392,6 +392,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
 </style>
 </head>
 <body>
+<div id="view-live" aria-live="polite" class="sr-only"></div>
 <header class="appbar">
   <div class="appbarin">
     <a class="brand" href="#home" data-view-link="home">
@@ -957,11 +958,20 @@ function currentView(){
 window.__viewInit=window.__viewInit||{};
 function runViewInit(key){ const f=window.__viewInit[key]; if(typeof f==="function"){ window.__viewInit[key]=true; try{ f(); }catch(e){ console.error("view init failed",key,e); } } }
 
-function showView(){
+function showView(userNav){
   const key=currentView();
   for(const view of views) view.classList.toggle("active",view.dataset.view===key);
   for(const link of viewLinks) link.classList.toggle("active",link.dataset.viewLink===key);
   runViewInit(key);
+  // a11y: on user navigation, move focus into the new view + announce it so
+  // keyboard/screen-reader users land in the content, not stranded in the nav.
+  if(userNav){
+    const sec=document.getElementById(key);
+    const h=sec&&sec.querySelector("h1,h2,.tooltitle");
+    if(h){ h.setAttribute("tabindex","-1"); h.focus({preventScroll:true}); window.scrollTo({top:0,behavior:"instant"in document.documentElement.style?"instant":"auto"}); }
+    const live=document.getElementById("view-live");
+    if(live) live.textContent=(h?h.textContent.trim():key)+" — view loaded";
+  }
   if(key==="rune-picker") refreshTradeStatus();
   if(key==="craft-pricer"&&!hasAutoRefreshed){
     hasAutoRefreshed=true;
@@ -1219,7 +1229,7 @@ async function refreshPrices(){
 if(refreshBtn) refreshBtn.addEventListener("click",refreshPrices);
 checkRunesBtn.addEventListener("click",checkRunes);
 pasteRunesBtn.addEventListener("click",pasteRunes);
-window.addEventListener("hashchange",showView);
+window.addEventListener("hashchange",()=>showView(true));
 refreshTradeStatus();
 if(homeCraftCount) homeCraftCount.textContent=String(CRAFTS.length);
 render();

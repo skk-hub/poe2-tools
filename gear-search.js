@@ -997,7 +997,9 @@ window.__viewInit["gear-search"]=function(){
     [els.budget, els.matchMode, els.minMatches].forEach((el) => el.addEventListener("input", updatePreview));
 
     refreshStatus();
-    setInterval(refreshStatus, 15000);
+    // Only poll while the Gear Search view is visible (no background polling
+    // after the user navigates away in the SPA shell).
+    setInterval(() => { if (document.getElementById("gear-search")?.classList.contains("active")) refreshStatus(); }, 15000);
     const profiles = loadImportProfiles();
     const firstProfile = Object.keys(profiles).sort((a, b) => a.localeCompare(b))[0] || "";
     const saved = (firstProfile && profiles[firstProfile] ? profiles[firstProfile].text : "") || localStorage.getItem(IMPORT_TEXT_KEY) || localStorage.getItem("poe2.upgradeFinder.gearText") || "";
