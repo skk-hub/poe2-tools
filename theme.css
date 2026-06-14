@@ -6,7 +6,13 @@
    var names are aliased so existing page CSS keeps working but recolours.
    ============================================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cinzel:wght@600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Self-hosted variable fonts (latin subset) for true offline + no Google
+   dependency. One woff2 per family covering its weight range; the stacks below
+   fall back to system fonts if a file is missing. Re-fetch per the fonts/
+   download steps if a family/weight changes. */
+@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url('/fonts/inter.woff2') format('woff2')}
+@font-face{font-family:'Cinzel';font-style:normal;font-weight:600 700;font-display:swap;src:url('/fonts/cinzel.woff2') format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400 600;font-display:swap;src:url('/fonts/jetbrains-mono.woff2') format('woff2')}
 
 :root{
   /* ---- Charcoal surface scale: near-black, a whisper of cool, ~0 chroma ---- */
