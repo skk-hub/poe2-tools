@@ -66,7 +66,9 @@ function staticChecks() {
   // every index inline <script> parses
   const scripts = [...idx.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
   check(scripts.length > 0 && scripts.every((s, i) => parses(s, "index script #" + (i + 1))), "index inline scripts parse");
-  check(parses(read("gear-search.js"), "gear-search.js"), "gear-search.js parses");
+  for (const f of ["arbitrage.js", "map-juicer.js", "gear-search.js"]) check(parses(read(f), f), f + " parses");
+  check(["arbitrage.css", "map-juicer.css", "gear-search.css"].every(c => idx.includes(`href="${c}"`)), "index links the 3 tool stylesheets");
+  check(["arbitrage.js", "map-juicer.js", "gear-search.js"].every(j => idx.includes(`src="${j}"`)), "index loads the 3 tool scripts");
   // redirect stubs
   for (const [f, hash] of [["arbitrage-scanner.html", "#arbitrage"], ["waystone-juicer.html", "#map-juicer"], ["character-upgrades.html", "#gear-search"]]) {
     check(read(f).includes("index.html" + hash), `${f} redirects to ${hash}`);
@@ -80,7 +82,7 @@ function staticChecks() {
 // ---- 2) HTTP checks ----
 async function httpChecks() {
   console.log("HTTP checks:");
-  for (const [p, type] of [["/", "html"], ["/theme.css", "css"], ["/gear-search.js", "javascript"], ["/waystone-data.js", "javascript"], ["/arbitrage-scanner.html", "html"]]) {
+  for (const [p, type] of [["/", "html"], ["/theme.css", "css"], ["/arbitrage.css", "css"], ["/map-juicer.css", "css"], ["/gear-search.css", "css"], ["/arbitrage.js", "javascript"], ["/map-juicer.js", "javascript"], ["/gear-search.js", "javascript"], ["/waystone-data.js", "javascript"], ["/arbitrage-scanner.html", "html"]]) {
     const r = await get(BASE + p); check(r.status === 200 && r.type.includes(type), `GET ${p} -> 200 ${type}`);
   }
   const ts = await get(BASE + "/api/trade-status"); check(ts.status === 200 && ts.body.includes("limited"), "GET /api/trade-status -> 200 JSON");
