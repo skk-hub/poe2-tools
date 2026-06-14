@@ -1225,6 +1225,11 @@ refreshTradeStatus();
 if(homeCraftCount) homeCraftCount.textContent=String(CRAFTS.length);
 render();
 showView();
+// Tool __viewInit fns are registered by later <script> tags (below). On a
+// DIRECT load to a tool hash (e.g. index.html#arbitrage), showView() above ran
+// before those registered, so re-run the current view's init once everything
+// has parsed.
+window.addEventListener("DOMContentLoaded",()=>runViewInit(currentView()));
 </script>
 
 <!-- ===== Arbitrage Scanner (inlined, lazy-init on first open) ===== -->
