@@ -8,7 +8,7 @@
 // (real page starvation). The backfill must re-fetch each starved item alone and
 // recover it, without re-fetching the already-covered whale or wasting calls when
 // nothing is starved.
-const { fetchExchangeChunked, collectExchangeOffers, __setExchangeRawImpl } = require("./server.js");
+const { fetchExchangeChunked, collectExchangeOffers, sanitizeLeague, __setExchangeRawImpl } = require("./server.js");
 
 const EXALTED_ID = "exalted";
 const WHALE = "divine";
@@ -51,6 +51,13 @@ __setExchangeRawImpl(async (league, haveIds, wantIds) => {
   const out2 = await fetchExchangeChunked("L", EXALTED_ID, want2);
   ok(want2.every((w) => collectExchangeOffers(out2, EXALTED_ID, w).length > 0), "no-whale: all covered by batched pass");
   ok(rawCalls.length === 2, "no-whale: no extra backfill calls beyond the 2 batched chunks (no waste)");
+
+  // sanitizeLeague: a proxy that appended its origin onto the league must not
+  // reach the upstream API (this caused the live HTTP 400 "Invalid query").
+  ok(sanitizeLeague("Runes of Aldurhttp://docker:8098") === "Runes of Aldur", "sanitizeLeague strips an appended proxy origin");
+  ok(sanitizeLeague("Runes of Aldur") === "Runes of Aldur", "sanitizeLeague leaves a clean league untouched");
+  ok(sanitizeLeague("") === "Runes of Aldur" && sanitizeLeague(null) === "Runes of Aldur", "sanitizeLeague falls back to default on empty");
+  ok(sanitizeLeague("  Hardcore  ") === "Hardcore", "sanitizeLeague trims/collapses whitespace");
 
   console.log("\n  " + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);

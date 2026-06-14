@@ -389,6 +389,21 @@ function writeJsonFile(file, value) {
   fs.writeFileSync(file, JSON.stringify(value, null, 2));
 }
 
+// The league name goes straight into upstream GGG/poe.ninja URLs, so never trust
+// the raw query value. A reverse proxy was seen appending its own origin onto it
+// ("Runes of Aldur" + "http://docker:8098"), producing an invalid league and an
+// HTTP 400 from Trade2. Cut anything from an embedded URL, keep only characters a
+// real PoE league name uses, and fall back to the default if nothing sane is left.
+const DEFAULT_LEAGUE = "Runes of Aldur";
+function sanitizeLeague(raw) {
+  const cleaned = String(raw || "")
+    .split(/https?:\/\//i)[0]
+    .replace(/[^A-Za-z0-9 '\-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || DEFAULT_LEAGUE;
+}
+
 function clampNumber(value, fallback, min, max) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -586,7 +601,7 @@ function arbitrageCacheFresh(cache) {
 }
 
 async function scanArbitrage(input = {}) {
-  const league = String(input.league || "Runes of Aldur");
+  const league = sanitizeLeague(input.league);
   const budgetEx = clampNumber(input.budgetEx, 100, 1, 100000);
   const minProfitEx = clampNumber(input.minProfitEx, 5, 0, 100000);
   const minProfitPct = clampNumber(input.minProfitPct, 3, 0, 1000);
@@ -1053,6 +1068,7 @@ async function fetchExchangeData(league) {
 }
 
 async function getExchangeData(league, force) {
+  league = sanitizeLeague(league);
   const cached = readCurrencyRatesCache();
   const fresh = cached && cached.league === league && cached.updated &&
     Date.now() - new Date(cached.updated).getTime() < CURRENCY_RATES_TTL_MS;
@@ -3416,14 +3432,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === "/api/prices") {
-      const league = url.searchParams.get("league") || "Runes of Aldur";
+      const league = sanitizeLeague(url.searchParams.get("league"));
       const body = JSON.stringify(await fetchPrices(league));
       send(res, 200, body, "application/json; charset=utf-8");
       return;
     }
 
     if (url.pathname === "/api/optimizer/materials") {
-      const league = url.searchParams.get("league") || "Runes of Aldur";
+      const league = sanitizeLeague(url.searchParams.get("league"));
       const materials = await fetchOptimizerMaterials(league);
       send(res, 200, JSON.stringify({
         league,
@@ -3436,7 +3452,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === "/api/optimizer/opportunities") {
-      const league = url.searchParams.get("league") || "Runes of Aldur";
+      const league = sanitizeLeague(url.searchParams.get("league"));
       const family = url.searchParams.get("family") || "quiver";
       const iterations = Number(url.searchParams.get("iterations")) || OPTIMIZER_ITERATIONS;
       const body = JSON.stringify(await buildOptimizerOpportunities(league, { family, iterations }));
@@ -3471,13 +3487,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === "/api/waystone/exchange") {
-      const league = url.searchParams.get("league") || "Runes of Aldur";
+      const league = sanitizeLeague(url.searchParams.get("league"));
       send(res, 200, JSON.stringify(await getWaystoneExchange(league)), "application/json; charset=utf-8");
       return;
     }
 
     if (url.pathname === "/api/currency/overview") {
-      const league = url.searchParams.get("league") || "Runes of Aldur";
+      const league = sanitizeLeague(url.searchParams.get("league"));
       const force = url.searchParams.get("refresh") === "1";
       send(res, 200, JSON.stringify(await getCurrencyOverview(league, force)), "application/json; charset=utf-8");
       return;
@@ -3630,7 +3646,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === "/api/upgrades/currency-rates") {
-      const league = url.searchParams.get("league") || "Runes of Aldur";
+      const league = sanitizeLeague(url.searchParams.get("league"));
       const rates = await getExchangeRates(league);
       send(res, 200, JSON.stringify({
         league,
@@ -3845,5 +3861,6 @@ module.exports = {
   fetchExchangeChunked,
   collectExchangeOffers,
   bestExchangeOffer,
+  sanitizeLeague,
   __setExchangeRawImpl(fn) { exchangeRawImpl = fn; },
 };
