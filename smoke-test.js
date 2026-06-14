@@ -238,6 +238,18 @@ async function browserChecks() {
       await p.close();
     }
 
+    // Home currency strip stays VISIBLE (with retry) when the server returns no
+    // rates — e.g. a fresh VM whose cold-cache fetch hit the Trade2 limit. Hiding
+    // it looked broken and removed the only way to re-fetch.
+    {
+      const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      await p.route("**/api/currency/overview**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ league: "Runes of Aldur", items: [], limited: true }) }));
+      await p.goto(BASE + "/index.html#home", { waitUntil: "networkidle" }); await p.waitForTimeout(500);
+      const empty = await p.evaluate(() => { const s = document.getElementById("fxStrip"); const m = document.getElementById("fxStripMeta"); const r = document.getElementById("fxStripRefresh"); return { shown: s && !s.hidden, meta: m ? m.textContent : "", hasRefresh: !!(r && r.offsetParent !== null) }; });
+      check(empty.shown && empty.hasRefresh && /retry/i.test(empty.meta), "home currency strip stays visible + retryable when rates unavailable");
+      await p.close();
+    }
+
     // Craft Pricer rebuilt: opening it renders the route cards (static, no network needed)
     {
       const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });

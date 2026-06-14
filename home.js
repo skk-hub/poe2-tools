@@ -31,7 +31,20 @@ window.__viewInit["home"] = function () {
   function shortName(name) { return name.replace(/^Orb of /, "").replace(/ Orb$/, ""); }
 
   function render(d) {
-    if (!d || !d.items || !d.items.length) { strip.hidden = true; return; }
+    if (!d || !d.items || !d.items.length) {
+      // The server RESPONDED but has no rates yet (cold cache that hit the Trade2
+      // limit, or a transient error). Keep the strip VISIBLE with a status + the
+      // ↻ button so the user can retry — hiding it entirely looked broken and
+      // removed the only way to re-fetch. (A true fetch failure — e.g. the page
+      // opened as a static file with no server — is caught in load() and hides it.)
+      chips.innerHTML = '<span class="fxchip"><span class="fxname">No currency rates yet</span></span>';
+      if (meta) {
+        meta.textContent = (d && d.limited) ? "Trade2 rate-limited — tap ↻ to retry" : "Rates unavailable — tap ↻ to retry";
+        meta.classList.add("stale");
+      }
+      strip.hidden = false;
+      return;
+    }
     // Anything worth more than a single Divine reads better in divine.
     const divineItem = d.items.find((i) => i.id === "divine");
     const divineEx = divineItem && divineItem.ex > 0 ? divineItem.ex : 0;

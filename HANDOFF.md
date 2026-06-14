@@ -5,7 +5,7 @@ Scratch resume note. **Canonical context is `AGENTS.md`** (read it first); this 
 ## State
 - Branch `main`, **clean and pushed**. HEAD = `0674bff`.
 - Run: `node server.js` → http://127.0.0.1:17777 (fixed PORT 17777). Zero-dep Node (http/fs/path only). NOTE: `server.listen` is now guarded by `require.main === module`, and server.js exports `{fetchExchangeChunked, collectExchangeOffers, bestExchangeOffer, __setExchangeRawImpl}` so tests can require it without binding the port.
-- Test: `node smoke-test.js` → **75/75** (static + HTTP + Playwright browser checks; browser checks auto-skip if Playwright/Chromium absent). Also `node backfill-test.js` (offline exchange-backfill determinism, run by smoke too).
+- Test: `node smoke-test.js` → **76/76** (static + HTTP + Playwright browser checks; browser checks auto-skip if Playwright/Chromium absent). Also `node backfill-test.js` (offline exchange-backfill determinism, run by smoke too).
 - Recent commits (this session): `0674bff` exchange page-starvation backfill, `107cfe2` denser table polish, `235a890` self-host fonts (offline woff2), `3395332` arbitrage near-miss spreads, `3e61a0e` hub hero live Divine price, `bf0101e` currency strip 2-dec + div display, `7771273` widen currency list + drop dead `fetchCurrencyRates`.
 
 ## Architecture (1 line)
