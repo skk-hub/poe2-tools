@@ -538,6 +538,8 @@ async function fetchExchangeRaw(league, haveIds, wantIds) {
   });
   return tradeQueue.request(endpoint, { method: "POST", body });
 }
+// Indirection so tests can stub the network without touching the real queue.
+let exchangeRawImpl = fetchExchangeRaw;
 
 // The exchange API rejects ~11+ have/want items ("Too many items"), and even a
 // 6-wide batch returns a capped page that starves some currencies (a 9-want buy
@@ -546,6 +548,12 @@ async function fetchExchangeRaw(league, haveIds, wantIds) {
 // ceil(items/3) calls per leg — ~8 for a full currency+fragment scan vs 22 for
 // the old per-item path.
 const EXCHANGE_BATCH_CAP = 3;
+// A high-liquidity currency (e.g. Divine) in a 3-wide chunk can fill the single
+// capped response page and starve its chunk-mates (Regal/Simulacrum) of offers.
+// After the batched pass, re-fetch any item that came back with ZERO offers,
+// alone, so it gets its own page. Bounded so a systemic failure can't turn into
+// a per-item burst.
+const EXCHANGE_BACKFILL_CAP = 6;
 async function fetchExchangeChunked(league, haveIds, wantIds) {
   const haveArr = Array.isArray(haveIds) ? haveIds : [haveIds];
   const wantArr = Array.isArray(wantIds) ? wantIds : [wantIds];
@@ -553,10 +561,22 @@ async function fetchExchangeChunked(league, haveIds, wantIds) {
   const list = multiOnHave ? haveArr : wantArr;
   const fixed = multiOnHave ? wantArr : haveArr;
   const merged = {};
-  for (let i = 0; i < list.length; i += EXCHANGE_BATCH_CAP) {
-    const chunk = list.slice(i, i + EXCHANGE_BATCH_CAP);
-    const data = await fetchExchangeRaw(league, multiOnHave ? chunk : fixed, multiOnHave ? fixed : chunk);
+  const fetchChunk = async (chunk) => {
+    const data = await exchangeRawImpl(league, multiOnHave ? chunk : fixed, multiOnHave ? fixed : chunk);
     if (data && data.result && typeof data.result === "object") Object.assign(merged, data.result);
+  };
+  for (let i = 0; i < list.length; i += EXCHANGE_BATCH_CAP) {
+    await fetchChunk(list.slice(i, i + EXCHANGE_BATCH_CAP));
+  }
+  // Skip backfill on a total miss (empty merged = rate-limit / systemic failure,
+  // not page starvation) so we don't hammer with N individual retries.
+  if (Object.keys(merged).length) {
+    const covered = (id) => fixed.some((f) => {
+      const [h, w] = multiOnHave ? [id, f] : [f, id];
+      return collectExchangeOffers(merged, h, w).length > 0;
+    });
+    const starved = list.filter((id) => !covered(id)).slice(0, EXCHANGE_BACKFILL_CAP);
+    for (const id of starved) await fetchChunk([id]);
   }
   return { result: merged };
 }
@@ -3810,8 +3830,20 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  const url = "http://" + HOST + ":" + PORT + "/";
-  console.log("PoE Tools running at " + url);
-  if (!process.env.POE2_NO_OPEN) exec('start "" "' + url + '"');
-});
+// Only bind the port when run directly (node server.js). When required as a
+// module (tests), expose the exchange internals so the real fetchExchangeChunked
+// can be exercised with a stubbed network — no port, no Trade2 calls.
+if (require.main === module) {
+  server.listen(PORT, HOST, () => {
+    const url = "http://" + HOST + ":" + PORT + "/";
+    console.log("PoE Tools running at " + url);
+    if (!process.env.POE2_NO_OPEN) exec('start "" "' + url + '"');
+  });
+}
+
+module.exports = {
+  fetchExchangeChunked,
+  collectExchangeOffers,
+  bestExchangeOffer,
+  __setExchangeRawImpl(fn) { exchangeRawImpl = fn; },
+};

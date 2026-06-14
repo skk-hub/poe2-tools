@@ -101,6 +101,13 @@ function staticChecks() {
   const theme = read("theme.css");
   const cyc = [...theme.matchAll(/(--[a-z0-9-]+)\s*:\s*var\(\s*\1\s*\)/g)];
   check(cyc.length === 0, "theme.css has no self-referential var cycles" + (cyc.length ? " (" + cyc.map(c => c[1]).join(",") + ")" : ""));
+  // exchange page-starvation backfill (offline determinism test against real code)
+  try {
+    require("child_process").execFileSync("node", [path.join(ROOT, "backfill-test.js")], { stdio: "ignore", env: { ...process.env, POE2_NO_OPEN: "1" } });
+    check(true, "exchange backfill recovers page-starved currencies (backfill-test.js)");
+  } catch {
+    check(false, "exchange backfill recovers page-starved currencies (backfill-test.js)");
+  }
 }
 
 // ---- 2) HTTP checks ----
