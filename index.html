@@ -952,31 +952,15 @@ function currentView(){
   return views.some(v=>v.dataset.view===key)?key:"home";
 }
 
-const FRAME_VIEWS=[];
-const shellEl=document.querySelector(".shell");
-// Inlined tool views register a one-time init here; run it the first time the
-// view is shown (isolates each tool's globals + defers any network to open).
+// Each inlined tool view registers a one-time init here; runs the first time
+// the view is shown (isolates each tool's globals + defers network to open).
 window.__viewInit=window.__viewInit||{};
 function runViewInit(key){ const f=window.__viewInit[key]; if(typeof f==="function"){ window.__viewInit[key]=true; try{ f(); }catch(e){ console.error("view init failed",key,e); } } }
-
-// Keep tool frames sized to the viewport below the (responsive) header.
-function syncHeaderHeight(){
-  const bar=document.querySelector(".appbar");
-  if(bar) document.documentElement.style.setProperty("--header-h",bar.offsetHeight+"px");
-}
 
 function showView(){
   const key=currentView();
   for(const view of views) view.classList.toggle("active",view.dataset.view===key);
   for(const link of viewLinks) link.classList.toggle("active",link.dataset.viewLink===key);
-  // Tool views fill the shell; load each frame once, then keep it alive (so
-  // switching back is instant — they function like the inline tools).
-  if(shellEl) shellEl.classList.toggle("framemode",FRAME_VIEWS.includes(key));
-  if(FRAME_VIEWS.includes(key)){
-    syncHeaderHeight();
-    const fr=document.querySelector('#'+key+' iframe[data-src]');
-    if(fr && !fr.src) fr.src=fr.getAttribute("data-src");
-  }
   runViewInit(key);
   if(key==="rune-picker") refreshTradeStatus();
   if(key==="craft-pricer"&&!hasAutoRefreshed){
@@ -984,7 +968,6 @@ function showView(){
     refreshPrices();
   }
 }
-window.addEventListener("resize",syncHeaderHeight);
 
 function render(){
   if(!grid) return;
