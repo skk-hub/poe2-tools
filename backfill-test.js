@@ -8,7 +8,7 @@
 // (real page starvation). The backfill must re-fetch each starved item alone and
 // recover it, without re-fetching the already-covered whale or wasting calls when
 // nothing is starved.
-const { fetchExchangeChunked, collectExchangeOffers, sanitizeLeague, __setExchangeRawImpl } = require("./server.js");
+const { fetchExchangeChunked, collectExchangeOffers, sanitizeLeague, buildExchangeCatalog, __setExchangeRawImpl } = require("./server.js");
 
 const EXALTED_ID = "exalted";
 const WHALE = "divine";
@@ -58,6 +58,20 @@ __setExchangeRawImpl(async (league, haveIds, wantIds) => {
   ok(sanitizeLeague("Runes of Aldur") === "Runes of Aldur", "sanitizeLeague leaves a clean league untouched");
   ok(sanitizeLeague("") === "Runes of Aldur" && sanitizeLeague(null) === "Runes of Aldur", "sanitizeLeague falls back to default on empty");
   ok(sanitizeLeague("  Hardcore  ") === "Hardcore", "sanitizeLeague trims/collapses whitespace");
+
+  // buildExchangeCatalog: walks the grouped static structure into a
+  // normalizedName -> {id,name,category} map so the Rune Picker can resolve any
+  // pasted rune/essence/soul-core to its exchange id.
+  const cat = buildExchangeCatalog({ result: [
+    { label: "Runes", entries: [{ id: "lesser-desert-rune", text: "Lesser Desert Rune" }] },
+    { label: "Vaal", entries: [{ id: "soul-core-of-tacati", text: "Soul Core of Tacati" }] },
+    { label: "Currency", entries: [{ id: "divine", text: "Divine Orb" }] },
+  ] });
+  const rune = [...cat.values()].find((e) => e.id === "lesser-desert-rune");
+  const core = [...cat.values()].find((e) => e.id === "soul-core-of-tacati");
+  ok(cat.size === 3, "buildExchangeCatalog maps every entry (" + cat.size + ")");
+  ok(rune && rune.category === "Runes" && rune.name === "Lesser Desert Rune", "buildExchangeCatalog keeps id+name+category for runes");
+  ok(core && core.category === "Vaal", "buildExchangeCatalog resolves soul cores (Vaal group)");
 
   console.log("\n  " + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);

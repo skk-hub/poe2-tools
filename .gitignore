@@ -3,6 +3,7 @@
 .waystone-exchange.json
 .currency-overview.json
 .currency-rates.json
+.rune-exchange-book.json
 .arbitrage-scan-cache.json
 .poe-oauth.json
 .poe-oauth-state.json

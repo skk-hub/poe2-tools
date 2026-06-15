@@ -512,12 +512,33 @@ function collectStaticEntries(data) {
   return entries;
 }
 
+// Full exchange catalog (normalized item name -> {id, name, category}) walked from
+// the grouped static structure, so the Rune Picker can resolve ANY pasted
+// rune/essence/soul-core/etc. to its exchange id. Uses normalizeName (the rune
+// matcher's normalizer) so lookups line up with pasted text.
+function buildExchangeCatalog(data) {
+  const map = new Map();
+  const groups = (data && data.result) || data || [];
+  for (const g of (Array.isArray(groups) ? groups : [])) {
+    const category = String(g.label || g.id || "Exchange");
+    for (const e of (g.entries || [])) {
+      if (!e || !e.id) continue;
+      const name = String(e.text || e.name || "");
+      if (!name) continue;
+      const key = normalizeName(name);
+      if (!map.has(key)) map.set(key, { id: String(e.id), name, category });
+    }
+  }
+  return map;
+}
+
 async function resolveArbitrageItems(league) {
   if (arbitrageStaticCache && Date.now() - arbitrageStaticCache.loadedAt < 60 * 60 * 1000) {
     return arbitrageStaticCache.items;
   }
   const byName = new Map();
   const iconsById = {};
+  let catalog = new Map();
   try {
     const endpoint = "https://www.pathofexile.com/api/trade2/data/static";
     const data = await tradeQueue.request(endpoint, { method: "GET" });
@@ -525,6 +546,7 @@ async function resolveArbitrageItems(league) {
       byName.set(normalizeNameKey(entry.name), entry.id);
       if (entry.image) iconsById[String(entry.id)] = entry.image;
     }
+    catalog = buildExchangeCatalog(data);
   } catch {
     // Static-data lookup is a convenience. Hardcoded fallbacks keep the scanner usable.
   }
@@ -533,8 +555,15 @@ async function resolveArbitrageItems(league) {
     const resolved = names.map((name) => byName.get(normalizeNameKey(name))).find(Boolean);
     return { ...item, id: resolved || item.id, fallbackId: item.id };
   });
-  arbitrageStaticCache = { loadedAt: Date.now(), items, iconsById };
+  arbitrageStaticCache = { loadedAt: Date.now(), items, iconsById, catalog };
   return items;
+}
+
+// The full normalized-name -> {id,name,category} exchange catalog (ensures the
+// static fetch has run; 1h-cached inside resolveArbitrageItems).
+async function getExchangeCatalog(league) {
+  await resolveArbitrageItems(league);
+  return (arbitrageStaticCache && arbitrageStaticCache.catalog) || new Map();
 }
 
 // Batched exchange fetch: `have`/`want` accept arrays, so one call returns
@@ -1142,6 +1171,59 @@ async function warmExchange(league = DEFAULT_LEAGUE) {
   if (ageMs < CURRENCY_RATES_TTL_MS - 2 * 60 * 1000) return;  // still comfortably fresh
   if (tradeStatus().limited) return;
   try { await refreshExchangeData(sanitizeLeague(league)); } catch {}
+}
+
+// ── Rune Picker price book: accurate Trade2 exchange prices for runes/essences/
+// soul cores (poe.ninja's PoE2 coverage of these is thin = "useless"). Same bulk
+// exchange the currency uses. Served from a persistent cache INSTANTLY (poe.ninja
+// stays the fallback for anything not booked yet); missing/stale entries refresh
+// in the BACKGROUND off one batched exchange call, so the book fills in from real
+// usage and the user never waits. Cheap/illiquid items with no exalted-side offer
+// simply stay on the poe.ninja fallback. ───────────────────────────────────────
+const RUNE_BOOK_FILE = path.join(ROOT, ".rune-exchange-book.json");
+const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
+let runeBookRefreshInFlight = false;
+
+function readRuneBook(league) {
+  try {
+    const b = JSON.parse(fs.readFileSync(RUNE_BOOK_FILE, "utf8"));
+    return b && b.league === league ? b : null;
+  } catch { return null; }
+}
+
+// Fire-and-forget: batch-price the given normalized names off the exchange and
+// merge into the book. Single-flight; skips currency (priced elsewhere).
+async function refreshRuneBook(league, normNames) {
+  if (runeBookRefreshInFlight || tradeStatus().limited || !normNames.length) return;
+  runeBookRefreshInFlight = true;
+  try {
+    const catalog = await getExchangeCatalog(league);
+    const targets = [];
+    const seenId = new Set();
+    for (const nn of normNames) {
+      const entry = catalog.get(nn);
+      if (entry && entry.id !== EXALTED_ID && entry.category !== "Currency" && !seenId.has(entry.id)) {
+        seenId.add(entry.id);
+        targets.push({ ...entry, norm: nn });
+      }
+    }
+    if (!targets.length) return;
+    const data = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id));
+    const existing = readRuneBook(league);
+    const prices = existing ? { ...existing.prices } : {};
+    const now = new Date().toISOString();
+    for (const t of targets) {
+      const best = bestExchangeOffer(data, EXALTED_ID, t.id, 5) || bestExchangeOffer(data, EXALTED_ID, t.id, 1);
+      if (best && best.payPerReceive > 0) {
+        prices[t.norm] = { ex: round4(best.payPerReceive), id: t.id, name: t.name, category: t.category, stock: Math.floor(best.receiveStock) || 0, updated: now };
+      }
+    }
+    try { fs.writeFileSync(RUNE_BOOK_FILE, JSON.stringify({ league, prices, updated: now }, null, 2)); } catch {}
+  } catch {
+    // best-effort; the poe.ninja fallback already served the user
+  } finally {
+    runeBookRefreshInFlight = false;
+  }
 }
 
 // Drop-in for the old poe.ninja fetchCurrencyRates: just the id/name→ex map.
@@ -1784,7 +1866,29 @@ async function fetchRunePrices(text, league) {
     });
   }
 
+  // Trade2 exchange price book — accurate prices for runes/essences/soul cores,
+  // used to FILL poe.ninja's coverage gaps (it's missing/thin for most of these).
+  // poe.ninja keeps the win where it has a real volume-weighted price (it's finer
+  // for cheap items, and the exchange is coarse/noisy at sub-1ex); the book steps
+  // in only when poe.ninja has no usable price — that's the "useless for most
+  // stuff" case the user hit (e.g. soul cores poe.ninja can't price at all).
+  const runeBook = readRuneBook(league);
+  const runeBookPrices = runeBook ? runeBook.prices : {};
+  const bookResultFor = (nn, qty, fallbackName) => {
+    const b = runeBookPrices[nn];
+    if (!b || !(b.ex > 0)) return null;
+    return {
+      qty, name: b.name || fallbackName, category: (b.category || "Exchange") + " (trade2)",
+      each: b.ex, total: roundPriceExalted(b.ex * qty), currency: "exalted",
+      source: "trade2 exchange", rawPrice: "",
+      divineValue: currencyRates.divine ? roundPriceExalted(b.ex / currencyRates.divine) : 0,
+      change7d: "", confidence: b.stock >= 10 ? "high" : "medium",
+      units: Number.isFinite(b.stock) ? b.stock : null,
+    };
+  };
+
   const seenCleanNames = new Set();
+  const pastedNorms = [];
   const results = [];
   let skillTradeFallbacks = 0;
   const tradeDeadline = Date.now() + 24000;
@@ -1805,6 +1909,7 @@ async function fetchRunePrices(text, league) {
     const norm = normalizeName(cleanName);
     if (seenCleanNames.has(norm)) continue;
     seenCleanNames.add(norm);
+    if (!isSkillOrSupport) pastedNorms.push(norm);
 
     let match = all.find((item) => item.normalizedName === norm);
     if (!match && norm.length >= 6) {
@@ -1839,6 +1944,8 @@ async function fetchRunePrices(text, league) {
         }
       }
       if (!(match.price > 0)) {
+        const bk = bookResultFor(norm, parsed.qty, match.name);
+        if (bk) { results.push(bk); continue; }
         results.push({ qty: parsed.qty, name: match.name, category: match.category + " (no price)", each: "", total: "", currency: "", source: "poe.ninja", rawPrice: "", change7d: match.change7d, confidence: "none", units: null });
         continue;
       }
@@ -1850,7 +1957,7 @@ async function fetchRunePrices(text, league) {
         each: match.price,
         total,
         currency: "exalted",
-        source: match.slug === "currency" ? "trade2 exchange" : "poe.ninja",
+        source: match.source || (match.slug === "currency" ? "trade2 exchange" : "poe.ninja"),
         rawPrice: "",
         divineValue: match.divineValue,
         change7d: match.change7d,
@@ -1858,6 +1965,13 @@ async function fetchRunePrices(text, league) {
         units: Number.isFinite(match.units) && match.units >= 0 ? Math.round(match.units) : null,
       });
       continue;
+    }
+
+    // No poe.ninja match at all → the Trade2 exchange book is the accurate
+    // fallback (this is the main coverage win: items poe.ninja simply lacks).
+    if (!isSkillOrSupport) {
+      const bk = bookResultFor(norm, parsed.qty, cleanName);
+      if (bk) { results.push(bk); continue; }
     }
 
     let tradePrice = null;
@@ -1895,6 +2009,16 @@ async function fetchRunePrices(text, league) {
     }
 
     results.push({ qty: parsed.qty, name: cleanName, category: "NOT FOUND", each: "", total: "", currency: "", source: "", rawPrice: "", change7d: "" });
+  }
+
+  // Background-fill the price book for pasted items that are missing or stale, so
+  // the NEXT check shows accurate Trade2 prices. Fire-and-forget; never blocks.
+  if (!tradeStatus().limited) {
+    const stale = pastedNorms.filter((nn) => {
+      const b = runeBookPrices[nn];
+      return !b || !b.updated || (Date.now() - new Date(b.updated).getTime() > RUNE_BOOK_TTL_MS);
+    });
+    if (stale.length) refreshRuneBook(league, stale).catch(() => {});
   }
 
   results.sort((a, b) => (Number(b.total) || -1) - (Number(a.total) || -1));
@@ -3926,5 +4050,6 @@ module.exports = {
   collectExchangeOffers,
   bestExchangeOffer,
   sanitizeLeague,
+  buildExchangeCatalog,
   __setExchangeRawImpl(fn) { exchangeRawImpl = fn; },
 };
