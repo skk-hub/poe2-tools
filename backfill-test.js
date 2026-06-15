@@ -119,6 +119,9 @@ __setExchangeRawImpl(async (league, haveIds, wantIds) => {
   ok(spAs.equipped.spear && Number(spAs.equipped.spear.stats.localAttackSpeed) === 12 && Number(spAs.equipped.spear.stats.localCritChance) === 8, "spear: increased AS/crit parse as LOCAL");
   const glAs = analyzeGearSearch("Item Class: Gloves\nRarity: Rare\nMitts\n--------\n12% increased Attack Speed");
   ok(glAs.equipped.gloves && Number(glAs.equipped.gloves.stats.attackSpeed) === 12 && !glAs.equipped.gloves.stats.localAttackSpeed, "gloves: increased AS parses as GLOBAL");
+  // chest no longer offers the dead "deflection" filter (chests roll 0 of it; it
+  // is a shield/off-hand mod) — verified live to return 0 listings.
+  ok(slots.chest && !slots.chest.statKeys.includes("deflection"), "chest no longer offers the dead deflection filter");
 
   console.log("\n  " + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);

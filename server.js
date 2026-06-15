@@ -2348,7 +2348,6 @@ const UPGRADE_SEARCH_STATS = {
   ],
   chest: [
     { key: "evasion", value: { min: 1200 } },
-    { id: UPGRADE_STAT_IDS.deflection },
     { id: UPGRADE_STAT_IDS.life, value: { min: 50 } },
     { id: UPGRADE_STAT_IDS.totalElementalRes, value: { min: 50 } },
   ],
@@ -2385,7 +2384,7 @@ const PRESERVE_CONTROL_STATS_BY_SLOT = {
   quiver: ["projectileLevels", "attackCrit", "critDamage", "bowDamage", "projectileSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "rarity"],
   amulet: ["projectileLevels", "spirit", "critChance", "critDamage", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "rarity"],
   helmet: ["energyShield", "life", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  chest: ["evasion", "deflection", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
+  chest: ["evasion", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   boots: ["movementSpeed", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   gloves: ["attackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
   ring: ["totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "life", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
