@@ -123,6 +123,22 @@ __setExchangeRawImpl(async (league, haveIds, wantIds) => {
   // is a shield/off-hand mod) — verified live to return 0 listings.
   ok(slots.chest && !slots.chest.statKeys.includes("deflection"), "chest no longer offers the dead deflection filter");
 
+  // P0-A: count-mode threshold is computed from the real count group (which
+  // EXCLUDES dps/equipment + composite groups), and never collapses to strict
+  // AND. Six UI rows here -> only 4 are count-group filters.
+  const bowQ = buildGearSearchQuery({ slot: "bow", matchMode: "count", filters: [
+    { key: "dps", min: 100 }, { key: "critChance", min: 1 }, { key: "critDamage", min: 1 },
+    { key: "localPhysDamage", min: 1 }, { key: "totalFlatAttack", min: 1 }, { key: "localFlatCold", min: 1 },
+  ] }, slots.bow);
+  ok(bowQ.matchOf === 4, "count group excludes dps(equipment)+composites (matchOf=" + bowQ.matchOf + ")");
+  ok(bowQ.matchMin < bowQ.matchOf && bowQ.matchMin === Math.max(1, Math.round(4 * 0.6)), "auto count min is relaxed not strict-AND (" + bowQ.matchMin + " of " + bowQ.matchOf + ")");
+  ok(bowQ.query.query.stats[0].value.min === bowQ.matchMin, "query encodes the auto count min");
+  const bowQ2 = buildGearSearchQuery({ slot: "bow", matchMode: "count", minMatches: 99, filters: [{ key: "critChance", min: 1 }, { key: "critDamage", min: 1 }] }, slots.bow);
+  ok(bowQ2.matchMin === 2, "user minMatches is capped to the count-group size");
+  // P0-B: no single-currency price filter (price.option=divine hid ~80% of the
+  // market — every exalt/chaos listing); budget is enforced locally instead.
+  ok(!bowQ.query.query.filters.trade_filters, "no trade_filters.price filter (whole-market coverage)");
+
   console.log("\n  " + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);
 })();

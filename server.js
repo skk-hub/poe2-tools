@@ -3416,13 +3416,22 @@ function buildGearSearchStatFilters(slotId, filters) {
 
 function buildGearSearchQuery(input, slot) {
   const slotId = input.slot || "bow";
-  const maxPriceDiv = Number(input.maxPriceDiv ?? input.maxPriceEx) || 0;
   const { statFilters, equipmentFilters, compositeFilters, unsupported } = buildGearSearchStatFilters(slotId, input.filters);
   const queryFilters = statFilters.map((filter) => filter.value ? ({ id: filter.id, value: filter.value }) : ({ id: filter.id }));
   const equipmentQueryFilters = {};
   for (const filter of equipmentFilters) {
     equipmentQueryFilters[filter.id] = filter.value || {};
   }
+  // Count-mode threshold is computed HERE from the actual searchable (count-
+  // group) filter count, NOT the UI row count. The UI row count also includes
+  // dps (an equipment_filter) and composite groups, which are NOT in this count
+  // group; basing the threshold on it rounded up to strict-AND for real weapons.
+  // round(0.6*n) is always <= n-1 for n>=2, so auto mode never collapses to AND.
+  // A user-typed minMatches overrides; capped to the group size.
+  const isCount = input.matchMode !== "all";
+  const userMin = Number(input.minMatches);
+  const autoMin = Math.max(1, Math.round(queryFilters.length * 0.6));
+  const countMin = Math.min(Number.isFinite(userMin) && userMin > 0 ? userMin : autoMin, Math.max(1, queryFilters.length));
   const query = {
     query: {
       status: { option: input.status === "any" ? "any" : "online" },
@@ -3441,16 +3450,16 @@ function buildGearSearchQuery(input, slot) {
         equipment_filters: {
           filters: equipmentQueryFilters,
         },
-        trade_filters: {
-          filters: {
-            price: { option: "divine" },
-          },
-        },
+        // Deliberately NO trade_filters.price: setting price.option to a single
+        // currency makes Trade2 return ONLY items listed in that currency (e.g.
+        // "divine" hid ~80% of the market — every exalt/chaos listing). Instead
+        // sort by price asc (Trade2 converts across currencies for the sort) and
+        // enforce the budget LOCALLY on the converted value in searchGear.
       },
       stats: queryFilters.length ? [{
-        type: input.matchMode === "all" ? "and" : "count",
+        type: isCount ? "count" : "and",
         filters: queryFilters,
-        value: input.matchMode === "all" ? undefined : { min: Math.min(Number(input.minMatches) || 1, queryFilters.length) },
+        value: isCount ? { min: countMin } : undefined,
       }] : [],
     },
     sort: { price: "asc" },
@@ -3463,9 +3472,8 @@ function buildGearSearchQuery(input, slot) {
     });
   }
   if (!Object.keys(equipmentQueryFilters).length) delete query.query.filters.equipment_filters;
-  if (maxPriceDiv > 0) query.query.filters.trade_filters.filters.price.max = maxPriceDiv;
   if (query.query.stats[0] && !query.query.stats[0].value) delete query.query.stats[0].value;
-  return { query, statFilters, equipmentFilters, compositeFilters, unsupported };
+  return { query, statFilters, equipmentFilters, compositeFilters, unsupported, matchMin: isCount ? countMin : queryFilters.length, matchOf: queryFilters.length };
 }
 
 function compositeStatsSatisfied(stats, compositeFilters) {
@@ -3607,7 +3615,8 @@ async function searchGear(input) {
   if (!slot) throw new Error("Unknown slot");
   const current = input.current || {};
   const currentStats = current.raw ? parseItemStats(current.raw, slotId) : (current.stats || {});
-  const { query, statFilters, equipmentFilters, compositeFilters, unsupported } = buildGearSearchQuery(input, slot);
+  const { query, statFilters, equipmentFilters, compositeFilters, unsupported, matchMin, matchOf } = buildGearSearchQuery(input, slot);
+  const maxPriceDiv = Number(input.maxPriceDiv ?? input.maxPriceEx) || 0;
   const preview = {
     league,
     slot: slotId,
@@ -3616,6 +3625,9 @@ async function searchGear(input) {
     equipmentFilters,
     compositeFilters,
     unsupportedFilters: unsupported,
+    matchMin,
+    matchOf,
+    maxPriceDiv,
   };
   if (input.previewOnly) return { ...preview, listings: [], tradeStatus: tradeStatus(), updated: new Date().toISOString() };
 
@@ -3623,6 +3635,12 @@ async function searchGear(input) {
   if (status.limited) return { ...preview, limited: true, listings: [], tradeStatus: status, updated: new Date().toISOString() };
 
   const rates = await getExchangeRates(league);
+  // Budget is enforced LOCALLY on the converted value (see buildGearSearchQuery:
+  // no currency price filter is sent, so listings span exalt/chaos/divine and
+  // arrive cheapest-first). Skip budget if we can't convert (no divine rate)
+  // rather than wrongly hiding everything.
+  const divineRate = Number(rates.divine) || 0;
+  const budgetEx = maxPriceDiv > 0 && divineRate > 0 ? maxPriceDiv * divineRate : 0;
   const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
   const search = await fetchTrade(searchUrl, { method: "POST", body: JSON.stringify(query) });
   const resultUrl = "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(league) + "/" + search.id;
@@ -3643,6 +3661,7 @@ async function searchGear(input) {
   for (const entry of fetchedResults) {
     const price = listingPriceFromEntry(entry, rates);
     if (!price || price.exalted <= 0) continue;
+    if (budgetEx > 0 && price.exalted > budgetEx) continue;
     const item = entry.item || {};
     const candidateStats = parseItemStats(itemTextFromTradeEntry(entry), slotId);
     if (!compositeStatsSatisfied(candidateStats, compositeFilters).ok) continue;

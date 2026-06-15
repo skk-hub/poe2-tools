@@ -412,17 +412,18 @@ window.__viewInit["gear-search"]=function(){
     }
 
     function renderSlots() {
-      // There are now ~25 slots (every weapon class). Surface the ones the user
-      // actually imported at the top so the dropdown isn't a wall of weapons;
-      // keep the rest accessible below for shopping a slot you don't own yet.
+      // Show ONLY the slots the user actually imported (there are ~25 possible
+      // slots incl. every weapon class — listing them all is noise). If you
+      // pasted a quarterstaff, you get "Quarterstaff", not "Bow".
       const all = Object.keys(state.slots);
       const equipped = state.analysis && state.analysis.equipped
         ? Object.keys(state.analysis.equipped).filter((id) => all.includes(id)) : [];
-      const ordered = [...equipped, ...all.filter((id) => !equipped.includes(id))];
-      els.slotSelect.innerHTML = ordered.map((id) => {
-        const tag = equipped.includes(id) ? " ●" : "";
-        return `<option value="${id}">${escapeHtml(slotLabel(id))}${tag}</option>`;
-      }).join("");
+      if (!equipped.length) {
+        els.slotSelect.innerHTML = `<option value="">Import gear to begin…</option>`;
+        return;
+      }
+      if (!equipped.includes(state.selectedSlot)) state.selectedSlot = equipped[0];
+      els.slotSelect.innerHTML = equipped.map((id) => `<option value="${id}">${escapeHtml(slotLabel(id))}</option>`).join("");
       els.slotSelect.value = state.selectedSlot;
     }
 
@@ -754,12 +755,14 @@ window.__viewInit["gear-search"]=function(){
       }
       // An upgrade is rarely strictly >= the current item on EVERY stat, so an
       // all-filters (AND) search at the item's exact current rolls almost always
-      // returns nothing. Default to "match at least N" with N ~= 60% of the
-      // filters so the search surfaces real sidegrades/upgrades; the user can
-      // still tighten to "All filters" or change N.
+      // returns nothing. Default to "match at least N"; leave Min count BLANK so
+      // the SERVER computes N from the real searchable-filter count (the UI row
+      // count includes dps + composite groups that aren't in the count group, so
+      // computing N here rounded up to strict-AND). User can still type an N or
+      // switch to "All filters".
       if (defaults.length) {
         els.matchMode.value = "count";
-        els.minMatches.value = Math.max(1, Math.round(defaults.length * 0.6));
+        els.minMatches.value = "";
       }
     }
 
@@ -783,7 +786,9 @@ window.__viewInit["gear-search"]=function(){
         current: currentItem(),
         maxPriceDiv: Number(els.budget.value) || 0,
         matchMode: els.matchMode.value,
-        minMatches: els.matchMode.value === "count" ? (Number(els.minMatches.value) || 1) : undefined,
+        // Blank Min count => let the server auto-compute N from the real count
+        // group. Only send a number when the user explicitly typed one.
+        minMatches: els.matchMode.value === "count" && els.minMatches.value !== "" ? Number(els.minMatches.value) : undefined,
         filters: collectFilters(),
         previewOnly,
       };
@@ -809,9 +814,17 @@ window.__viewInit["gear-search"]=function(){
     }
 
     function renderSummary(result = state.result || {}) {
+      // Show the effective match threshold the server computed (auto N from the
+      // real count group) so the blank "Min count" box isn't a mystery.
+      let match = "-";
+      if (Number.isFinite(Number(result.matchOf)) && Number(result.matchOf) > 0) {
+        match = els.matchMode.value === "all" ? `all ${result.matchOf}` : `≥${result.matchMin} of ${result.matchOf}`;
+        if (els.minMatches.value === "") els.minMatches.placeholder = "auto (" + result.matchMin + ")";
+      }
       els.summary.innerHTML = `
         <div class="metric"><span class="muted">Selected</span><b>${escapeHtml(slotLabel(state.selectedSlot))}</b></div>
-        <div class="metric"><span class="muted">Budget</span><b>${fmt(els.budget.value)} div</b></div>
+        <div class="metric"><span class="muted">Budget</span><b>${Number(els.budget.value) ? fmt(els.budget.value) + " div" : "any"}</b></div>
+        <div class="metric"><span class="muted">Match</span><b>${escapeHtml(match)}</b></div>
         <div class="metric"><span class="muted">Total</span><b>${result.total ?? "-"}</b></div>
         <div class="metric"><span class="muted">Fetched</span><b>${result.fetched ?? "-"}</b></div>
       `;
