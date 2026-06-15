@@ -239,6 +239,22 @@ async function browserChecks() {
       await p.close();
     }
 
+    // gear-search empty state DIAGNOSES an over-strict (total=0) search
+    {
+      const p = await browser.newPage({ viewport: { width: 1366, height: 900 } });
+      await p.route("**/api/gear-search/search", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+        slot: "bow", total: 0, fetched: 0, listings: [], url: "https://www.pathofexile.com/trade2/search/poe2/x",
+        statFilters: [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }], compositeFilters: [], unsupportedFilters: [],
+        query: { query: {} }, tradeStatus: { limited: false },
+      }) }));
+      await p.goto(BASE + "/index.html#gear-search", { waitUntil: "networkidle" }); await p.waitForTimeout(800);
+      await p.evaluate(() => { document.getElementById("matchMode").value = "count"; document.getElementById("minMatches").value = "3"; });
+      await p.click("#searchBtn"); await p.waitForTimeout(400);
+      const diag = await p.evaluate(() => { const e = document.querySelector("#results .empty"); return e ? e.textContent : ""; });
+      check(/too strict/i.test(diag) && /Match at least N/i.test(diag) && /3 of 4/.test(diag), "gear-search empty state diagnoses over-strict search");
+      await p.close();
+    }
+
     // Home currency strip (mocked overview): chips render + refresh re-fetches
     {
       const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });

@@ -808,6 +808,36 @@ window.__viewInit["gear-search"]=function(){
       `;
     }
 
+    // Diagnose WHY a search came back empty instead of a bare "nothing found",
+    // so the user knows whether to relax filters (too strict) vs raise budget
+    // (matched but priced out) vs that a filter was dropped as unsupported.
+    function emptyStateHtml(result) {
+      const total = Number(result.total) || 0;
+      const statN = (result.statFilters || []).length;
+      const compN = (result.compositeFilters || []).length;
+      const mode = els.matchMode.value;
+      const minN = mode === "count" ? Math.min(Number(els.minMatches.value) || 1, statN || 1) : statN;
+      const budget = Number(els.budget.value) || 0;
+      const tips = [];
+      if (total === 0) {
+        tips.push("No item on Trade matched these criteria — the filters are too strict together.");
+        const fixes = [];
+        if (mode === "count" && statN > 1 && minN > 1) fixes.push(`lower <b>Match at least N</b> (now ${minN} of ${statN})`);
+        else if (mode === "all" && (statN + compN) > 1) fixes.push(`switch <b>Match mode</b> to “Match at least N”`);
+        fixes.push("remove a filter", "lower some <b>Min</b> values");
+        tips.push("Try: " + fixes.join(", ") + ".");
+      } else {
+        tips.push(`${total} item(s) matched the filters on Trade, but none came back priced/within view.`);
+        if (compN) tips.push("A combined flat-damage filter is enforced locally after fetching — try widening it.");
+        tips.push(`Raise the <b>Budget</b> (now ${budget ? budget + " div" : "unlimited"}), or open the search on Trade to inspect.`);
+      }
+      if ((result.unsupportedFilters || []).length) {
+        tips.push(`Dropped (not searchable on this slot): ${escapeHtml(result.unsupportedFilters.join(", "))}.`);
+      }
+      const link = result.url ? `<div class="actions" style="margin-top:10px"><a class="primary" href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">Open on Trade</a></div>` : "";
+      return `<div class="empty"><div style="text-align:left;max-width:520px;margin:0 auto">${tips.map((t) => `<p style="margin:0 0 8px">${t}</p>`).join("")}</div>${link}</div>`;
+    }
+
     function renderResults(result) {
       state.result = result;
       renderSummary(result);
@@ -816,8 +846,7 @@ window.__viewInit["gear-search"]=function(){
         return;
       }
       if (!result.listings || !result.listings.length) {
-        const link = result.url ? `<div class="actions" style="margin-top:10px"><a class="primary" href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">Open Trade</a></div>` : "";
-        els.results.innerHTML = `<div class="empty">No priced listings returned.${link}</div>`;
+        els.results.innerHTML = emptyStateHtml(result);
         return;
       }
       const open = result.url ? `<a class="primary" href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">Open Trade</a>` : "";
