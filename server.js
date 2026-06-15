@@ -1182,9 +1182,12 @@ async function warmExchange(league = DEFAULT_LEAGUE) {
 // simply stay on the poe.ninja fallback. ───────────────────────────────────────
 const RUNE_BOOK_FILE = path.join(ROOT, ".rune-exchange-book.json");
 const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
-// Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles,
-// so past this we fall back to the book/poe.ninja rather than hang the request.
-const RUNE_FRESH_DEADLINE_MS = 16 * 1000;
+// Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles
+// (its inter-call gap grows to several seconds under load), so a forced refresh of
+// a handful of items can take 20-40s. Give it real headroom so a SINGLE press
+// usually returns live prices; past this we fall back to the book/poe.ninja rather
+// than hang forever. The front-end shows a spinner for the duration.
+const RUNE_FRESH_DEADLINE_MS = 35 * 1000;
 let runeBookRefreshInFlight = null; // Promise | null while a refresh is running
 
 function readRuneBook(league) {
@@ -1955,6 +1958,16 @@ async function fetchRunePrices(text, league, forceFresh) {
     if (seenCleanNames.has(norm)) continue;
     seenCleanNames.add(norm);
     if (!isSkillOrSupport) pastedNorms.push(norm);
+
+    // On-demand fresh (the "Fetch fresh prices" button): prefer the LIVE Trade2
+    // exchange price for this item wherever the book has one, instead of poe.ninja.
+    // The default hybrid keeps poe.ninja's finer cheap-item prices; this button is
+    // the explicit "give me the live exchange number" override — without it the
+    // forced refresh updated the book but the rows still rendered poe.ninja.
+    if (forceFresh && !isSkillOrSupport) {
+      const bk = bookResultFor(norm, parsed.qty, cleanName);
+      if (bk) { results.push(bk); continue; }
+    }
 
     let match = all.find((item) => item.normalizedName === norm);
     if (!match && norm.length >= 6) {
