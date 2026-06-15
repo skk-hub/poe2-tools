@@ -113,6 +113,13 @@ __setExchangeRawImpl(async (league, haveIds, wantIds) => {
   const wd = analyzeGearSearch("Item Class: Wands\nRarity: Rare\nStorm Branch\n--------\n38% increased Spell Damage\n+2 to Level of all Spell Skills");
   ok(wd.equipped && wd.equipped.wand && Number(wd.equipped.wand.stats.spellDamage) === 38, "analyzeGearSearch detects a Wand + parses spell damage");
 
+  // Slot-aware local/global: "% increased Attack Speed" is LOCAL on a martial
+  // weapon, GLOBAL on gloves (was a fragile whole-text class scan).
+  const spAs = analyzeGearSearch("Item Class: Spears\nRarity: Rare\nPike\n--------\n12% increased Attack Speed\n8% increased Critical Hit Chance");
+  ok(spAs.equipped.spear && Number(spAs.equipped.spear.stats.localAttackSpeed) === 12 && Number(spAs.equipped.spear.stats.localCritChance) === 8, "spear: increased AS/crit parse as LOCAL");
+  const glAs = analyzeGearSearch("Item Class: Gloves\nRarity: Rare\nMitts\n--------\n12% increased Attack Speed");
+  ok(glAs.equipped.gloves && Number(glAs.equipped.gloves.stats.attackSpeed) === 12 && !glAs.equipped.gloves.stats.localAttackSpeed, "gloves: increased AS parses as GLOBAL");
+
   console.log("\n  " + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);
 })();

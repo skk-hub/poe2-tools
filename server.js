@@ -2435,9 +2435,13 @@ const EXTRA_WEAPON_SLOTS = [
   ["staff", "Staff", "weapon.staff", "Staves", "caster"],
   ["sceptre", "Sceptre", "weapon.sceptre", "Sceptres", "sceptre"],
 ];
+// Martial weapon slots (incl. bow) — where "increased Crit Chance/Attack Speed"
+// is a LOCAL roll. Used by parseItemStats' slot-aware local/global decision.
+const MARTIAL_WEAPON_SLOTS = new Set(["bow"]);
 {
   let weaponPriority = 99; // just under bow's 100; weapons sort near the top
   for (const [id, label, category, cls, family] of EXTRA_WEAPON_SLOTS) {
+    if (family === "martial") MARTIAL_WEAPON_SLOTS.add(id);
     const keys = family === "martial" ? PRESERVE_CONTROL_STATS_BY_SLOT.bow
       : family === "sceptre" ? SCEPTRE_KEYS : CASTER_WEAPON_KEYS;
     UPGRADE_GUIDE_PROFILE.slots[id] = {
@@ -2459,7 +2463,12 @@ function addStat(stats, key, value) {
   if (Number.isFinite(number)) stats[key] = (stats[key] || 0) + number;
 }
 
-function parseItemStats(text) {
+// `slotHint` (a gear-search slot id, when the caller knows it) makes the
+// local-vs-global decision for "increased Critical Hit Chance"/"increased Attack
+// Speed" reliable: on a martial weapon those are LOCAL, elsewhere GLOBAL. When
+// no hint is given we fall back to scanning the text for a weapon Item Class
+// (now covering every PoE2 0.5 martial class, not just the original few).
+function parseItemStats(text, slotHint) {
   const stats = {};
   const rawLines = String(text || "").split(/\r?\n/);
   let explicitSource = "";
@@ -2476,6 +2485,12 @@ function parseItemStats(text) {
     if (inExplicit) explicitSource += line + "\n";
   }
   const source = normalizePoeMarkup(text);
+  // Is this a MARTIAL weapon, where "increased Crit Chance/Attack Speed" is a
+  // local roll? Prefer the explicit slot hint; otherwise sniff the Item Class.
+  const isLocalWeapon = slotHint
+    ? MARTIAL_WEAPON_SLOTS.has(slotHint)
+    : /Item Class:\s*(Bows|Crossbows|Quarterstaves|Spears|Flails|Claws|Daggers|One Hand \w+|Two Hand \w+|Sceptres|Wands|Staves)/i.test(source)
+      || /\b(Bows|Crossbows|Quarterstaves|Spears|Flails|Claws|Daggers|Maces|Axes|Swords)\b/i.test(source);
   const avgPair = (match) => (Number(match[1]) + Number(match[2])) / 2;
   let weaponAverageHit = 0;
   let weaponAps = 0;
@@ -2498,14 +2513,12 @@ function parseItemStats(text) {
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Physical Damage/gi)) addStat(stats, "localPhysDamage", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance for Attacks/gi)) addStat(stats, "attackCrit", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance/gi)) {
-    // On weapons this is local; on others it's global. For now we use localCritChance to be safe if it's likely local.
-    const key = /Bows|Staves|Wands|Swords|Axes|Maces|Daggers|Claws/i.test(source) ? "localCritChance" : "critChance";
-    addStat(stats, key, match[1]);
+    // On a martial weapon this is the local crit roll; elsewhere it's global.
+    addStat(stats, isLocalWeapon ? "localCritChance" : "critChance", match[1]);
   }
   for (const match of source.matchAll(/\+(\d+(?:\.\d+)?)% to Critical Hit Chance/gi)) addStat(stats, "critChance", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Attack Speed/gi)) {
-    const key = /Bows|Staves|Wands|Swords|Axes|Maces|Daggers|Claws/i.test(source) ? "localAttackSpeed" : "attackSpeed";
-    addStat(stats, key, match[1]);
+    addStat(stats, isLocalWeapon ? "localAttackSpeed" : "attackSpeed", match[1]);
   }
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Damage with Bow Skills/gi)) addStat(stats, "bowDamage", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Projectile Speed/gi)) addStat(stats, "projectileSpeed", match[1]);
@@ -2670,7 +2683,7 @@ function parsePastedItems(text) {
       const slotLine = lines.find((line) => /^Slot:\s*/i.test(line));
       const slot = normalizeGearSearchSlotLabel(slotLine ? slotLine.replace(/^Slot:\s*/i, "") : "") || detectSlot(raw);
       const name = lines.find((line) => !/^Item Class:|^Rarity:|^Slot:|^--------$|^Requirements:|^Sockets:/i.test(line)) || "Item " + (index + 1);
-      return { index, slot, name, stats: parseItemStats(raw), raw };
+      return { index, slot, name, stats: parseItemStats(raw, slot), raw };
     });
 }
 
@@ -3594,7 +3607,7 @@ async function searchGear(input) {
   const slot = slots[slotId] || slots[slotId === "ring1" || slotId === "ring2" ? "ring1" : slotId] || UPGRADE_GUIDE_PROFILE.slots[slotId];
   if (!slot) throw new Error("Unknown slot");
   const current = input.current || {};
-  const currentStats = current.raw ? parseItemStats(current.raw) : (current.stats || {});
+  const currentStats = current.raw ? parseItemStats(current.raw, slotId) : (current.stats || {});
   const { query, statFilters, equipmentFilters, compositeFilters, unsupported } = buildGearSearchQuery(input, slot);
   const preview = {
     league,
@@ -3632,7 +3645,7 @@ async function searchGear(input) {
     const price = listingPriceFromEntry(entry, rates);
     if (!price || price.exalted <= 0) continue;
     const item = entry.item || {};
-    const candidateStats = parseItemStats(itemTextFromTradeEntry(entry));
+    const candidateStats = parseItemStats(itemTextFromTradeEntry(entry), slotId);
     if (!compositeStatsSatisfied(candidateStats, compositeFilters).ok) continue;
     listings.push({
       id: entry.id,
@@ -3684,7 +3697,7 @@ async function searchUpgradeSlot(input) {
       tradeStatus: tradeStatus(),
     };
   }
-  const currentStats = current.raw ? parseItemStats(current.raw) : (current.stats || {});
+  const currentStats = current.raw ? parseItemStats(current.raw, slotId) : (current.stats || {});
   const currentScore = scoreStatsForSlot(currentStats, slotId);
   const currentDps = Number(currentStats.dps) || 0;
   const currentTotals = input.totals || {};
@@ -3746,7 +3759,7 @@ async function searchUpgradeSlot(input) {
     diagnostics.fetched++;
     const price = listingPriceFromEntry(entry, rates);
     if (!price || price.exalted <= 0) { diagnostics.noPrice++; continue; }
-    const stats = parseItemStats(itemTextFromTradeEntry(entry));
+    const stats = parseItemStats(itemTextFromTradeEntry(entry), slotId);
     const preserveCheck = preserveStatsSatisfied(stats, preserveStats);
     if (!preserveCheck.ok) {
       diagnostics.preserveRejected++;
