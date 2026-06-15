@@ -456,24 +456,47 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
   </section>
   <section id="map-juicer" class="view" data-view="map-juicer">
     <div class="toolroot toolroot-mj">
-      <div class="pagehead">
-        <h1>Map Juicer</h1>
-        <p class="sub" id="patchline">Waystone juicing &amp; stash regex.</p>
+      <div class="pagehead mj-head">
+        <div>
+          <h1>Map Juicer</h1>
+          <p class="sub" id="patchline">Waystone juicing &amp; stash regex.</p>
+        </div>
         <span class="fxchip" id="fxRate" style="display:none"></span>
       </div>
-      <div class="eval">
-        <h2>Evaluate a waystone or tablet</h2>
-        <p class="sub">Copy an item in-game (Ctrl+C) and paste it — get its approx. value and the content type it's best paired with.</p>
-        <textarea id="evalInput" spellcheck="false" placeholder="Paste copied item text here…&#10;(includes the 'Rarity:' line and its modifiers)"></textarea>
-        <button class="primary" id="evalBtn" type="button">Evaluate</button>
-        <div id="evalOut"></div>
+
+      <div class="mj-bar" id="mjBar">
+        <div class="mj-field mj-field-mech">
+          <span class="mj-lab">Mechanic</span>
+          <div class="tabs" id="tabs"></div>
+        </div>
+        <div class="mj-field"><span class="mj-lab">Strategy</span><select id="mjStrat" class="mj-sel"></select></div>
+        <div class="mj-field"><span class="mj-lab">Tablets</span><select id="mjCount" class="mj-sel"></select></div>
+        <div class="mj-field"><span class="mj-lab">Tablet mix</span><select id="mjMix" class="mj-sel"></select></div>
+        <label class="mj-chk"><input type="checkbox" id="mjCorrupt"> Corrupted map</label>
+        <label class="mj-chk"><input type="checkbox" id="mjSafe" checked> Clear speed is fine (not dying)</label>
       </div>
-      <div class="tabs" id="tabs"></div>
-      <div id="panel"></div>
+
+      <div class="mj-reco" id="mjReco"></div>
+
+      <div class="mj-grid">
+        <div class="mj-col" id="mjLeft"></div>
+        <div class="mj-col" id="mjRight"></div>
+      </div>
+
+      <details class="mj-d mj-eval">
+        <summary>Evaluate a copied waystone or tablet</summary>
+        <div class="eval">
+          <p class="sub">Copy an item in-game (Ctrl+C) and paste it — get its approx. value, best content pairing, and master fit.</p>
+          <textarea id="evalInput" spellcheck="false" placeholder="Paste copied item text here…&#10;(includes the 'Rarity:' line and its modifiers)"></textarea>
+          <button class="primary" id="evalBtn" type="button">Evaluate</button>
+          <div id="evalOut"></div>
+        </div>
+      </details>
+
       <p class="foot">
-        These regex strings are meant to be pasted into the in-game stash search (Ctrl-F) — this tool can't read your stash directly.
-        Data is for patch <b id="footPatch"></b>; edit <code>waystone-data.js</code> to update it. Cross-check mod wording with
-        <a href="https://poe2.re" target="_blank" rel="noreferrer">poe2.re</a>.
+        Regex is for the in-game stash search (Ctrl-F) — this tool can't read your stash. Data is for patch <b id="footPatch"></b>;
+        edit <code>waystone-data.js</code> to update it. Master node names verified vs poe2db + community (Jun 2026); exact %s
+        approximate — cross-check mod wording with <a href="https://poe2.re" target="_blank" rel="noreferrer">poe2.re</a>.
       </p>
     </div>
   </section>

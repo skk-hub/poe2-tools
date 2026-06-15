@@ -221,4 +221,83 @@ window.WAYSTONE_DATA = {
       ],
     },
   ],
+
+  // ── Masters of the Atlas (PoE2 0.5 "Masters of the Atlas") ───────────────
+  // Atlas-tree Ascendancy. You pick ONE master per map (free to swap before you
+  // enter), with 4 points across a 12-node tree. The three masters are organized
+  // by GOAL — loot (Jado), bossing/density (Hilda), survival/utility/targeting
+  // (Doryani) — NOT by mechanic, so there is no "Abyss master" or "Ritual
+  // master": pick by your STRATEGY + whether you're dying, not by the mechanic.
+  // Node NAMES are cross-verified vs poe2db + community guides (Jun 2026); exact
+  // % values are approximate (conf:"low") — verify in-game.
+  mastersNote: "Pick by goal, not mechanic. One master per map, free to swap before entering. Node names verified vs poe2db + community (Jun 2026); exact %s approximate — verify in-game.",
+  masters: {
+    jado: {
+      name: "Jado", tree: "Spycraft", role: "Loot & profit engine", short: "Magic-find · currency", conf: "med",
+      why: "Most raw loot per map — uniques, strongboxes, exceptional items, tablet value, corrupted-waystone mods. No defensive value, so only when you already survive.",
+      nodes: [
+        { name: "Trove Seekers", effect: "+100% Rare Chests; Strongboxes far likelier to be Unique", take: true },
+        { name: "In The Wrong Hands", effect: "Powerful Map Bosses drop an extra Unique", take: true },
+        { name: "Keen Appraisal", effect: "+50% Exceptional Items found", take: true },
+        { name: "Partial Translations", effect: "Boosts Explicit Tablet mod effect (chance to double / ~0–40%)", conf: "low" },
+        { name: "Mysterious Gifts", effect: "Rare/Unique Strongbox monsters drop Cryptic Keys" },
+        { name: "Unexpected Missions", effect: "Corrupted Waystones gain extra mods + open random maps" },
+      ],
+    },
+    hilda: {
+      name: "Hilda", tree: "Hunting", role: "Bosses & density", short: "Bossing · mixed tablets", conf: "med",
+      why: "Turns maps into boss/monster engines — upgrades & adds Map Bosses, scales unique monsters, and (Ancient Inscriptions) scales tablet effect PER tablet type, so it rewards running DIFFERENT tablets.",
+      nodes: [
+        { name: "Mighty Prey", effect: "25% chance to upgrade Map Bosses to Powerful Map Bosses", take: true },
+        { name: "Ancient Inscriptions", effect: "+effect of Explicit Tablet mods for EACH tablet type (rewards mixed tablets)", take: true, conf: "low" },
+        { name: "Patient Battue", effect: "Chance to replace Rare Monsters with random Map Bosses", take: true },
+        { name: "Gutting and Skinning", effect: "Pinnacle Bosses & Unique monsters drop additional items" },
+        { name: "Lethal Adaptation", effect: "+effectiveness of Unique monsters with modifiers" },
+        { name: "Soul Eaters", effect: "Map Bosses scale by monsters defeated in the map" },
+      ],
+    },
+    doryani: {
+      name: "Doryani", tree: "Science", role: "Survival, utility & targeting", short: "Revives · citadel · expedition", conf: "med",
+      why: "Keeps you alive and targets endgame: extra revive, safer/irradiated maps, Citadel reveal, Terraformers, expedition radius. Its safety value is WASTED if you're not dying.",
+      nodes: [
+        { name: "Stitch the Flesh", effect: "Maps gain an additional Revival", take: true },
+        { name: "Head of the Snake", effect: "Pinnacle Bosses gain drops & revival, and REVEAL Citadels", take: true },
+        { name: "Remnants of Greatness", effect: "Map Bosses may guard a Precursor Terraformer", take: true },
+        { name: "Improved Calibration", effect: "Waystone modifiers gain ~25% increased effect", conf: "low" },
+        { name: "Refined Formula", effect: "+150% Expedition Explosive Radius", conf: "low" },
+        { name: "Disengaged Safeties", effect: "Maps become Irradiated (harder, more reward)" },
+      ],
+    },
+  },
+
+  // Control-bar selector options (the dashboard reads these).
+  strategies: [
+    { id: "profit", label: "Profit" },
+    { id: "safe", label: "Safe" },
+    { id: "corrupted", label: "Corrupted" },
+    { id: "boss", label: "Boss / Citadel" },
+    { id: "pinnacle", label: "Pinnacle" },
+    { id: "strongbox", label: "Strongbox / Keys" },
+  ],
+  tabletMixes: [
+    { id: "same", label: "Same content spam" },
+    { id: "2plus1", label: "2 content + 1 irradiated" },
+    { id: "3plus1", label: "3 content + 1 irradiated" },
+    { id: "mixed", label: "Mixed tablet types" },
+  ],
+
+  // Dense situation → master table (the "Replace long cards with tables" ask).
+  // `conf`: high = mechanically clear; med = sound inference from verified nodes.
+  masterSituations: [
+    { sit: "General rarity / currency farm", master: "Jado", nodes: "Trove Seekers, Keen Appraisal, In The Wrong Hands", when: "You clear comfortably and want raw loot", avoid: "You're dying — Jado has no defence", conf: "med" },
+    { sit: "Strongbox / key / reliquary maps", master: "Jado", nodes: "Trove Seekers, Mysterious Gifts", when: "Chasing unique strongboxes / Cryptic & Reliquary keys", avoid: "—", conf: "med" },
+    { sit: "Same-content tablet spam (+ irradiated)", master: "Jado", nodes: "Loot core + Partial Translations", when: "Profit-focused, surviving fine", avoid: "Running many DIFFERENT tablet types → Hilda", conf: "med" },
+    { sit: "Mixed tablet types", master: "Hilda", nodes: "Ancient Inscriptions (+per type)", when: "You run 3+ different tablet types at once", avoid: "All one content (no per-type bonus)", conf: "med" },
+    { sit: "Boss / powerful map bosses", master: "Hilda", nodes: "Mighty Prey, Patient Battue, Soul Eaters", when: "Farming map bosses for drops", avoid: "You die to upgraded bosses → Doryani", conf: "med" },
+    { sit: "Citadel hunting", master: "Doryani", nodes: "Head of the Snake (reveals Citadels)", when: "Actively searching for Citadels", avoid: "—", conf: "med" },
+    { sit: "Pinnacle bosses", master: "Hilda", nodes: "Gutting and Skinning", when: "Farming pinnacle drops & comfortable", avoid: "Need citadel reveal / revives → Doryani", conf: "med" },
+    { sit: "Expedition", master: "Doryani", nodes: "Refined Formula (+explosive radius)", when: "Expedition-focused maps", avoid: "Pure density goal → Hilda also works", conf: "med" },
+    { sit: "Corrupted maps", master: "Jado (value) / Doryani (if dying)", nodes: "Unexpected Missions / Stitch the Flesh", when: "Jado for extra mods+loot; Doryani only if you die", avoid: "Don't default Doryani just because it's corrupted", conf: "med" },
+    { sit: "Deadly / can't survive", master: "Doryani", nodes: "Stitch the Flesh (+revive)", when: "You die, or run 0-revive 6-mods", avoid: "You're not dying — switch to a loot master", conf: "high" },
+  ],
 };
