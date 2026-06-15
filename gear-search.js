@@ -412,8 +412,17 @@ window.__viewInit["gear-search"]=function(){
     }
 
     function renderSlots() {
-      const slots = Object.keys(state.slots);
-      els.slotSelect.innerHTML = slots.map((id) => `<option value="${id}">${escapeHtml(slotLabel(id))}</option>`).join("");
+      // There are now ~25 slots (every weapon class). Surface the ones the user
+      // actually imported at the top so the dropdown isn't a wall of weapons;
+      // keep the rest accessible below for shopping a slot you don't own yet.
+      const all = Object.keys(state.slots);
+      const equipped = state.analysis && state.analysis.equipped
+        ? Object.keys(state.analysis.equipped).filter((id) => all.includes(id)) : [];
+      const ordered = [...equipped, ...all.filter((id) => !equipped.includes(id))];
+      els.slotSelect.innerHTML = ordered.map((id) => {
+        const tag = equipped.includes(id) ? " ●" : "";
+        return `<option value="${id}">${escapeHtml(slotLabel(id))}${tag}</option>`;
+      }).join("");
       els.slotSelect.value = state.selectedSlot;
     }
 

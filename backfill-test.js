@@ -8,7 +8,7 @@
 // (real page starvation). The backfill must re-fetch each starved item alone and
 // recover it, without re-fetching the already-covered whale or wasting calls when
 // nothing is starved.
-const { fetchExchangeChunked, collectExchangeOffers, bestExchangeOffer, sanitizeLeague, buildExchangeCatalog, __setExchangeRawImpl } = require("./server.js");
+const { fetchExchangeChunked, collectExchangeOffers, bestExchangeOffer, sanitizeLeague, buildExchangeCatalog, analyzeGearSearch, buildGearSearchQuery, gearSearchSlots, __setExchangeRawImpl } = require("./server.js");
 
 const EXALTED_ID = "exalted";
 const WHALE = "divine";
@@ -92,6 +92,26 @@ __setExchangeRawImpl(async (league, haveIds, wantIds) => {
   const allPar = { result: { a: offer(1, "x", 1, 9), b: offer(5, "x", 5, 9) } };
   const pBest = bestExchangeOffer(allPar, EXALTED_ID, "x", 5);
   ok(pBest && pBest.payPerReceive === 1, "bestExchangeOffer falls back to par only when nothing else exists");
+
+  // Multi-weapon + slot-aware stat-id resolution (no network). The same
+  // conceptual key must resolve to the slot-correct Trade2 id: weapon-local on
+  // martial weapons, the SPELL variants on caster weapons, generic elsewhere.
+  const slots = gearSearchSlots();
+  ok(["bow", "spear", "crossbow", "wand", "staff", "sceptre", "twomace", "quarterstaff"].every((s) => slots[s]), "gearSearchSlots exposes the new weapon classes");
+  const qids = (slot, filters) => {
+    const { query } = buildGearSearchQuery({ slot, matchMode: "all", filters }, slots[slot]);
+    return (query.query.stats || []).flatMap((g) => (g.filters || []).map((f) => f.id));
+  };
+  const spearIds = qids("spear", [{ key: "critChance", min: 1 }, { key: "critDamage", min: 1 }, { key: "localPhysDamage", min: 1 }]);
+  ok(spearIds.includes("explicit.stat_518292764") && spearIds.includes("explicit.stat_2694482655"), "spear crit -> weapon-local ids (like bow)");
+  const wandIds = qids("wand", [{ key: "critChance", min: 1 }, { key: "critDamage", min: 1 }, { key: "spellDamage", min: 1 }]);
+  ok(wandIds.includes("explicit.stat_737908626") && wandIds.includes("explicit.stat_274716455") && wandIds.includes("explicit.stat_2974417149"), "wand crit -> SPELL crit ids + spell damage");
+  const amuIds = qids("amulet", [{ key: "critChance", min: 1 }]);
+  ok(amuIds.includes("explicit.stat_587431675"), "amulet crit stays generic (587431675)");
+  const sp = analyzeGearSearch("Item Class: Spears\nRarity: Rare\nWidowmaker\n--------\n+1.4% to Critical Hit Chance\n45% increased Physical Damage");
+  ok(sp.equipped && sp.equipped.spear, "analyzeGearSearch detects a pasted Spear as the spear slot");
+  const wd = analyzeGearSearch("Item Class: Wands\nRarity: Rare\nStorm Branch\n--------\n38% increased Spell Damage\n+2 to Level of all Spell Skills");
+  ok(wd.equipped && wd.equipped.wand && Number(wd.equipped.wand.stats.spellDamage) === 38, "analyzeGearSearch detects a Wand + parses spell damage");
 
   console.log("\n  " + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);

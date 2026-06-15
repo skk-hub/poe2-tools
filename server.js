@@ -2270,6 +2270,16 @@ const UPGRADE_STAT_IDS = {
   critDamage: "explicit.stat_3556824919",
   rarity: "explicit.stat_3917489142",
   manaOnKill: "explicit.stat_1368271171",
+  // Caster-weapon stats (wand/staff/sceptre). Verified live against real
+  // listings (2026-06-15). critChance/critDamage on caster slots are redirected
+  // to the spell variants via SLOT_STAT_OVERRIDES below.
+  spellDamage: "explicit.stat_2974417149",        // #% increased Spell Damage
+  castSpeed: "explicit.stat_2891184298",          // #% increased Cast Speed
+  levelAllSpellSkills: "explicit.stat_124131830", // # to Level of all Spell Skills
+  levelAllMinionSkills: "explicit.stat_2162097452", // # to Level of all Minion Skills
+  mana: "explicit.stat_1050105434",               // # to maximum Mana
+  manaRegen: "explicit.stat_789117908",           // #% increased Mana Regeneration Rate
+  spiritPct: "explicit.stat_3984865854",          // #% increased Spirit (sceptre)
 };
 
 // The SAME conceptual stat has different Trade2 ids depending on the slot it
@@ -2396,6 +2406,54 @@ const SLOT_ALIASES = [
   [/Item Class:\s*Jewels/i, "jewel"],
 ];
 
+// --- Multi-weapon support --------------------------------------------------
+// The original profile had only `bow`. Add every real PoE2 0.5 weapon class
+// (categories from the live Trade2 category list). Martial weapons all share
+// the SAME weapon-LOCAL stat ids (verified: bow + spear identical), so they
+// reuse the bow filter set + bow's slot-stat overrides. Caster weapons
+// (wand/staff) use spell stats with crit redirected to the spell variants;
+// sceptres are minion/spirit support. Slots/preserve/overrides/aliases are
+// injected here so the change is one compact table, not 15 literal blocks.
+const CASTER_WEAPON_KEYS = ["spellDamage", "critChance", "critDamage", "castSpeed", "levelAllSpellSkills", "mana", "manaRegen"];
+const SCEPTRE_KEYS = ["spirit", "spiritPct", "mana", "manaRegen", "int", "levelAllMinionSkills"];
+const CASTER_STAT_OVERRIDE = { critChance: "explicit.stat_737908626", critDamage: "explicit.stat_274716455" };
+const EXTRA_WEAPON_SLOTS = [
+  // id, label, Trade2 category, Item Class name (for paste detection), family
+  ["crossbow", "Crossbow", "weapon.crossbow", "Crossbows", "martial"],
+  ["spear", "Spear", "weapon.spear", "Spears", "martial"],
+  ["claw", "Claw", "weapon.claw", "Claws", "martial"],
+  ["dagger", "Dagger", "weapon.dagger", "Daggers", "martial"],
+  ["onesword", "One-Handed Sword", "weapon.onesword", "One Hand Swords", "martial"],
+  ["oneaxe", "One-Handed Axe", "weapon.oneaxe", "One Hand Axes", "martial"],
+  ["onemace", "One-Handed Mace", "weapon.onemace", "One Hand Maces", "martial"],
+  ["flail", "Flail", "weapon.flail", "Flails", "martial"],
+  ["twosword", "Two-Handed Sword", "weapon.twosword", "Two Hand Swords", "martial"],
+  ["twoaxe", "Two-Handed Axe", "weapon.twoaxe", "Two Hand Axes", "martial"],
+  ["twomace", "Two-Handed Mace", "weapon.twomace", "Two Hand Maces", "martial"],
+  ["quarterstaff", "Quarterstaff", "weapon.warstaff", "Quarterstaves", "martial"],
+  ["wand", "Wand", "weapon.wand", "Wands", "caster"],
+  ["staff", "Staff", "weapon.staff", "Staves", "caster"],
+  ["sceptre", "Sceptre", "weapon.sceptre", "Sceptres", "sceptre"],
+];
+{
+  let weaponPriority = 99; // just under bow's 100; weapons sort near the top
+  for (const [id, label, category, cls, family] of EXTRA_WEAPON_SLOTS) {
+    const keys = family === "martial" ? PRESERVE_CONTROL_STATS_BY_SLOT.bow
+      : family === "sceptre" ? SCEPTRE_KEYS : CASTER_WEAPON_KEYS;
+    UPGRADE_GUIDE_PROFILE.slots[id] = {
+      label, category, priority: weaponPriority--,
+      stats: Object.fromEntries(keys
+        .filter((k) => UPGRADE_STAT_IDS[k] || GEAR_EQUIPMENT_FILTER_IDS[k] || GEAR_COMPOSITE_STAT_GROUPS[k])
+        .map((k) => [k, 1])),
+      notes: label + " search.",
+    };
+    PRESERVE_CONTROL_STATS_BY_SLOT[id] = keys;
+    SLOT_STAT_OVERRIDES[id] = family === "martial" ? SLOT_STAT_OVERRIDES.bow : CASTER_STAT_OVERRIDE;
+    // Anchored to "Item Class:" so "Staves" can't match "Quarterstaves".
+    SLOT_ALIASES.push([new RegExp("Item Class:\\s*" + cls, "i"), id]);
+  }
+}
+
 function addStat(stats, key, value) {
   const number = Number(value);
   if (Number.isFinite(number)) stats[key] = (stats[key] || 0) + number;
@@ -2515,6 +2573,21 @@ function parseItemStats(text) {
     addStat(stats, "int", match[1]);
   }
   for (const match of source.matchAll(/(\d+) Mana gained on Kill/gi)) addStat(stats, "manaOnKill", match[1]);
+
+  // Caster-weapon stats (wand/staff/sceptre). Additive — only surface as
+  // filters on caster slots (via PRESERVE_CONTROL_STATS_BY_SLOT); harmless on
+  // other items that happen to roll them.
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Spell Damage/gi)) addStat(stats, "spellDamage", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Cast Speed/gi)) addStat(stats, "castSpeed", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Mana Regeneration Rate/gi)) addStat(stats, "manaRegen", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Spirit/gi)) addStat(stats, "spiritPct", match[1]);
+  for (const match of source.matchAll(/\+?(\d+) to maximum Mana/gi)) addStat(stats, "mana", match[1]);
+  for (const match of source.matchAll(/\+?(\d+) to Level of all Spell Skills/gi)) addStat(stats, "levelAllSpellSkills", match[1]);
+  for (const match of source.matchAll(/\+?(\d+) to Level of all Minion Skills/gi)) addStat(stats, "levelAllMinionSkills", match[1]);
+  // Caster crit (folded into critChance/critDamage; slot override picks the
+  // spell-variant trade id on caster slots).
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance for Spells/gi)) addStat(stats, "critChance", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Spell Damage Bonus/gi)) addStat(stats, "critDamage", match[1]);
 
   for (const match of source.matchAll(/Physical DPS:\s*(\d+(?:\.\d+)?)/gi)) explicitDps += Number(match[1]);
   for (const match of source.matchAll(/Elemental DPS:\s*(\d+(?:\.\d+)?)/gi)) explicitDps += Number(match[1]);
@@ -3229,6 +3302,13 @@ function statLabel(key) {
     totalAllAttributes: "All attributes",
     explicitAttributes: "Explicit all attributes",
     spirit: "Spirit",
+    spiritPct: "% increased Spirit",
+    spellDamage: "% increased Spell damage",
+    castSpeed: "Cast speed",
+    levelAllSpellSkills: "+Level of all Spell skills",
+    levelAllMinionSkills: "+Level of all Minion skills",
+    mana: "Maximum mana",
+    manaRegen: "Mana regeneration",
     rarity: "Rarity",
     manaOnKill: "Mana on kill",
   };
@@ -4192,5 +4272,8 @@ module.exports = {
   bestExchangeOffer,
   sanitizeLeague,
   buildExchangeCatalog,
+  analyzeGearSearch,
+  buildGearSearchQuery,
+  gearSearchSlots,
   __setExchangeRawImpl(fn) { exchangeRawImpl = fn; },
 };
