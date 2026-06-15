@@ -2272,6 +2272,36 @@ const UPGRADE_STAT_IDS = {
   manaOnKill: "explicit.stat_1368271171",
 };
 
+// The SAME conceptual stat has different Trade2 ids depending on the slot it
+// rolls on. The flat UPGRADE_STAT_IDS map holds the generic (amulet/jewel)
+// variant; these per-slot-family overrides redirect a key to the id that the
+// item type can actually roll. Without this, e.g. a bow searched for crit
+// chance/crit damage hits the global ids that weapons never have -> 0 results.
+// Verified live against Trade2 stat ids + real listing counts (2026-06-15):
+//   bow critChance global 587431675 -> 0 listings; local 518292764 -> 6278.
+//   bow attack speed global 681332047 -> 0; local 210067635 -> 5989.
+//   bow "to Crit Damage Bonus" 2694482655 -> 4340; quiver "for Attack
+//   Damage" 3714003708 is the quiver-only crit-damage variant.
+const SLOT_STAT_OVERRIDES = {
+  bow: {
+    critChance: "explicit.stat_518292764",   // "#% to Critical Hit Chance" (weapon-local)
+    critDamage: "explicit.stat_2694482655",  // "#% to Critical Damage Bonus" (weapon-local)
+    attackSpeed: "explicit.stat_210067635",  // "#% increased Attack Speed (Local)"
+  },
+  quiver: {
+    critDamage: "explicit.stat_3714003708",  // "#% increased Critical Damage Bonus for Attack Damage"
+  },
+};
+
+// Resolve a conceptual stat key to the Trade2 id correct for the given slot,
+// preferring the slot-family override, then the generic map.
+function gearStatId(key, slotId) {
+  const baseId = slotId === "ring1" || slotId === "ring2" ? "ring" : slotId;
+  const override = SLOT_STAT_OVERRIDES[baseId];
+  if (override && override[key]) return override[key];
+  return UPGRADE_STAT_IDS[key];
+}
+
 const GEAR_EQUIPMENT_FILTER_IDS = {
   dps: "dps",
   evasion: "ev",
@@ -2341,7 +2371,7 @@ const UPGRADE_SEARCH_STATS = {
 };
 
 const PRESERVE_CONTROL_STATS_BY_SLOT = {
-  bow: ["dps", "critChance", "attackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
+  bow: ["dps", "critChance", "critDamage", "localPhysDamage", "totalFlatAttack", "totalFlatElementalAttack", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
   quiver: ["projectileLevels", "attackCrit", "critDamage", "bowDamage", "projectileSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "rarity"],
   amulet: ["projectileLevels", "spirit", "critChance", "critDamage", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "rarity"],
   helmet: ["energyShield", "life", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
@@ -2422,7 +2452,14 @@ function parseItemStats(text) {
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Damage with Bow Skills/gi)) addStat(stats, "bowDamage", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Projectile Speed/gi)) addStat(stats, "projectileSpeed", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Projectile Damage/gi)) addStat(stats, "projectileDamage", match[1]);
-  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Global Critical Damage Bonus/gi)) addStat(stats, "critDamage", match[1]);
+  // Crit damage has three slot-specific texts, all folded into one key (the
+  // slot-aware id resolver picks the right Trade2 id at query time):
+  //   weapon-local "+X% to Critical Damage Bonus" (e.g. bows)
+  //   quiver       "X% increased Critical Damage Bonus for Attack Damage"
+  //   generic      "X% increased [Global] Critical Damage Bonus" (e.g. amulets)
+  for (const match of source.matchAll(/\+(\d+(?:\.\d+)?)% to Critical Damage Bonus/gi)) addStat(stats, "critDamage", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Damage Bonus for Attack Damage/gi)) addStat(stats, "critDamage", match[1]);
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased (?:Global )?Critical Damage Bonus(?! for Attack)/gi)) addStat(stats, "critDamage", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Rarity of Items found/gi)) addStat(stats, "rarity", match[1]);
   for (const match of source.matchAll(/\+(\d+) to Level of all Projectile Skills/gi)) addStat(stats, "projectileLevels", match[1]);
   for (const match of source.matchAll(/\+(\d+) to Spirit/gi)) addStat(stats, "spirit", match[1]);
@@ -2446,11 +2483,13 @@ function parseItemStats(text) {
     addStat(stats, "deflection", match[1]);
   }
   for (const match of source.matchAll(/Critical Hit Chance:\s*(\d+(?:\.\d+)?)%/gi)) {
-    // If it's a weapon property, it's the base + local mods. 
-    // We only use it if we haven't already parsed a global crit chance, or we can use a separate key.
-    // For now, let's keep it in critChance but avoid adding to it if it already has a value from mod?
-    // Actually, local crit is often what players care about for weapons.
-    if (!stats.critChance) addStat(stats, "critChance", match[1]);
+    // This is the weapon's *computed total* crit property (base + local mods),
+    // NOT a searchable explicit mod. Keep it under a display-only key so it can
+    // show in the current-vs-candidate comparison, but never let it become the
+    // `critChance` search filter (searching the +%-to-crit mod id with a 6.5%
+    // base value would return 0 results). The real searchable crit roll comes
+    // from the "+X% to Critical Hit Chance" line above.
+    addStat(stats, "critChanceBase", match[1]);
   }
 
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Movement Speed/gi)) addStat(stats, "movementSpeed", match[1]);
@@ -3157,6 +3196,7 @@ function statLabel(key) {
     flatEle: "Flat elemental",
     attackSpeed: "Attack speed",
     critChance: "Critical chance",
+    critChanceBase: "Weapon crit chance (total)",
     attackCrit: "Attack critical chance",
     critDamage: "Critical damage",
     localPhysDamage: "% increased physical damage",
@@ -3267,7 +3307,7 @@ function buildGearSearchStatFilters(slotId, filters) {
       }
     }
 
-    const id = item && item.id ? item.id : UPGRADE_STAT_IDS[key];
+    const id = gearStatId(key, slotId) || (item && item.id);
     if (!id) {
       if (key) unsupported.push(key);
       continue;
