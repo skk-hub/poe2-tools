@@ -86,12 +86,20 @@ window.__viewInit["map-juicer"]=function(){
     if (danger && id !== "doryani") swaps.push("If you start dying → Doryani (extra revive) over raw loot.");
     if (s.corrupted && id !== "doryani" && s.strat !== "corrupted") swaps.push("Corrupted map: only switch to Doryani if you actually die — corruption alone isn't a reason.");
     if (!danger && id === "doryani" && s.strat !== "safe") swaps.push("Comfortable clears? A loot/boss master out-earns Doryani's safety.");
+    // Mechanic-aware nuance (sources disagree with a flat "Jado default" here).
+    const densityMech = s.mech === "abyss" || s.mech === "breach" || s.mech === "delirium";
+    if (id === "jado" && densityMech && (s.strat === "profit" || s.strat === "corrupted"))
+      swaps.push("Density mechanic — Hilda (Breeding Season + Ancient Inscriptions + density) competes with Jado here IF you survive the empowered packs.");
+    if (id !== "jado" && s.mech === "ritual" && s.strat !== "safe")
+      swaps.push("Ritual income is Omens + tributes — Jado's unique amplification usually beats Hilda here (picking Hilda for Ritual bosses is a common mistake).");
     // Strategy/mechanic-specific node swap (one node, keeps the one-per-row build).
     let nodeNote = "";
     if (id === "hilda" && s.strat === "pinnacle") nodeNote = "Pinnacle: take Gutting and Skinning (row 4) over Patient Battue for extra pinnacle drops.";
+    else if (id === "jado" && s.strat === "strongbox") nodeNote = "Strongbox: take Mysterious Gifts (row 2) + Stolen Relics (row 3) for Cryptic & Reliquary Keys, over Unforeseen Threats + Partial Translations.";
     else if (id === "jado" && (s.strat === "corrupted" || s.corrupted)) nodeNote = "Corrupted: take Unexpected Missions (row 1) over Trove Seekers — corrupted waystones gain extra mods.";
     else if (id === "doryani" && s.mech === "expedition") nodeNote = "Expedition: take Refined Formula (row 1, +explosive radius) over Stitch the Flesh once you survive.";
     else if (id === "jado" && s.strat === "boss") nodeNote = "Boss loot: take In The Wrong Hands (row 1) for an extra boss Unique.";
+    else if (id === "hilda" && densityMech) nodeNote = "Density: Breeding Season + Ancient Inscriptions + Patient Battue stack rares/packs; this is the Abyss-guide build.";
     return { id, master: D.masters[id], conf, why, swaps, nodeNote };
   }
 
@@ -209,6 +217,7 @@ window.__viewInit["map-juicer"]=function(){
         <div class="card-head"><span class="card-title">${esc(c.label)} notes</span><span class="card-kind">content</span></div>
         <div class="card-body">
           <p class="mcard-why" style="font-size:12.5px">${esc(c.blurb)}</p>
+          ${(D.masterHints&&D.masterHints[c.id])?`<div class="reco-note">↳ <b>Master:</b> ${esc(D.masterHints[c.id])}</div>`:""}
           ${picks?`<div class="reco-sub">Best omens</div><div class="omen-rec">${picks}</div>`:""}
           <details class="mj-d"><summary>Blue → juiced path</summary><ol class="steps">${steps}</ol><div class="note"><b>${esc(c.label)}:</b> ${esc(c.juiceNote)}</div></details>
         </div>
