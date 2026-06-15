@@ -2316,6 +2316,7 @@ const GEAR_EQUIPMENT_FILTER_IDS = {
   dps: "dps",
   evasion: "ev",
   energyShield: "es",
+  armour: "ar",
 };
 
 const GEAR_COMPOSITE_STAT_GROUPS = {
@@ -2380,16 +2381,24 @@ const UPGRADE_SEARCH_STATS = {
 };
 
 const PRESERVE_CONTROL_STATS_BY_SLOT = {
-  bow: ["dps", "critChance", "critDamage", "localPhysDamage", "totalFlatAttack", "totalFlatElementalAttack", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos"],
-  quiver: ["projectileLevels", "attackCrit", "critDamage", "bowDamage", "projectileSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "rarity"],
-  amulet: ["projectileLevels", "spirit", "critChance", "critDamage", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "rarity"],
-  helmet: ["energyShield", "life", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  chest: ["evasion", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  boots: ["movementSpeed", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  gloves: ["attackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  ring: ["totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "life", "totalAllAttributes", "explicitAttributes", "str", "dex", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  belt: ["life", "str", "dex", "int", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"],
-  jewel: ["manaOnKill", "critChance", "attackSpeed", "projectileDamage"],
+  // Per-slot VALID affix pools — what each item type can actually roll as a
+  // normal explicit (verified against live explicit-affix sampling + PoE2 rules,
+  // 2026-06-15). Deliberately excludes stats that only show on listings via
+  // socketed gems, enchants/instills, runes, or corruption (those aren't base
+  // affixes). Weapons can't roll life/resistances; jewels are %-mods only; etc.
+  // The add-filter dropdown shows EXACTLY this set per slot (no global append).
+  // Martial weapons (bow + injected melee/ranged) share `bow`; casters use the
+  // injected CASTER/SCEPTRE key sets.
+  bow: ["dps", "critChance", "critDamage", "localPhysDamage", "localAttackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos", "str", "dex", "int"],
+  quiver: ["attackCrit", "critDamage", "bowDamage", "projectileSpeed", "projectileLevels", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "manaOnKill", "str", "dex", "int", "rarity"],
+  amulet: ["life", "energyShield", "mana", "spirit", "critChance", "critDamage", "spellDamage", "castSpeed", "levelAllSpellSkills", "projectileLevels", "manaRegen", "str", "dex", "int", "totalAllAttributes", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
+  helmet: ["energyShield", "evasion", "armour", "life", "mana", "critChance", "levelAllMinionSkills", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
+  chest: ["energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
+  boots: ["movementSpeed", "energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
+  gloves: ["attackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "manaOnKill", "rarity"],
+  ring: ["life", "mana", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "castSpeed", "manaRegen", "manaOnKill", "str", "dex", "int", "totalAllAttributes", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
+  belt: ["life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
+  jewel: ["critChance", "critDamage", "attackSpeed", "castSpeed", "projectileDamage", "spellDamage", "manaOnKill", "str", "dex", "int"],
 };
 
 const SLOT_ALIASES = [
@@ -2414,7 +2423,7 @@ const SLOT_ALIASES = [
 // sceptres are minion/spirit support. Slots/preserve/overrides/aliases are
 // injected here so the change is one compact table, not 15 literal blocks.
 const CASTER_WEAPON_KEYS = ["spellDamage", "critChance", "critDamage", "castSpeed", "levelAllSpellSkills", "mana", "manaRegen"];
-const SCEPTRE_KEYS = ["spirit", "spiritPct", "mana", "manaRegen", "int", "levelAllMinionSkills"];
+const SCEPTRE_KEYS = ["spiritPct", "mana", "manaRegen", "int", "levelAllMinionSkills", "levelAllSpellSkills"];
 const CASTER_STAT_OVERRIDE = { critChance: "explicit.stat_737908626", critDamage: "explicit.stat_274716455" };
 const EXTRA_WEAPON_SLOTS = [
   // id, label, Trade2 category, Item Class name (for paste detection), family
@@ -2546,6 +2555,13 @@ function parseItemStats(text, slotHint) {
   for (const match of source.matchAll(/Energy Shield:\s*(\d+(?:\.\d+)?)/gi)) {
     delete stats.energyShield;
     addStat(stats, "energyShield", match[1]);
+  }
+  // Armour rating: prefer the computed property (filtered via equipment_filter
+  // "ar"), like evasion/ES above.
+  for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Armour(?! and| Rating, Evasion)/gi)) addStat(stats, "armour", match[1]);
+  for (const match of source.matchAll(/Armour:\s*(\d+(?:\.\d+)?)/gi)) {
+    delete stats.armour;
+    addStat(stats, "armour", match[1]);
   }
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Deflection Rating/gi)) addStat(stats, "deflection", match[1]);
   for (const match of source.matchAll(/Deflection Rating:\s*(\d+(?:\.\d+)?)/gi)) {
@@ -3297,6 +3313,7 @@ function statLabel(key) {
     energyShield: "Energy shield",
     totalEnergyShield: "Total energy shield",
     evasion: "Evasion rating",
+    armour: "Armour rating",
     movementSpeed: "Movement speed",
     totalMovementSpeed: "Total movement speed",
     fireRes: "Fire resistance",

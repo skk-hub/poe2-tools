@@ -139,6 +139,18 @@ __setExchangeRawImpl(async (league, haveIds, wantIds) => {
   // market — every exalt/chaos listing); budget is enforced locally instead.
   ok(!bowQ.query.query.filters.trade_filters, "no trade_filters.price filter (whole-market coverage)");
 
+  // D: per-slot affix pools contain ONLY affixes that item type can actually
+  // roll (verified vs live explicit-affix sampling). Guards the "bow offered
+  // Cold Resistance" class of bug.
+  const pool = (s) => slots[s].statKeys;
+  ok(!pool("bow").includes("coldRes") && !pool("bow").includes("life"), "bow pool excludes resistances + life");
+  ok(!pool("ring1").includes("critChance"), "ring pool excludes crit chance (rings don't roll it)");
+  ok(!pool("belt").includes("energyShield") && !pool("belt").includes("evasion"), "belt pool excludes ES/evasion");
+  ok(!pool("jewel").includes("life") && !pool("jewel").includes("flatPhysAttack"), "jewel pool is %-mods only (no flat life/damage)");
+  ok(["armour", "evasion", "energyShield", "coldRes", "critChance", "levelAllMinionSkills"].every((k) => pool("helmet").includes(k)), "helmet pool includes armour/evasion/ES/res/crit/minion-levels");
+  const hq = buildGearSearchQuery({ slot: "helmet", matchMode: "all", filters: [{ key: "armour", min: 100 }] }, slots.helmet);
+  ok(hq.query.query.filters.equipment_filters && hq.query.query.filters.equipment_filters.filters.ar, "armour resolves to the 'ar' equipment filter, not a stat id");
+
   console.log("\n  " + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);
 })();

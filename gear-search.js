@@ -592,8 +592,14 @@ window.__viewInit["gear-search"]=function(){
     }
 
     function filterOptions(selected) {
+      // Show ONLY the affixes this slot can actually roll (server-provided,
+      // per-slot valid pool). Previously this appended life + all resistances +
+      // rarity to EVERY slot, which is why a bow offered Cold Resistance.
       const slot = state.slots[state.selectedSlot] || {};
-      const keys = Array.from(new Set([...(slot.statKeys || []), "life", "totalElementalRes", "fireRes", "coldRes", "lightningRes", "chaosRes", "rarity"]));
+      const keys = Array.from(new Set(slot.statKeys || []));
+      // Keep a previously-chosen key selectable even if it's not in the pool
+      // (e.g. a saved profile), so editing an existing row never loses its value.
+      if (selected && !keys.includes(selected)) keys.unshift(selected);
       return keys.map((key) => `<option value="${key}" ${key === selected ? "selected" : ""}>${escapeHtml(statOptionLabel(key))}</option>`).join("");
     }
 
