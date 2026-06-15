@@ -28,7 +28,11 @@
 .toolroot-rune .paste-zone.ocr-err{border-color:var(--red);color:var(--red)}
 .toolroot-rune #pastePreview{display:none;max-height:72px;max-width:100%;object-fit:contain;opacity:.75}
 
-.toolroot-rune .split{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr);gap:16px;align-items:start}
+/* Results need the room; the input panel can be slim. Wide right column + a lower
+   table min-width than the shared 720px floor so all 8 columns fit without an
+   internal scrollbar or a clipped 7d column. */
+.toolroot-rune .split{display:grid;grid-template-columns:minmax(220px,.5fr) minmax(0,1.7fr);gap:16px;align-items:start}
+.toolroot-rune table{min-width:600px}
 
 .toolroot-rune .bestbox{background:var(--green-soft);border:1px solid oklch(76% 0.17 152 / .3);border-radius:var(--r);padding:14px;margin-bottom:14px;color:var(--green)}
 .toolroot-rune .bestbox.empty{background:var(--surface-2);border-color:var(--border);color:var(--text-muted)}

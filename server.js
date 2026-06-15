@@ -1188,6 +1188,15 @@ const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
 // usually returns live prices; past this we fall back to the book/poe.ninja rather
 // than hang forever. The front-end shows a spinner for the duration.
 const RUNE_FRESH_DEADLINE_MS = 35 * 1000;
+// "Fetch fresh prices" only OVERRIDES poe.ninja with a live exchange price when the
+// exchange book is deep enough to trust. The bulk Currency Exchange is an order
+// book — a price standing on a handful of units (cheap runes often have 5-11 in the
+// whole book) is noise (round junk like 5ex for a 0.4ex rune), whereas poe.ninja's
+// volume-weighted aggregate is closer to reality there. Above this stock floor the
+// book is competitive enough to be the better, fresher number. Tune to taste.
+// (poe.ninja's coverage GAPS — e.g. soul cores it can't price — still fall back to
+// the book regardless of stock; there's no better source for those.)
+const RUNE_FRESH_MIN_STOCK = 30;
 let runeBookRefreshInFlight = null; // Promise | null while a refresh is running
 
 function readRuneBook(league) {
@@ -1960,13 +1969,17 @@ async function fetchRunePrices(text, league, forceFresh) {
     if (!isSkillOrSupport) pastedNorms.push(norm);
 
     // On-demand fresh (the "Fetch fresh prices" button): prefer the LIVE Trade2
-    // exchange price for this item wherever the book has one, instead of poe.ninja.
-    // The default hybrid keeps poe.ninja's finer cheap-item prices; this button is
-    // the explicit "give me the live exchange number" override — without it the
-    // forced refresh updated the book but the rows still rendered poe.ninja.
+    // exchange price over poe.ninja — but ONLY where the exchange is liquid enough
+    // to trust (book depth >= RUNE_FRESH_MIN_STOCK). On a thin book the cheapest
+    // standing offer is noise, so below the floor we fall through to poe.ninja's
+    // aggregate. (Items poe.ninja can't price at all are still book-filled later,
+    // regardless of stock — see bookResultFor calls below.)
     if (forceFresh && !isSkillOrSupport) {
-      const bk = bookResultFor(norm, parsed.qty, cleanName);
-      if (bk) { results.push(bk); continue; }
+      const b = runeBookPrices[norm];
+      if (b && b.ex > 0 && (b.stock || 0) >= RUNE_FRESH_MIN_STOCK) {
+        const bk = bookResultFor(norm, parsed.qty, cleanName);
+        if (bk) { results.push(bk); continue; }
+      }
     }
 
     let match = all.find((item) => item.normalizedName === norm);

@@ -180,6 +180,18 @@ async function browserChecks() {
       await p.click("#checkRunes"); await p.waitForTimeout(600);
       const msg = await p.evaluate(() => (document.getElementById("runeStatus") || {}).textContent || "");
       check(/Paste item names/i.test(msg), "Rune Picker wired (empty check shows guard message)");
+      // Results table must fit its (widened) panel — all 8 columns, no clipped 7d /
+      // internal horizontal scroll. Mock a realistic full-width row and measure.
+      const fit = await p.evaluate(() => {
+        const tb = document.getElementById("runeRows");
+        tb.innerHTML = '<tr><td class="num">3</td><td>Greater Essence of Enhancement</td>' +
+          '<td>Currency (trade2)</td><td class="num">7.92 ex</td><td class="num">23.76 ex</td>' +
+          '<td><span class="conf conf-hi">High 412</span></td>' +
+          '<td>trade2 exchange<div class="muted">stock 88</div></td><td class="num">-60.1%</td></tr>';
+        const w = document.querySelector(".toolroot-rune .tablewrap");
+        return w.scrollWidth - w.clientWidth;
+      });
+      check(fit <= 2, "rune results table fits its panel (no clipped column / internal scroll)");
       await p.close();
     }
 
