@@ -1220,11 +1220,22 @@ async function refreshRuneBook(league, normNames, force) {
   runeBookRefreshInFlight = (async () => {
     try {
       const catalog = await getExchangeCatalog(league);
+      // Skip only the base unit + the curated currencies getExchangeData already
+      // prices (avoid redundant exchange calls). Everything else on the exchange —
+      // runes, essences, soul cores, AND utility currencies the curated set doesn't
+      // cover (whetstones, scraps, etchers, …) — is fair game for the book. (The old
+      // blanket `category !== "Currency"` skip wrongly dropped those utilities, so
+      // they came back NOT FOUND.)
+      const curatedIds = new Set(
+        (await resolveArbitrageItems(league))
+          .filter((it) => it.category === "currency")
+          .map((it) => String(it.id))
+      );
       const targets = [];
       const seenId = new Set();
       for (const nn of normNames) {
         const entry = catalog.get(nn);
-        if (entry && entry.id !== EXALTED_ID && entry.category !== "Currency" && !seenId.has(entry.id)) {
+        if (entry && entry.id !== EXALTED_ID && !curatedIds.has(String(entry.id)) && !seenId.has(entry.id)) {
           seenId.add(entry.id);
           targets.push({ ...entry, norm: nn });
         }
