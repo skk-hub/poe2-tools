@@ -468,13 +468,28 @@ function collectExchangeOffers(data, haveId, wantId) {
   return out;
 }
 
+// The cheapest standing offer that isn't junk. The bulk Currency Exchange is
+// littered with mispriced/spam "par" listings that swap the base unit
+// one-for-one (e.g. 1 exalted : 1 divine — giving away ~165 ex). For any
+// above-1ex currency these sort to the very top and would be taken as the
+// "cheapest", poisoning the derived rate — this is why Divine resolved to 1 ex,
+// and Vaal/GCP to 1 instead of their true floor. No legitimate seller offers a
+// par swap against exalted, so drop par offers and take the cheapest real one;
+// only fall back to par if that's all there is. Sub-1ex currencies (e.g.
+// Transmutation/Augmentation) are unaffected — their genuine floor is already
+// below the par junk, so it never wins anyway. (offers sorted ascending by ratio.)
+function robustCheapestOffer(sortedOffers) {
+  const real = sortedOffers.filter((o) => o.payAmount !== o.receiveAmount);
+  return real.length ? real[0] : sortedOffers[0];
+}
+
 function bestExchangeOffer(data, haveId, wantId, minStock) {
   const stockForItem = (offer) => String(haveId).toLowerCase() === EXALTED_ID ? offer.receiveStock : offer.payStock;
   const offers = collectExchangeOffers(data, haveId, wantId)
     .filter((offer) => stockForItem(offer) >= minStock);
   if (!offers.length) return null;
   offers.sort((a, b) => (a.payAmount / a.receiveAmount) - (b.payAmount / b.receiveAmount));
-  const best = offers[0];
+  const best = robustCheapestOffer(offers);
   return {
     payAmount: best.payAmount,
     receiveAmount: best.receiveAmount,

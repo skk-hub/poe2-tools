@@ -8,7 +8,7 @@
 // (real page starvation). The backfill must re-fetch each starved item alone and
 // recover it, without re-fetching the already-covered whale or wasting calls when
 // nothing is starved.
-const { fetchExchangeChunked, collectExchangeOffers, sanitizeLeague, buildExchangeCatalog, __setExchangeRawImpl } = require("./server.js");
+const { fetchExchangeChunked, collectExchangeOffers, bestExchangeOffer, sanitizeLeague, buildExchangeCatalog, __setExchangeRawImpl } = require("./server.js");
 
 const EXALTED_ID = "exalted";
 const WHALE = "divine";
@@ -72,6 +72,26 @@ __setExchangeRawImpl(async (league, haveIds, wantIds) => {
   ok(cat.size === 3, "buildExchangeCatalog maps every entry (" + cat.size + ")");
   ok(rune && rune.category === "Runes" && rune.name === "Lesser Desert Rune", "buildExchangeCatalog keeps id+name+category for runes");
   ok(core && core.category === "Vaal", "buildExchangeCatalog resolves soul cores (Vaal group)");
+
+  // bestExchangeOffer: the Currency Exchange is littered with spam "par" listings
+  // that swap the base unit 1:1 (e.g. 1 exalted : 1 divine). For an above-1ex
+  // currency these sort to the top and used to be taken as "cheapest", poisoning
+  // the rate (Divine read 1 ex instead of ~166). Must drop par offers and pick the
+  // cheapest real one — while leaving sub-1ex currencies (whose floor is below the
+  // par junk) untouched, and falling back to par only when nothing else exists.
+  const offer = (payAmt, recvCur, recvAmt, recvStock) =>
+    ({ exchange: { currency: "exalted", amount: payAmt }, item: { currency: recvCur, amount: recvAmt, stock: recvStock } });
+  const divineData = { result: { a: offer(1, "divine", 1, 67), b: offer(166, "divine", 1, 373), c: offer(169, "divine", 1, 53) } };
+  const dBest = bestExchangeOffer(divineData, EXALTED_ID, "divine", 5);
+  ok(dBest && Math.round(dBest.payPerReceive) === 166, "bestExchangeOffer drops the par 1:1 spam (divine -> " + (dBest && dBest.payPerReceive) + " ex, not 1)");
+
+  const transData = { result: { a: offer(1, "transmute", 3, 5000), b: offer(1, "transmute", 1, 100), c: offer(1, "transmute", 2, 200) } };
+  const tBest = bestExchangeOffer(transData, EXALTED_ID, "transmute", 5);
+  ok(tBest && Math.abs(tBest.payPerReceive - 1 / 3) < 0.01, "bestExchangeOffer keeps the sub-1ex floor (transmute -> " + (tBest && tBest.payPerReceive.toFixed(3)) + ", par drop doesn't touch it)");
+
+  const allPar = { result: { a: offer(1, "x", 1, 9), b: offer(5, "x", 5, 9) } };
+  const pBest = bestExchangeOffer(allPar, EXALTED_ID, "x", 5);
+  ok(pBest && pBest.payPerReceive === 1, "bestExchangeOffer falls back to par only when nothing else exists");
 
   console.log("\n  " + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);
