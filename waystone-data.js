@@ -20,7 +20,7 @@
  * (2026-05-29); Fextralife Waystones.
  */
 window.WAYSTONE_DATA = {
-  patch: "0.5.0 Return of the Ancients",
+  patch: "0.5.2 (Return of the Ancients)",
   league: "Runes of Aldur",
   regexLimit: 250,
 
@@ -222,50 +222,65 @@ window.WAYSTONE_DATA = {
     },
   ],
 
-  // ── Masters of the Atlas (PoE2 0.5 "Masters of the Atlas") ───────────────
+  // ── Masters of the Atlas (PoE2 0.5.x "Masters of the Atlas") ─────────────
   // Atlas-tree Ascendancy. You pick ONE master per map (free to swap before you
-  // enter), with 4 points across a 12-node tree. The three masters are organized
-  // by GOAL — loot (Jado), bossing/density (Hilda), survival/utility/targeting
-  // (Doryani) — NOT by mechanic, so there is no "Abyss master" or "Ritual
-  // master": pick by your STRATEGY + whether you're dying, not by the mechanic.
-  // Node NAMES are cross-verified vs poe2db + community guides (Jun 2026); exact
-  // % values are approximate (conf:"low") — verify in-game.
-  mastersNote: "Pick by goal, not mechanic. One master per map, free to swap before entering. Node names verified vs poe2db + community (Jun 2026); exact %s approximate — verify in-game.",
+  // enter), and spend 4 points down a 12-node tree (4 rows × 3 choices) — so a
+  // build is ONE node PER ROW. Masters are organized by GOAL — loot (Jado),
+  // bossing/density (Hilda), survival/utility/targeting (Doryani) — NOT by
+  // mechanic, so there is no "Abyss master" or "Ritual master": pick by your
+  // STRATEGY + whether you're dying. Each node carries its `row` (1–4); the 4
+  // `take:true` nodes are the recommended build (one per row). Node NAMES are
+  // cross-verified vs poe2db + community (Jun 2026); exact %s approximate.
+  // 0.5.2 (2026-06-12) tweaks folded in: Jado Partial Translations nerfed to a
+  // random 0–40% (was 20% chance to double); Expedition & Ritual rewards buffed
+  // (no direct Hilda/Doryani nerfs). Community consensus: Jado is the currency
+  // default ("most never leave it"); Doryani for survivability/juice/citadel on
+  // deep atlas; Hilda for boss/pinnacle fragment farming.
+  mastersNote: "Pick by goal, not mechanic. One master per map (free swap), 4 points = one node per row. Verified vs poe2db + community (Jun 2026, incl. 0.5.2); exact %s approximate.",
+  patchNote: "0.5.2 (2026-06-12): Jado 'Partial Translations' nerfed to random 0–40% tablet-mod effect (was 20% chance to double). Expedition (guaranteed Grand Expedition per ocean section) and Ritual (Mysterious Rites +10 omens) buffed. No direct Hilda/Doryani nerfs.",
+  progression: "Community flow: start Doryani (revives cover gear gaps) → switch to Jado once you sustain red maps (most currency farmers stay here) → only swap to Hilda when you're specifically farming boss/pinnacle fragments.",
   masters: {
     jado: {
       name: "Jado", tree: "Spycraft", role: "Loot & profit engine", short: "Magic-find · currency", conf: "med",
-      why: "Most raw loot per map — uniques, strongboxes, exceptional items, tablet value, corrupted-waystone mods. No defensive value, so only when you already survive.",
+      why: "The currency default (community: 'most never leave Jado') — Reliquary & Cryptic keys, unique strongboxes, exceptional items, boss uniques. No defence, so only when you already survive.",
       nodes: [
-        { name: "Trove Seekers", effect: "+100% Rare Chests; Strongboxes far likelier to be Unique", take: true },
-        { name: "In The Wrong Hands", effect: "Powerful Map Bosses drop an extra Unique", take: true },
-        { name: "Keen Appraisal", effect: "+50% Exceptional Items found", take: true },
-        { name: "Partial Translations", effect: "Boosts Explicit Tablet mod effect (chance to double / ~0–40%)", conf: "low" },
-        { name: "Mysterious Gifts", effect: "Rare/Unique Strongbox monsters drop Cryptic Keys" },
-        { name: "Unexpected Missions", effect: "Corrupted Waystones gain extra mods + open random maps" },
+        { row: 1, name: "Trove Seekers", effect: "+100% Rare Chests; Strongboxes far likelier to be Unique", take: true },
+        { row: 1, name: "In The Wrong Hands", effect: "Powerful Map Bosses drop an extra Unique (boss-heavy maps)" },
+        { row: 1, name: "Unexpected Missions", effect: "Corrupted Waystones gain extra mods + Mortuary Map (corrupted runs)" },
+        { row: 2, name: "Mysterious Gifts", effect: "Rare/Unique Strongbox monsters drop Cryptic Keys", take: true },
+        { row: 2, name: "Unforeseen Threats", effect: "5% chance to reveal Anomaly Maps on completion" },
+        { row: 3, name: "Stolen Relics", effect: "Unique Strongboxes can drop Twilight Reliquary Keys", take: true },
+        { row: 3, name: "Partial Translations", effect: "Random 0–40% increased Tablet explicit-mod effect (0.5.2 nerf: was 20% chance to double)", conf: "low" },
+        { row: 4, name: "Keen Appraisal", effect: "+50% Exceptional Items found", take: true },
+        { row: 4, name: "Untold Histories", effect: "+Lineage Supports; Pinnacle Bosses tougher" },
       ],
     },
     hilda: {
       name: "Hilda", tree: "Hunting", role: "Bosses & density", short: "Bossing · mixed tablets", conf: "med",
-      why: "Turns maps into boss/monster engines — upgrades & adds Map Bosses, scales unique monsters, and (Ancient Inscriptions) scales tablet effect PER tablet type, so it rewards running DIFFERENT tablets.",
+      why: "Boss/density engine — upgrades & adds Map Bosses, scales unique monsters, and (Ancient Inscriptions) scales tablet effect PER tablet TYPE, so it uniquely rewards running DIFFERENT tablets.",
       nodes: [
-        { name: "Mighty Prey", effect: "25% chance to upgrade Map Bosses to Powerful Map Bosses", take: true },
-        { name: "Ancient Inscriptions", effect: "+effect of Explicit Tablet mods for EACH tablet type (rewards mixed tablets)", take: true, conf: "low" },
-        { name: "Patient Battue", effect: "Chance to replace Rare Monsters with random Map Bosses", take: true },
-        { name: "Gutting and Skinning", effect: "Pinnacle Bosses & Unique monsters drop additional items" },
-        { name: "Lethal Adaptation", effect: "+effectiveness of Unique monsters with modifiers" },
-        { name: "Soul Eaters", effect: "Map Bosses scale by monsters defeated in the map" },
+        { row: 1, name: "Mighty Prey", effect: "25% chance to upgrade Map Bosses to Powerful Map Bosses", take: true },
+        { row: 1, name: "Breeding Season", effect: "+15% Rare Monsters (raw density)" },
+        { row: 2, name: "Soul Eaters", effect: "Map Bosses scale by monsters defeated in the map", take: true },
+        { row: 2, name: "Will of the Draíocht", effect: "Azmeri Spirits cannot possess Rare monsters" },
+        { row: 3, name: "Ancient Inscriptions", effect: "+Tablet explicit-mod effect for EACH tablet type (rewards mixed tablets)", take: true, conf: "low" },
+        { row: 3, name: "Lethal Adaptation", effect: "+40% effectiveness of Unique monsters with modifiers" },
+        { row: 4, name: "Patient Battue", effect: "Chance to replace Rare Monsters with random Map Bosses", take: true },
+        { row: 4, name: "Gutting and Skinning", effect: "Pinnacle Bosses & Unique monsters drop additional items (pinnacle)" },
       ],
     },
     doryani: {
-      name: "Doryani", tree: "Science", role: "Survival, utility & targeting", short: "Revives · citadel · expedition", conf: "med",
-      why: "Keeps you alive and targets endgame: extra revive, safer/irradiated maps, Citadel reveal, Terraformers, expedition radius. Its safety value is WASTED if you're not dying.",
+      name: "Doryani", tree: "Science", role: "Survival, utility & targeting", short: "Revives · citadel · juice", conf: "med",
+      why: "Keeps you alive and adds juice/targeting: extra revive, irradiated maps, +waystone effect, Citadel reveal, Terraformers, expedition radius. Pure-safety value is wasted if you're not dying.",
       nodes: [
-        { name: "Stitch the Flesh", effect: "Maps gain an additional Revival", take: true },
-        { name: "Head of the Snake", effect: "Pinnacle Bosses gain drops & revival, and REVEAL Citadels", take: true },
-        { name: "Remnants of Greatness", effect: "Map Bosses may guard a Precursor Terraformer", take: true },
-        { name: "Improved Calibration", effect: "Waystone modifiers gain ~25% increased effect", conf: "low" },
-        { name: "Refined Formula", effect: "+150% Expedition Explosive Radius", conf: "low" },
-        { name: "Disengaged Safeties", effect: "Maps become Irradiated (harder, more reward)" },
+        { row: 1, name: "Stitch the Flesh", effect: "Maps gain an additional Revival", take: true },
+        { row: 1, name: "Refined Formula", effect: "+150% Expedition Explosive Radius (expedition)", conf: "low" },
+        { row: 2, name: "Improved Calibration", effect: "Waystone modifiers gain ~25% increased effect (more juice)", take: true, conf: "low" },
+        { row: 2, name: "Disengaged Safeties", effect: "Maps become Irradiated — harder, more reward (juice if you survive)" },
+        { row: 3, name: "Volatile Connection", effect: "15% chance areas are Cleansed or Corrupted", take: true },
+        { row: 3, name: "Hidden Patterns", effect: "10% chance to unlock nearby maps (atlas traversal)" },
+        { row: 4, name: "Head of the Snake", effect: "Pinnacle Bosses gain drops & revival, and REVEAL Citadels", take: true },
+        { row: 4, name: "Remnants of Greatness", effect: "Map Bosses may guard a Precursor Terraformer" },
       ],
     },
   },

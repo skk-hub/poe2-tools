@@ -89,15 +89,15 @@
   /* ===== Dashboard layout ===== */
   .toolroot-mj .mj-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 14px}
   /* Sticky control bar */
-  .toolroot-mj .mj-bar{position:sticky;top:60px;z-index:4;display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 16px;padding:12px 14px;margin:0 0 16px;border:1px solid var(--bd);border-radius:var(--r-md);background:oklch(16% 0.006 270 / .92);backdrop-filter:saturate(140%) blur(10px);-webkit-backdrop-filter:saturate(140%) blur(10px);box-shadow:var(--shadow-sm)}
-  .toolroot-mj .mj-field{display:flex;flex-direction:column;gap:5px;min-width:0}
-  .toolroot-mj .mj-field-mech{flex:1 1 100%}
+  .toolroot-mj .mj-bar{position:sticky;top:58px;z-index:50;display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 14px;padding:8px 12px;margin:0 0 16px;border:1px solid var(--bd);border-radius:var(--r-md);background:oklch(17% 0.006 270);box-shadow:var(--shadow-sm)}
+  .toolroot-mj .mj-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .toolroot-mj .mj-field-mech{flex:1 1 auto}
   .toolroot-mj .mj-lab{color:var(--mu);font:700 10px var(--ff-mono);text-transform:uppercase;letter-spacing:.06em}
-  .toolroot-mj .mj-sel{font:600 12px var(--ff-mono);color:var(--tx);background:var(--bg-deep);border:1px solid var(--bd);border-radius:var(--r-sm);padding:7px 9px;cursor:pointer;min-width:148px}
+  .toolroot-mj .mj-sel{font:600 12px var(--ff-mono);color:var(--tx);background:var(--bg-deep);border:1px solid var(--bd);border-radius:var(--r-sm);padding:6px 8px;cursor:pointer;min-width:118px}
   .toolroot-mj .mj-sel:focus{outline:none;border-color:var(--border-gold)}
-  .toolroot-mj .mj-chk{display:inline-flex;align-items:center;gap:7px;color:var(--tx);font:12px var(--ff);padding-bottom:7px;cursor:pointer;white-space:nowrap}
-  .toolroot-mj .mj-bar .tabs{margin:0}
-  .toolroot-mj .mj-bar .tab{height:30px;padding:0 12px;font-size:11px}
+  .toolroot-mj .mj-chk{display:inline-flex;align-items:center;gap:7px;color:var(--tx);font:12px var(--ff);padding-bottom:6px;cursor:pointer;white-space:nowrap}
+  .toolroot-mj .mj-bar .tabs{margin:0;gap:5px}
+  .toolroot-mj .mj-bar .tab{height:28px;padding:0 10px;font-size:10px}
 
   /* Recommendation panel */
   .toolroot-mj .mj-reco{position:relative;border:1px solid var(--border-gold);border-left:3px solid var(--gd);background:linear-gradient(180deg,var(--gd-a),var(--surface-1));border-radius:var(--r-md);padding:16px 18px;margin:0 0 16px;box-shadow:var(--shadow-sm)}
@@ -113,6 +113,9 @@
   .toolroot-mj .nodechip b{color:var(--gd);font:700 12px var(--ff)}
   .toolroot-mj .nodechip span{color:var(--mu);font:11px var(--ff);line-height:1.35}
   .toolroot-mj .nodechip.q::after{content:"approx";align-self:flex-start;margin-top:2px;color:var(--mu);font:700 8px var(--ff-mono);text-transform:uppercase;letter-spacing:.05em;border:1px solid var(--bd);border-radius:3px;padding:0 3px}
+  .toolroot-mj .rowtag{color:var(--mu);font:700 9px var(--ff-mono);border:1px solid var(--bd);border-radius:3px;padding:0 3px;vertical-align:middle}
+  .toolroot-mj .reco-note{color:var(--tx);font:12px/1.45 var(--ff);margin-top:9px;padding:7px 10px;border-left:2px solid oklch(80% 0.15 74 / .5);background:var(--gd-a);border-radius:0 var(--r-sm) var(--r-sm) 0}
+  .toolroot-mj .reco-note+.reco-note{margin-top:6px}
 
   /* Confidence badge */
   .toolroot-mj .conf{display:inline-flex;align-items:center;gap:5px;font:700 10px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:999px;border:1px solid var(--bd);white-space:nowrap}
@@ -141,7 +144,7 @@
 
   /* Dense table */
   .toolroot-mj .mj-table{width:100%;border-collapse:collapse;font:12px var(--ff)}
-  .toolroot-mj .mj-table th{text-align:left;color:var(--mu);font:700 10px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;border-bottom:1px solid var(--bd);position:sticky;top:0;background:var(--surface-1)}
+  .toolroot-mj .mj-table th{text-align:left;color:var(--mu);font:700 10px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:1;background:var(--surface-1)}
   .toolroot-mj .mj-table td{padding:7px 8px;border-bottom:1px solid var(--bd);color:var(--tx);vertical-align:top;line-height:1.4}
   .toolroot-mj .mj-table tr:last-child td{border-bottom:0}
   .toolroot-mj .mj-table tbody tr:nth-child(odd) td{background:oklch(100% 0 0 / .015)}

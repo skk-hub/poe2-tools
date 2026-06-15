@@ -86,12 +86,18 @@ window.__viewInit["map-juicer"]=function(){
     if (danger && id !== "doryani") swaps.push("If you start dying → Doryani (extra revive) over raw loot.");
     if (s.corrupted && id !== "doryani" && s.strat !== "corrupted") swaps.push("Corrupted map: only switch to Doryani if you actually die — corruption alone isn't a reason.");
     if (!danger && id === "doryani" && s.strat !== "safe") swaps.push("Comfortable clears? A loot/boss master out-earns Doryani's safety.");
-    return { id, master: D.masters[id], conf, why, swaps };
+    // Strategy/mechanic-specific node swap (one node, keeps the one-per-row build).
+    let nodeNote = "";
+    if (id === "hilda" && s.strat === "pinnacle") nodeNote = "Pinnacle: take Gutting and Skinning (row 4) over Patient Battue for extra pinnacle drops.";
+    else if (id === "jado" && (s.strat === "corrupted" || s.corrupted)) nodeNote = "Corrupted: take Unexpected Missions (row 1) over Trove Seekers — corrupted waystones gain extra mods.";
+    else if (id === "doryani" && s.mech === "expedition") nodeNote = "Expedition: take Refined Formula (row 1, +explosive radius) over Stitch the Flesh once you survive.";
+    else if (id === "jado" && s.strat === "boss") nodeNote = "Boss loot: take In The Wrong Hands (row 1) for an extra boss Unique.";
+    return { id, master: D.masters[id], conf, why, swaps, nodeNote };
   }
 
   // ── Recommendation panel ──────────────────────────────────────────────────
   function nodeChips(nodes){
-    return nodes.map(n => `<div class="nodechip ${n.conf==="low"?"q":""}"><b>${esc(n.name)}</b><span>${esc(n.effect)}</span></div>`).join("");
+    return nodes.map(n => `<div class="nodechip ${n.conf==="low"?"q":""}"><b>${n.row?`<span class="rowtag">R${n.row}</span> `:""}${esc(n.name)}</b><span>${esc(n.effect)}</span></div>`).join("");
   }
   function renderReco(){
     const r = recommendMaster(state), m = r.master;
@@ -109,8 +115,9 @@ window.__viewInit["map-juicer"]=function(){
       </div>
       <div class="reco-name">${esc(m.name)} <small>${esc(m.tree)} · ${esc(m.role)}</small></div>
       ${why}
-      <div class="reco-sub">Take these nodes (4 points)</div>
+      <div class="reco-sub">Take these nodes — one per row (4 points)</div>
       <div class="nodechips">${nodeChips(nodes)}</div>
+      ${r.nodeNote?`<div class="reco-note">↳ ${esc(r.nodeNote)}</div>`:""}
       ${swaps}`;
   }
 
@@ -256,6 +263,8 @@ window.__viewInit["map-juicer"]=function(){
         <div class="card-head"><span class="card-title">Warnings & caveats</span><span class="card-kind">read</span></div>
         <div class="card-body">
           <div class="mw-note-top">Pick the master by your <b>Strategy + safety</b>, not by the mechanic. Node names verified; exact %s approximate.</div>
+          ${D.progression?`<div class="reco-note">↳ ${esc(D.progression)}</div>`:""}
+          ${D.patchNote?`<div class="reco-note">↳ <b>Patch</b> ${esc(D.patchNote)}</div>`:""}
           <details class="mj-d"><summary>Patch / source notes</summary><ul class="reco-swaps">${items.map(i=>`<li>${esc(i)}</li>`).join("")}</ul></details>
         </div>
       </div>`;
