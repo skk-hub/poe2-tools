@@ -1918,6 +1918,7 @@ async function fetchRunePrices(text, league, forceFresh) {
       price: it.ex,
       volume: it.stock || 0,
       units: it.stock || 0,
+      base: it.base === true,
       divineValue: currencyRates.divine ? Math.round((it.ex / currencyRates.divine) * 10000) / 10000 : 0,
       change7d: "",
     });
@@ -2021,6 +2022,9 @@ async function fetchRunePrices(text, league, forceFresh) {
         continue;
       }
       const total = roundPriceExalted(match.price * parsed.qty);
+      // Exalted is the base unit — 1 ex by definition, not a scanned/thin-market
+      // price. Don't flag it "Low 0" or label it as sourced from the exchange.
+      const isBase = match.base === true;
       results.push({
         qty: parsed.qty,
         name: match.name,
@@ -2028,12 +2032,12 @@ async function fetchRunePrices(text, league, forceFresh) {
         each: match.price,
         total,
         currency: "exalted",
-        source: match.source || (match.slug === "currency" ? "trade2 exchange" : "poe.ninja"),
+        source: isBase ? "base unit" : (match.source || (match.slug === "currency" ? "trade2 exchange" : "poe.ninja")),
         rawPrice: "",
         divineValue: match.divineValue,
         change7d: match.change7d,
-        confidence: priceConfidence(match.units),
-        units: Number.isFinite(match.units) && match.units >= 0 ? Math.round(match.units) : null,
+        confidence: isBase ? "base" : priceConfidence(match.units),
+        units: isBase ? null : (Number.isFinite(match.units) && match.units >= 0 ? Math.round(match.units) : null),
       });
       continue;
     }

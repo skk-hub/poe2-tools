@@ -24,12 +24,14 @@ window.__viewInit["rune-picker"] = function () {
   }
   function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]))}
   function confBadge(item){
-    const map={high:["conf-hi","High"],medium:["conf-md","Med"],low:["conf-lo","Low"],none:["conf-no","None"]};
+    const map={high:["conf-hi","High"],medium:["conf-md","Med"],low:["conf-lo","Low"],none:["conf-no","None"],base:["conf-hi","Base"]};
     const m=map[item.confidence]||["conf-unk","—"];
     const u=(typeof item.units==="number")?item.units:null;
-    const tip=u!=null
-      ?"~"+u+" units traded on poe.ninja (7d). More = deeper market, more reliable price."
-      :"No liquidity data from poe.ninja.";
+    const tip=item.confidence==="base"
+      ?"Base currency — 1 ex by definition (the unit every price is quoted in). Not scanned."
+      :u!=null
+        ?"~"+u+" units traded on poe.ninja (7d). More = deeper market, more reliable price."
+        :"No liquidity data from poe.ninja.";
     const suffix=(u!=null&&item.confidence!=="high")?" "+u:"";
     return '<span class="conf '+m[0]+'" title="'+esc(tip)+'">'+m[1]+suffix+'</span>';
   }
