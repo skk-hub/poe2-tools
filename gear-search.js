@@ -739,51 +739,25 @@ window.__viewInit["gear-search"]=function(){
 
     function setDefaultFilters() {
       els.filters.innerHTML = "";
-      for (const filter of currentDefaultFilters()) {
+      const defaults = currentDefaultFilters();
+      for (const filter of defaults) {
         addFilter({ key: filter.key, min: filter.min });
+      }
+      // An upgrade is rarely strictly >= the current item on EVERY stat, so an
+      // all-filters (AND) search at the item's exact current rolls almost always
+      // returns nothing. Default to "match at least N" with N ~= 60% of the
+      // filters so the search surfaces real sidegrades/upgrades; the user can
+      // still tighten to "All filters" or change N.
+      if (defaults.length) {
+        els.matchMode.value = "count";
+        els.minMatches.value = Math.max(1, Math.round(defaults.length * 0.6));
       }
     }
 
-    const STAT_IDS = {
-      projectileLevels: "explicit.stat_1202301673",
-      attackCrit: "explicit.stat_2194114101",
-      flatPhysAttack: "explicit.stat_3032590688",
-      flatColdAttack: "explicit.stat_4067062424",
-      flatFireAttack: "explicit.stat_1573130764",
-      flatLightningAttack: "explicit.stat_1754445556",
-      flatChaosAttack: "explicit.stat_674553446",
-      attackSpeed: "explicit.stat_681332047",
-      bowDamage: "explicit.stat_1241625305",
-      projectileSpeed: "explicit.stat_3759663284",
-      projectileDamage: "explicit.stat_1839076647",
-      deflection: "explicit.stat_3040571529",
-      spirit: "explicit.stat_3981240776",
-      localPhysDamage: "explicit.stat_1509134228",
-      localFlatPhys: "explicit.stat_1940865751",
-      localFlatCold: "explicit.stat_1037193709",
-      localFlatFire: "explicit.stat_709508406",
-      localFlatLightning: "explicit.stat_3336890334",
-      localFlatChaos: "explicit.stat_2223678961",
-      localAttackSpeed: "explicit.stat_210067635",
-      localCritChance: "explicit.stat_518292764",
-      life: "explicit.stat_3299347043",
-      energyShield: "pseudo.pseudo_total_energy_shield",
-      coldRes: "explicit.stat_4220027924",
-      lightningRes: "explicit.stat_1671376347",
-      fireRes: "explicit.stat_3372524247",
-      chaosRes: "explicit.stat_2923486259",
-      totalElementalRes: "pseudo.pseudo_total_elemental_resistance",
-      evasion: "explicit.stat_53045048",
-      str: "explicit.stat_4080418644",
-      dex: "explicit.stat_3261801346",
-      int: "explicit.stat_328541901",
-      totalAllAttributes: "pseudo.pseudo_total_all_attributes",
-      movementSpeed: "explicit.stat_2250533757",
-      critChance: "explicit.stat_587431675",
-      critDamage: "explicit.stat_3556824919",
-      rarity: "explicit.stat_3917489142",
-      manaOnKill: "explicit.stat_1368271171",
-    };
+    // (Removed a dead, stale duplicate of the server's stat-id map that lived
+    // here unused — it still held the old wrong crit/attack-speed ids. The
+    // server is the single source of truth for key -> Trade2 id resolution,
+    // and it is now slot-aware; the front end only ever sends {key, min, max}.)
 
     function collectFilters() {
       return Array.from(els.filters.querySelectorAll(".filter-row")).map((row) => ({
