@@ -1182,7 +1182,10 @@ async function warmExchange(league = DEFAULT_LEAGUE) {
 // simply stay on the poe.ninja fallback. ───────────────────────────────────────
 const RUNE_BOOK_FILE = path.join(ROOT, ".rune-exchange-book.json");
 const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
-let runeBookRefreshInFlight = false;
+// Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles,
+// so past this we fall back to the book/poe.ninja rather than hang the request.
+const RUNE_FRESH_DEADLINE_MS = 16 * 1000;
+let runeBookRefreshInFlight = null; // Promise | null while a refresh is running
 
 function readRuneBook(league) {
   try {
@@ -1191,39 +1194,48 @@ function readRuneBook(league) {
   } catch { return null; }
 }
 
-// Fire-and-forget: batch-price the given normalized names off the exchange and
-// merge into the book. Single-flight; skips currency (priced elsewhere).
-async function refreshRuneBook(league, normNames) {
-  if (runeBookRefreshInFlight || tradeStatus().limited || !normNames.length) return;
-  runeBookRefreshInFlight = true;
-  try {
-    const catalog = await getExchangeCatalog(league);
-    const targets = [];
-    const seenId = new Set();
-    for (const nn of normNames) {
-      const entry = catalog.get(nn);
-      if (entry && entry.id !== EXALTED_ID && entry.category !== "Currency" && !seenId.has(entry.id)) {
-        seenId.add(entry.id);
-        targets.push({ ...entry, norm: nn });
-      }
-    }
-    if (!targets.length) return;
-    const data = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id));
-    const existing = readRuneBook(league);
-    const prices = existing ? { ...existing.prices } : {};
-    const now = new Date().toISOString();
-    for (const t of targets) {
-      const best = bestExchangeOffer(data, EXALTED_ID, t.id, 5) || bestExchangeOffer(data, EXALTED_ID, t.id, 1);
-      if (best && best.payPerReceive > 0) {
-        prices[t.norm] = { ex: round4(best.payPerReceive), id: t.id, name: t.name, category: t.category, stock: Math.floor(best.receiveStock) || 0, updated: now };
-      }
-    }
-    try { fs.writeFileSync(RUNE_BOOK_FILE, JSON.stringify({ league, prices, updated: now }, null, 2)); } catch {}
-  } catch {
-    // best-effort; the poe.ninja fallback already served the user
-  } finally {
-    runeBookRefreshInFlight = false;
+// Batch-price the given normalized names off the exchange and merge into the
+// book. Single-flight: if a refresh is already running, a background caller is
+// satisfied by it (won't pile on); a forced on-demand caller (`force`, the "Fetch
+// fresh prices" button) waits it out then runs its own pass for its exact norms so
+// the response reflects fresh prices. Skips currency (priced elsewhere).
+async function refreshRuneBook(league, normNames, force) {
+  if (tradeStatus().limited || !normNames.length) return;
+  while (runeBookRefreshInFlight) {
+    try { await runeBookRefreshInFlight; } catch {}
+    if (!force) return;
   }
+  runeBookRefreshInFlight = (async () => {
+    try {
+      const catalog = await getExchangeCatalog(league);
+      const targets = [];
+      const seenId = new Set();
+      for (const nn of normNames) {
+        const entry = catalog.get(nn);
+        if (entry && entry.id !== EXALTED_ID && entry.category !== "Currency" && !seenId.has(entry.id)) {
+          seenId.add(entry.id);
+          targets.push({ ...entry, norm: nn });
+        }
+      }
+      if (!targets.length) return;
+      const data = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id));
+      const existing = readRuneBook(league);
+      const prices = existing ? { ...existing.prices } : {};
+      const now = new Date().toISOString();
+      for (const t of targets) {
+        const best = bestExchangeOffer(data, EXALTED_ID, t.id, 5) || bestExchangeOffer(data, EXALTED_ID, t.id, 1);
+        if (best && best.payPerReceive > 0) {
+          prices[t.norm] = { ex: round4(best.payPerReceive), id: t.id, name: t.name, category: t.category, stock: Math.floor(best.receiveStock) || 0, updated: now };
+        }
+      }
+      try { fs.writeFileSync(RUNE_BOOK_FILE, JSON.stringify({ league, prices, updated: now }, null, 2)); } catch {}
+    } catch {
+      // best-effort; the poe.ninja fallback already served the user
+    } finally {
+      runeBookRefreshInFlight = null;
+    }
+  })();
+  return runeBookRefreshInFlight;
 }
 
 // Drop-in for the old poe.ninja fetchCurrencyRates: just the id/name→ex map.
@@ -1788,7 +1800,28 @@ async function buildOptimizerOpportunities(league, options = {}) {
   };
 }
 
-async function fetchRunePrices(text, league) {
+// Pre-pass: normalized names of pasted item lines that should be priced from the
+// rune book — mirrors the main loop's line cleaning so the forced-fresh path can
+// refresh those exact items BEFORE pricing. Skips skill/support lines (priced via
+// live trade, not the book) and bare gems / junk lines, same as the main loop.
+function runePastedNorms(limitedRawLines) {
+  const norms = [];
+  const seen = new Set();
+  for (const rawName of limitedRawLines) {
+    const parsed = stripQuantity(rawName);
+    if (/^\s*(Skill|Support)\s*:/i.test(parsed.text)) continue;
+    const cleanName = parsed.text.replace(/^\s*[|:\-•]*\s*/, "").replace(/\s+/g, " ").trim();
+    const looksLikeBareGem = /^Uncut (Skill|Spirit|Support) Gem/i.test(cleanName) && !/\d/.test(cleanName);
+    if (cleanName.length < 3 || !/[A-Za-z]{3,}/.test(cleanName) || looksLikeBareGem) continue;
+    const norm = normalizeName(cleanName);
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    norms.push(norm);
+  }
+  return norms;
+}
+
+async function fetchRunePrices(text, league, forceFresh) {
   const initialTradeStatus = tradeStatus();
   const rawLines = String(text || "")
     .split(/\r?\n/)
@@ -1801,6 +1834,18 @@ async function fetchRunePrices(text, league) {
 
   const limitedRawLines = rawLines.slice(0, MAX_RUNE_LINES);
   let tradeFallbacks = 0;
+
+  // On-demand "Fetch fresh prices": block BRIEFLY (bounded by RUNE_FRESH_DEADLINE_MS)
+  // to refresh the Trade2 exchange book + currency rates for the pasted items
+  // before pricing, so the response reflects live numbers. The default path never
+  // blocks — the book fills in the background and the next check is accurate.
+  if (forceFresh && !initialTradeStatus.limited) {
+    const norms = runePastedNorms(limitedRawLines);
+    await Promise.race([
+      Promise.allSettled([refreshRuneBook(league, norms, true), getExchangeData(league, true)]),
+      new Promise((resolve) => setTimeout(resolve, RUNE_FRESH_DEADLINE_MS)),
+    ]);
+  }
 
   const loaded = [];
   // Currency ex-values + the divine→ex rate come from the unified Trade2 exchange
@@ -3727,7 +3772,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/rune-prices" && req.method === "POST") {
       const input = await readJson(req);
       const league = input.league || "Runes of Aldur";
-      const body = JSON.stringify(await fetchRunePrices(input.text || "", league));
+      const body = JSON.stringify(await fetchRunePrices(input.text || "", league, input.forceFresh === true));
       send(res, 200, body, "application/json; charset=utf-8");
       return;
     }

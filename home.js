@@ -30,6 +30,21 @@ window.__viewInit["home"] = function () {
   }
   function shortName(name) { return name.replace(/^Orb of /, "").replace(/ Orb$/, ""); }
 
+  // True once real chips have been painted — so a later fetch THROW (static host,
+  // no server) hides the strip, but a throw after we already have data leaves the
+  // last-good chips up rather than wiping them.
+  let rendered = false;
+
+  // Visible "something's loading" state — the strip used to stay hidden until data
+  // arrived, so the home page showed nothing on a cold cache / slow fetch. Render a
+  // few shimmer placeholders (respects prefers-reduced-motion via CSS).
+  function showSkeleton() {
+    chips.innerHTML = Array.from({ length: 6 }, () =>
+      '<span class="fxchip skel"><span class="fxbar"></span></span>').join("");
+    if (meta) { meta.textContent = "Loading…"; meta.classList.remove("stale"); }
+    strip.hidden = false;
+  }
+
   function render(d) {
     if (!d || !d.items || !d.items.length) {
       // The server RESPONDED but has no rates yet (cold cache that hit the Trade2
@@ -69,15 +84,22 @@ window.__viewInit["home"] = function () {
       (d.updated ? " · " + ago(d.updated) : "");
     meta.classList.toggle("stale", !!d.stale);
     strip.hidden = false;
+    rendered = true;
   }
 
   async function load(force) {
+    // Reveal a loading skeleton on the first fetch (none yet rendered) so the home
+    // page shows activity instead of an empty gap; a forced ↻ refresh keeps the
+    // existing chips and just spins the button.
+    if (!rendered) showSkeleton();
     if (btn) { btn.classList.add("spin"); btn.disabled = true; }
     try {
       const r = await fetch("/api/currency/overview?league=" + encodeURIComponent(LEAGUE) + (force ? "&refresh=1" : ""));
       render(await r.json());
     } catch {
-      if (!chips.children.length) strip.hidden = true;
+      // True fetch failure (static host / no server): hide unless we already have
+      // real data up — the skeleton's placeholder chips don't count as data.
+      if (!rendered) strip.hidden = true;
     } finally {
       if (btn) { btn.classList.remove("spin"); btn.disabled = false; }
     }

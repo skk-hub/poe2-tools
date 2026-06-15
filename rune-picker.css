@@ -5,6 +5,16 @@
 .toolroot-rune #checkRunes{background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));color:oklch(22% 0.04 70);border-color:transparent;font-weight:700}
 .toolroot-rune #checkRunes:hover{filter:brightness(1.06);box-shadow:var(--shadow-gold)}
 
+/* "Fetch fresh prices" — secondary action; shows an inline spinner while it
+   blocks on the live Trade2 refresh. */
+.toolroot-rune #freshRunes{position:relative;border-color:var(--border-gold);color:var(--gold-bright)}
+.toolroot-rune #freshRunes:hover{background:var(--gold-soft)}
+.toolroot-rune #freshRunes:disabled{opacity:.6;cursor:default}
+.toolroot-rune #freshRunes.loading{color:transparent;pointer-events:none}
+.toolroot-rune #freshRunes.loading::after{content:"";position:absolute;top:50%;left:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid var(--border-strong);border-top-color:var(--gold);border-radius:50%;animation:runeSpin .7s linear infinite}
+@keyframes runeSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.toolroot-rune #freshRunes.loading::after{animation:none}}
+
 .toolroot-rune .toolpanel{background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-sm)}
 .toolroot-rune .toolbar{background:oklch(100% 0 0 / .02);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .toolroot-rune .toolbody{padding:16px}

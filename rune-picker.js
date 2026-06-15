@@ -7,6 +7,7 @@ window.__viewInit["rune-picker"] = function () {
   const runeRows = document.getElementById("runeRows");
   const runeBest = document.getElementById("runeBest");
   const checkRunesBtn = document.getElementById("checkRunes");
+  const freshRunesBtn = document.getElementById("freshRunes");
   const pasteRunesBtn = document.getElementById("pasteRunes");
   let tradeLimitedUntil = 0;
   let tradeStatusTimer = 0;
@@ -161,7 +162,7 @@ window.__viewInit["rune-picker"] = function () {
     }
   }
 
-  async function checkRunes(){
+  async function checkRunes(forceFresh){
     await refreshTradeStatus();
     if(tradeQueueRunning){
       setRuneStatus("Trade queue is already running. Wait for it to finish or refresh to start over.", "err");
@@ -174,27 +175,32 @@ window.__viewInit["rune-picker"] = function () {
       return;
     }
     checkRunesBtn.disabled=true;
+    freshRunesBtn.disabled=true;
     pasteRunesBtn.disabled=true;
-    setRuneStatus("Pricing pasted choices...", "");
+    if(forceFresh) freshRunesBtn.classList.add("loading");
+    setRuneStatus(forceFresh?"Fetching fresh Trade2 prices for the pasted items... (can take ~15s)":"Pricing pasted choices...", "");
     try{
       const r=await fetch("/api/rune-prices",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({text,league})
+        body:JSON.stringify({text,league,forceFresh:!!forceFresh})
       });
       if(!r.ok) throw new Error("local server returned HTTP "+r.status);
       const data=await r.json();
       renderRuneResults(data);
       const queued=(data.results||[]).filter(item=>item.category==="TRADE QUEUED").length;
       const limited=data.tradeLimitedUntil?" Trade2 limited until "+fmtEuTime(data.tradeLimitedUntil)+".":"";
-      setRuneStatus("Checked "+data.count+" picks"+(queued?"; "+queued+" trade rows queued":"")+(data.truncated?" (first 30 lines only)":"")+"."+limited, data.tradeLimitedUntil?"err":"ok");
+      const freshNote=forceFresh?" (fresh Trade2 prices)":"";
+      setRuneStatus("Checked "+data.count+" picks"+freshNote+(queued?"; "+queued+" trade rows queued":"")+(data.truncated?" (first 30 lines only)":"")+"."+limited, data.tradeLimitedUntil?"err":"ok");
       if(data.tradeLimitedUntil) setTradeLimit(data.tradeLimitedUntil);
       if(queued) processTradeQueue(data.results,league);
     }catch(err){
       setRuneStatus("Rune check failed: "+err.message, "err");
     }finally{
       checkRunesBtn.disabled=false;
+      freshRunesBtn.disabled=false;
       pasteRunesBtn.disabled=false;
+      freshRunesBtn.classList.remove("loading");
     }
   }
 
@@ -268,7 +274,8 @@ window.__viewInit["rune-picker"] = function () {
     inp.click();
   });
 
-  checkRunesBtn.addEventListener("click",checkRunes);
+  checkRunesBtn.addEventListener("click",()=>checkRunes(false));
+  freshRunesBtn.addEventListener("click",()=>checkRunes(true));
   pasteRunesBtn.addEventListener("click",pasteRunes);
   refreshTradeStatus();
 };

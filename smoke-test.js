@@ -65,6 +65,10 @@ function staticChecks() {
   check(views.every(v => idx.includes(`id="${v}"`)), "index has all 6 view sections");
   check(["toolroot-arb", "toolroot-mj", "toolroot-gs", "toolroot-rune"].every(t => idx.includes(t)), "index has all 4 active inline tool roots");
   check(idx.includes('id="fxStrip"') && idx.includes('id="fxStripRefresh"'), "home has currency strip + refresh button");
+  check(/\.fxchip\.skel/.test(idx) && /@keyframes fxshimmer/.test(idx), "home currency strip has loading-skeleton CSS");
+  check(/showSkeleton/.test(read("home.js")), "home.js renders a loading skeleton on first fetch");
+  check(idx.includes('id="freshRunes"'), "rune-picker has a Fetch fresh prices button");
+  check(/forceFresh\s*:/.test(read("rune-picker.js")), "rune-picker.js sends forceFresh to the API");
   check(/being rebuilt/i.test(idx) && !idx.includes('id="cpGrid"'), "craft-pricer is a blanked placeholder (no cpGrid)");
   check(!/coming-soon/i.test(idx) && !/more tools/i.test(idx) && !/farming notes/i.test(idx), "More Tools + hallucinated placeholder pages removed");
   check(!/@scope\s*\(/.test(idx), "no @scope rules left (browser-portable scoping)");
@@ -86,6 +90,7 @@ function staticChecks() {
   check(/async function getExchangeData/.test(srv) && /async function getExchangeRates/.test(srv), "server has the unified Trade2 exchange-rate provider");
   check(!/await fetchCurrencyRates\(/.test(srv), "no poe.ninja fetchCurrencyRates calls remain (currency unified on Trade2)");
   check(/iconsById/.test(srv), "server resolves currency icons from Trade2 static data");
+  check(/async function fetchRunePrices\([^)]*forceFresh/.test(srv) && /input\.forceFresh/.test(srv), "server fetchRunePrices honors a forceFresh flag (on-demand fresh prices)");
   check(!/let P=\{\}|function showView\(\)\{[^]*CRAFTS/.test(idx) && !idx.includes("const CRAFTS="), "index is shell-only (tool logic externalised)");
   // CSS parity: rune-only selectors must have left index's <style> for rune-picker.css
   const idxStyle = (idx.match(/<style>([\s\S]*?)<\/style>/) || [, ""])[1];
@@ -170,6 +175,8 @@ async function browserChecks() {
         return cs.backgroundImage !== "none" && cs.borderTopWidth !== "0px";
       });
       check(styled, "rune-picker.css applies on live view (.toolpanel painted)");
+      const freshBtn = await p.evaluate(() => { const b = document.getElementById("freshRunes"); return !!(b && b.offsetParent !== null); });
+      check(freshBtn, "Rune Picker shows a visible Fetch fresh prices button");
       await p.click("#checkRunes"); await p.waitForTimeout(600);
       const msg = await p.evaluate(() => (document.getElementById("runeStatus") || {}).textContent || "");
       check(/Paste item names/i.test(msg), "Rune Picker wired (empty check shows guard message)");
@@ -235,6 +242,26 @@ async function browserChecks() {
       check(/^320\s*ex/.test(strip.hero), "home hero stat shows live Divine price");
       await p.click("#fxStripRefresh"); await p.waitForTimeout(400);
       check(hits >= 2, "home currency refresh button re-fetches (force)");
+      await p.close();
+    }
+
+    // Currency strip shows a loading SKELETON before data arrives (was a blank gap)
+    {
+      const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      await p.route("**/api/currency/overview**", async route => {
+        await new Promise(r => setTimeout(r, 800));
+        route.fulfill({ contentType: "application/json", body: JSON.stringify({
+          league: "Runes of Aldur", updated: new Date().toISOString(), cached: true,
+          items: [{ id: "divine", name: "Divine Orb", ex: 320 }, { id: "exalted", name: "Exalted Orb", ex: 1, base: true }, { id: "chaos", name: "Chaos Orb", ex: 2.4 }],
+        }) });
+      });
+      const nav = p.goto(BASE + "/index.html#home", { waitUntil: "domcontentloaded" });
+      await p.waitForTimeout(350);
+      const loading = await p.evaluate(() => { const s = document.getElementById("fxStrip"); return { shown: s && !s.hidden, skel: document.querySelectorAll("#fxStripChips .skel").length }; });
+      check(loading.shown && loading.skel > 0, "home currency strip shows a loading skeleton before data");
+      await nav.catch(() => {}); await p.waitForTimeout(1000);
+      const done = await p.evaluate(() => ({ skel: document.querySelectorAll("#fxStripChips .skel").length, chips: document.querySelectorAll("#fxStripChips .fxchip:not(.skel)").length }));
+      check(done.skel === 0 && done.chips >= 2, "home currency skeleton is replaced by real chips");
       await p.close();
     }
 

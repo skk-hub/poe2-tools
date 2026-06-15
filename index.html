@@ -79,6 +79,13 @@ h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;l
 .fxchip.gold{border-color:var(--border-gold);background:var(--gold-soft)}
 .fxchip.gold .fxval{color:var(--gold-bright)}
 .fxchip .fxval small{color:var(--text-faint);font-weight:500}
+/* Loading skeleton — shimmer placeholders shown until rates arrive */
+.fxchip.skel{pointer-events:none;border-color:var(--border)}
+.fxchip.skel .fxbar{display:block;width:88px;height:13px;border-radius:var(--r-pill);background:linear-gradient(90deg,oklch(100% 0 0 / .04) 25%,oklch(100% 0 0 / .10) 37%,oklch(100% 0 0 / .04) 63%);background-size:400% 100%;animation:fxshimmer 1.4s ease infinite}
+.fxchip.skel:nth-child(3n) .fxbar{width:66px}
+.fxchip.skel:nth-child(3n+2) .fxbar{width:104px}
+@keyframes fxshimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+@media(prefers-reduced-motion:reduce){.fxchip.skel .fxbar{animation:none}}
 
 /* Tools grid — product cards */
 .tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
@@ -275,6 +282,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <input id="runeLeague" value="Runes of Aldur" aria-label="Rune picker league">
         <button id="pasteRunes" type="button">Paste clipboard</button>
         <button id="checkRunes" type="button">Check picks</button>
+        <button id="freshRunes" type="button" title="Force a live Trade2 exchange refresh for the pasted items, then re-price (slower, ~15s)">Fetch fresh prices</button>
         <div id="runeStatus" class="status">Paste item names to begin.</div>
       </div>
     </div>
