@@ -18,8 +18,8 @@ Read this first. Self-hosted Path of Exile 2 (PoE2) browser utility suite: prici
 - Monitor: Uptime Kuma HTTP check on /api/trade-status (no external calls).
 
 ## Data sources
-- **GGG Trade2 ONLY. poe.ninja is BANNED** (user directive 2026-06-19) — never use it for prices, catalogs, or fallbacks, and don't reintroduce it. All data comes from GGG's pathofexile.com/api/trade2: the bulk Currency Exchange (via the shared adaptive queue) and Trade2 item search.
-- Economy dashboard + currency are fully off poe.ninja. The Rune Picker (`fetchRunePrices`, the rune book fill) still has legacy poe.ninja calls being removed — replace with Trade2, verifying coverage first so prices don't blank.
+- **GGG Trade2 ONLY. poe.ninja is BANNED** (user directive 2026-06-19) — never use it for prices, catalogs, or fallbacks, and don't reintroduce it. All data comes from GGG's pathofexile.com/api/trade2: the bulk Currency Exchange (via the shared adaptive queue) and Trade2 item search. NO poe.ninja network calls remain anywhere in server.js (verified by grep).
+- Rune Picker is Trade2-only: currency rewards price off the exchange; runes/essences/soul cores off the Trade2 exchange **book** (`refreshRuneBook`). Unbooked items show NOT FOUND (or "no price yet") and trigger a background book fill — next check / "Fetch fresh prices" shows the real price. Pending > fabricated (user's call). `fetchPrices` (blanked craft-pricer) and `fetchOptimizerMaterials` (experimental optimizer) were stubbed — they no longer fetch poe.ninja and return empty; rebuild on Trade2 if those tools come back.
 - Illiquid high-value items (omens, Hinekora's): priced off the DIVINE side of the exchange via `divineMarketPrice` (cheapest *clustered* offer — robust to lowball bait + lone walls). Mirror isn't on the exchange (one price wall), so it's not sampled; would need Trade2 item-search to add.
 
 ## Tools — status

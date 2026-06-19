@@ -1543,36 +1543,11 @@ async function getWaystoneExchange(league) {
   }
 }
 
-async function fetchPrices(league) {
-  const prices = {};
-  let divineRate = 0;
-
-  for (const type of TYPES) {
-    const url = "https://poe.ninja/poe2/api/economy/exchange/current/overview?league=" +
-      encodeURIComponent(league) + "&type=" + encodeURIComponent(type);
-    const response = await fetchWithTimeout(url, {}, NINJA_TIMEOUT_MS);
-    if (!response.ok) throw new Error(type + " returned HTTP " + response.status);
-
-    const data = await response.json();
-    const rate = Number(data.core && data.core.rates && data.core.rates.chaos) || 0;
-    if (rate > 0 && !divineRate) divineRate = rate;
-
-    const names = {};
-    for (const item of data.items || []) names[item.id] = item.name;
-    for (const line of data.lines || []) {
-      prices[line.id] = {
-        n: names[line.id] || line.id,
-        c: Math.round((Number(line.primaryValue) || 0) * rate * 100) / 100,
-      };
-    }
-  }
-
-  return {
-    prices,
-    divineRate,
-    count: Object.keys(prices).length,
-    updated: new Date().toISOString(),
-  };
+// Disabled: this powered the now-blanked craft-pricer off poe.ninja, which is BANNED.
+// Returns empty so /api/prices stays a valid (dead) endpoint; rebuild on Trade2 if the
+// craft-pricer comes back. ponytail: stub, not deleted — the route still references it.
+async function fetchPrices() {
+  return { prices: {}, divineRate: 0, count: 0, disabled: "poe.ninja removed", updated: new Date().toISOString() };
 }
 
 function seededRandom(seed) {
@@ -1808,41 +1783,13 @@ async function fetchComparablePrices(target, league, currencyRates, fallback = f
 }
 
 async function fetchOptimizerMaterials(league) {
+  // poe.ninja is BANNED, and it was the catalog source for runes/essences/etc. here.
+  // Until the experimental optimizer is rebuilt on Trade2, materials are limited to
+  // the Trade2 currency rates below (byId stays empty). ponytail: degraded, not torn
+  // out — the optimizer endpoints still call this and expect the same shape.
   const currencyRates = await getExchangeRates(league);
-  const categories = Array.from(new Set(RUNE_CATEGORIES.map((category) => category.type).concat(TYPES)));
   const byId = {};
   const byName = {};
-
-  const loaded = await Promise.allSettled(categories.map(async (type) => {
-    const apiUrl = "https://poe.ninja/poe2/api/economy/exchange/current/overview?league=" +
-      encodeURIComponent(league) + "&type=" + encodeURIComponent(type);
-    const response = await fetchWithTimeout(apiUrl, {}, NINJA_TIMEOUT_MS);
-    if (!response.ok) throw new Error(type + " returned HTTP " + response.status);
-    return { type, data: await response.json() };
-  }));
-
-  for (const result of loaded) {
-    if (result.status !== "fulfilled") continue;
-    const { type, data } = result.value;
-    const lineById = new Map((data.lines || []).map((line) => [line.id, line]));
-    for (const item of data.items || []) {
-      const line = lineById.get(item.id);
-      if (!line) continue;
-      const priceEx = getDisplayPriceExalted(line, currencyRates);
-      if (!(priceEx > 0)) continue;
-      const record = {
-        id: item.id,
-        name: item.name,
-        type,
-        priceEx,
-        confidence: priceConfidence(unitsTraded(line)),
-        units: Number.isFinite(unitsTraded(line)) ? Math.round(unitsTraded(line)) : null,
-        source: "poe.ninja",
-      };
-      byId[item.id] = record;
-      byName[normalizeName(item.name)] = record;
-    }
-  }
 
   for (const [alias, target] of Object.entries({
     exalted: "Exalted Orb",
@@ -1998,51 +1945,15 @@ async function fetchRunePrices(text, league, forceFresh) {
     ]);
   }
 
-  const loaded = [];
-  // Currency ex-values + the divine→ex rate come from the unified Trade2 exchange
-  // (NOT poe.ninja). poe.ninja still supplies the non-currency catalogs
-  // (runes/essences/soul cores/gems/etc.) that aren't on the currency exchange.
+  // Currency ex-values + the divine→ex rate come from the unified Trade2 exchange.
+  // poe.ninja is BANNED (it gave prices nowhere near reality): runes/essences/soul
+  // cores are priced from the Trade2 exchange book (runeBook) below; anything the
+  // book hasn't scanned yet shows pending rather than a fabricated number.
   const exData = await getExchangeData(league);
   const currencyRates = exData.rates;
 
-  const ninjaCategories = RUNE_CATEGORIES.filter((category) => category.type !== "Currency");
-  const categoryResults = await Promise.allSettled(ninjaCategories.map(async (category) => {
-    const apiUrl = "https://poe.ninja/poe2/api/economy/exchange/current/overview?league=" +
-      encodeURIComponent(league) + "&type=" + encodeURIComponent(category.type);
-    const response = await fetchWithTimeout(apiUrl, {}, NINJA_TIMEOUT_MS);
-    if (!response.ok) throw new Error(category.type + " returned HTTP " + response.status);
-    return { category, data: await response.json() };
-  }));
-
-  for (const result of categoryResults) {
-    if (result.status !== "fulfilled") continue;
-    const { category, data } = result.value;
-    loaded.push({ category, data });
-  }
-
   const all = [];
   const seenItemKey = new Set();
-  for (const { category, data } of loaded) {
-    const lineById = new Map((data.lines || []).map((line) => [line.id, line]));
-    for (const item of data.items || []) {
-      const line = lineById.get(item.id);
-      if (!line) continue;
-      const key = item.name + "|" + category.type;
-      if (seenItemKey.has(key)) continue;
-      seenItemKey.add(key);
-      all.push({
-        name: item.name,
-        normalizedName: normalizeName(item.name),
-        category: category.type,
-        slug: category.slug,
-        price: getDisplayPriceExalted(line, currencyRates),
-        volume: getLineVolume(line),
-        units: unitsTraded(line),
-        divineValue: Math.round((Number(line.primaryValue) || 0) * 10000) / 10000,
-        change7d: line.sparkline && line.sparkline.totalChange ? String(line.sparkline.totalChange) + "%" : "",
-      });
-    }
-  }
 
   // Currency rewards (Exalted/Divine/Chaos/…) priced off the Trade2 exchange.
   for (const it of exData.items || []) {
@@ -2132,7 +2043,7 @@ async function fetchRunePrices(text, league, forceFresh) {
         tradeFallbacks++;
         const tradePrice = await getTradePrice(cleanName, league, currencyRates);
         if (tradePrice && tradePrice.limited) {
-          results.push({ qty: parsed.qty, name: match.name, category: match.category + " (trade limited)", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — ninja prices above are live, live-trade is best-effort", change7d: match.change7d });
+          results.push({ qty: parsed.qty, name: match.name, category: match.category + " (trade limited)", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — live-trade is best-effort", change7d: match.change7d });
           continue;
         }
         if (tradePrice) {
@@ -2154,7 +2065,7 @@ async function fetchRunePrices(text, league, forceFresh) {
       if (!(match.price > 0)) {
         const bk = bookResultFor(norm, parsed.qty, match.name);
         if (bk) { results.push(bk); continue; }
-        results.push({ qty: parsed.qty, name: match.name, category: match.category + " (no price)", each: "", total: "", currency: "", source: "poe.ninja", rawPrice: "", change7d: match.change7d, confidence: "none", units: null });
+        results.push({ qty: parsed.qty, name: match.name, category: match.category + " (no price yet)", each: "", total: "", currency: "", source: "trade2 exchange", rawPrice: "", change7d: match.change7d, confidence: "none", units: null });
         continue;
       }
       const total = roundPriceExalted(match.price * parsed.qty);
@@ -2168,7 +2079,7 @@ async function fetchRunePrices(text, league, forceFresh) {
         each: match.price,
         total,
         currency: "exalted",
-        source: isBase ? "base unit" : (match.source || (match.slug === "currency" ? "trade2 exchange" : "poe.ninja")),
+        source: isBase ? "base unit" : (match.source || "trade2 exchange"),
         rawPrice: "",
         divineValue: match.divineValue,
         change7d: match.change7d,
@@ -2187,7 +2098,7 @@ async function fetchRunePrices(text, league, forceFresh) {
 
     let tradePrice = null;
     if (isSkillOrSupport && tradePaused) {
-      results.push({ qty: parsed.qty, name: cleanName, category: "TRADE QUEUED", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — ninja prices above are live, live-trade is best-effort", change7d: "" });
+      results.push({ qty: parsed.qty, name: cleanName, category: "TRADE QUEUED", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — live-trade is best-effort", change7d: "" });
       continue;
     }
 
@@ -2201,7 +2112,7 @@ async function fetchRunePrices(text, league, forceFresh) {
     }
     if (tradePrice) {
       if (tradePrice.limited) {
-        results.push({ qty: parsed.qty, name: cleanName, category: "TRADE LIMITED", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — ninja prices above are live, live-trade is best-effort", change7d: "" });
+        results.push({ qty: parsed.qty, name: cleanName, category: "TRADE LIMITED", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — live-trade is best-effort", change7d: "" });
         continue;
       }
       const total = roundPriceExalted(tradePrice.each * parsed.qty);
