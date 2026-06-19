@@ -122,6 +122,16 @@ window.__viewInit["home"] = function () {
   // Divine = gold, then distinct hues in ECONOMY_ITEMS order.
   const COLORS = ["#e8b23a", "#5aa9e6", "#7ed957", "#e06c9f", "#b98cff", "#46d0c0", "#f2784b"];
   let econRendered = false;
+  let econLimited = false;        // rate-limited right now → keep ↻ disabled
+  let econLimitTimer = null;      // 1s ticker for the "clears in …" countdown
+
+  function fmtDur(s) {
+    s = Math.max(0, Math.round(s));
+    if (s < 60) return s + "s";
+    const m = Math.floor(s / 60), r = s % 60;
+    return m + "m" + (r ? " " + r + "s" : "");
+  }
+  function clearLimitCountdown() { if (econLimitTimer) { clearInterval(econLimitTimer); econLimitTimer = null; } }
 
   function esc(s) { return String(s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[m])); }
   function fmtDiv(v) {
@@ -212,16 +222,48 @@ window.__viewInit["home"] = function () {
     }).join("");
   }
 
+  // When Trade2 is rate-limited, hold the ↻ button disabled and tick down the time
+  // until it clears; auto-refresh the moment it does. (Sampling while limited just
+  // returns stale data, so there's nothing to gain from letting it be tapped.)
+  // When Trade2 is rate-limited, hold the ↻ button disabled and (in the empty
+  // state) tick down the time until it clears, auto-refreshing the moment it does.
+  // showCountdown=false just manages the disable + auto-reattempt without writing
+  // over the message when samples are already on screen.
+  function applyLimit(d, showCountdown) {
+    clearLimitCountdown();
+    const untilMs = d && d.tradeLimitedUntil ? new Date(d.tradeLimitedUntil).getTime()
+      : (d && d.secondsRemaining ? Date.now() + d.secondsRemaining * 1000 : 0);
+    econLimited = true;
+    if (econRefresh) econRefresh.disabled = true;
+    const tick = () => {
+      const secs = untilMs ? (untilMs - Date.now()) / 1000 : 0;
+      if (untilMs && secs <= 0) {
+        clearLimitCountdown();
+        econLimited = false;
+        if (econRefresh) econRefresh.disabled = false;
+        loadEconomy(false);                       // it just cleared — refresh now
+        return;
+      }
+      if (showCountdown) econEmpty.textContent = untilMs
+        ? "Trade2 rate-limited — ↻ available in " + fmtDur(secs) + "."
+        : "Trade2 rate-limited — ↻ re-enables once it clears.";
+    };
+    tick();
+    if (untilMs) econLimitTimer = setInterval(tick, 1000);
+  }
+
   function renderEconomy(d) {
     econ.hidden = false;
+    const limited = !!(d && d.limited);
+    if (!limited) { clearLimitCountdown(); econLimited = false; if (econRefresh) econRefresh.disabled = false; }
     if (!d || !d.points || !d.points.length) {
       econChartWrap.hidden = true; econCards.innerHTML = ""; econHeadline.innerHTML = "";
       econEmpty.hidden = false;
-      econEmpty.textContent = (d && d.limited)
-        ? "Trade2 rate-limited — tap ↻ to sample once it clears."
-        : "No economy samples yet — tap ↻ to take the first sample (~1 min).";
+      if (limited) applyLimit(d, true);
+      else econEmpty.textContent = "No economy samples yet — tap ↻ to take the first sample (~1 min).";
       return;
     }
+    if (limited) applyLimit(d, false);
     const points = d.points, items = d.items || [], latest = points[points.length - 1];
     const exPerDiv = latest.exPerDiv || 0;
     econHeadline.innerHTML = exPerDiv ? '<b>' + fmtEx(exPerDiv) + '</b> <span>ex / Divine</span>' : "";
@@ -249,7 +291,7 @@ window.__viewInit["home"] = function () {
     } catch {
       if (!econRendered) econ.hidden = true;
     } finally {
-      if (econRefresh) { econRefresh.classList.remove("spin"); econRefresh.disabled = false; }
+      if (econRefresh) { econRefresh.classList.remove("spin"); econRefresh.disabled = econLimited; }
     }
   }
   if (econRefresh) econRefresh.addEventListener("click", () => loadEconomy(true));

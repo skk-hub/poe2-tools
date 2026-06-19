@@ -4055,7 +4055,8 @@ const server = http.createServer(async (req, res) => {
       if (force) { try { await sampleEconomy(league); } catch {} }
       else maybeSampleEconomy(league);
       const data = readEconomy() || { league, items: ECONOMY_ITEMS, points: [] };
-      send(res, 200, JSON.stringify({ ...data, limited: tradeStatus().limited }), "application/json; charset=utf-8");
+      const st = tradeStatus();
+      send(res, 200, JSON.stringify({ ...data, limited: st.limited, tradeLimitedUntil: st.tradeLimitedUntil, secondsRemaining: st.secondsRemaining }), "application/json; charset=utf-8");
       return;
     }
 
