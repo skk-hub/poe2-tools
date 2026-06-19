@@ -1193,9 +1193,11 @@ async function warmExchange(league = DEFAULT_LEAGUE) {
 // twice-a-day cadence and keep a rolling history so the home page can graph what's
 // inflating vs. what. Divine is the display unit; values are stored in EXALTS (+
 // the ex/div rate) so the front end can render in divine and compute relative
-// movement. Prices come from the same bulk Currency Exchange the rest of the app
-// uses; very high-value items with no exalted-side offer (Mirror, Hinekora's Lock)
-// are priced against DIVINE and converted to ex.
+// movement. Prices come from the same bulk Currency Exchange (= the in-game currency
+// exchange) the rest of the app uses. Liquid currency is priced against EXALTED; but
+// high-value items (omens, Hinekora's Lock) have only junk offers on the exalted side
+// and their REAL liquid market is the DIVINE side (e.g. Hinekora's = ~680 div), so
+// those are flagged `div: true` and priced against divine, then converted to ex.
 const ECONOMY_FILE = path.join(ROOT, ".economy-history.json");
 const ECONOMY_SAMPLE_MS = 12 * 60 * 60 * 1000;   // twice a day
 const ECONOMY_DEDUPE_MS = 60 * 60 * 1000;        // a manual refresh within 1h updates the last point instead of appending
@@ -1204,9 +1206,9 @@ const ECONOMY_ITEMS = [
   { id: "divine", name: "Divine Orb" },
   { id: "greater-exalted-orb", name: "Greater Exalted Orb" },
   { id: "perfect-exalted-orb", name: "Perfect Exalted Orb" },
-  { id: "omen-of-whittling", name: "Omen of Whittling" },
-  { id: "omen-of-light", name: "Omen of Light" },
-  { id: "hinekoras-lock", name: "Hinekora's Lock" },
+  { id: "omen-of-whittling", name: "Omen of Whittling", div: true },
+  { id: "omen-of-light", name: "Omen of Light", div: true },
+  { id: "hinekoras-lock", name: "Hinekora's Lock", div: true },
   { id: "mirror", name: "Mirror of Kalandra" },
 ];
 let economySampleInFlight = null;
@@ -1215,28 +1217,41 @@ function readEconomy() {
   try { return JSON.parse(fs.readFileSync(ECONOMY_FILE, "utf8")); } catch { return null; }
 }
 
+// Cheapest divine-per-item across divine-side exchange offers, skipping offers whose
+// ITEM stock is below minStock (drops 1-stock lowballs). Used for high-value items
+// (omens, Hinekora's) whose only real liquidity is the divine side; returns 0 if none.
+function cheapestDivineOffer(data, wantId, minStock) {
+  const offers = collectExchangeOffers(data, "divine", wantId)
+    .filter((o) => o.receiveStock >= minStock && o.receiveAmount > 0)
+    .sort((a, b) => a.payAmount / a.receiveAmount - b.payAmount / b.receiveAmount);
+  return offers.length ? offers[0].payAmount / offers[0].receiveAmount : 0;
+}
+
 async function sampleEconomy(league) {
   league = sanitizeLeague(league);
   if (tradeStatus().limited) return readEconomy();
-  const ids = ECONOMY_ITEMS.map((i) => i.id);
-  const buy = await fetchExchangeChunked(league, EXALTED_ID, ids);
+  const exaltIds = ECONOMY_ITEMS.filter((i) => !i.div).map((i) => i.id);
+  const buy = await fetchExchangeChunked(league, EXALTED_ID, exaltIds);
   const ex = {};
-  for (const id of ids) {
+  for (const id of exaltIds) {
     const b = bestExchangeOffer(buy, EXALTED_ID, id, 2) || bestExchangeOffer(buy, EXALTED_ID, id, 1);
     if (b && b.payPerReceive > 0) ex[id] = Math.round(b.payPerReceive * 100) / 100;
   }
   const exPerDiv = ex.divine || 0;
-  // Mirror / Hinekora's Lock usually have NO exalted-side offer (they trade in
-  // divines) — price them against divine and convert.
-  const missing = ids.filter((id) => !ex[id]);
-  if (missing.length && exPerDiv > 0) {
-    const buyD = await fetchExchangeChunked(league, "divine", missing);
-    for (const id of missing) {
-      const b = bestExchangeOffer(buyD, "divine", id, 1);
-      if (b && b.payPerReceive > 0) ex[id] = Math.round(b.payPerReceive * exPerDiv);
+  if (!exPerDiv) return readEconomy();  // need divine to price the divine-side items
+  // High-value items (omens, Hinekora's Lock): their exalted side is junk, the real
+  // liquid market is the DIVINE side. Take the cheapest decently-stocked divine offer
+  // and convert to ex. (bestExchangeOffer is exalted-oriented — wrong stock side & a
+  // par filter that drops legit 1div:1omen offers — so price these directly.)
+  const divIds = ECONOMY_ITEMS.filter((i) => i.div).map((i) => i.id);
+  if (divIds.length) {
+    const buyD = await fetchExchangeChunked(league, "divine", divIds);
+    for (const id of divIds) {
+      const perDiv = cheapestDivineOffer(buyD, id, 2) || cheapestDivineOffer(buyD, id, 1);
+      if (perDiv > 0) ex[id] = Math.round(perDiv * exPerDiv * 100) / 100;
     }
   }
-  if (!exPerDiv || Object.keys(ex).length < 2) return readEconomy();  // nothing useful this pass
+  if (Object.keys(ex).length < 2) return readEconomy();  // nothing useful this pass
   const point = { t: new Date().toISOString(), exPerDiv, ex };
   const prev = readEconomy();
   const points = (prev && prev.league === league && Array.isArray(prev.points)) ? prev.points.slice() : [];
