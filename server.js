@@ -1203,15 +1203,6 @@ const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
 // usually returns live prices; past this we fall back to the book/poe.ninja rather
 // than hang forever. The front-end shows a spinner for the duration.
 const RUNE_FRESH_DEADLINE_MS = 35 * 1000;
-// "Fetch fresh prices" only OVERRIDES poe.ninja with a live exchange price when the
-// exchange book is deep enough to trust. The bulk Currency Exchange is an order
-// book — a price standing on a handful of units (cheap runes often have 5-11 in the
-// whole book) is noise (round junk like 5ex for a 0.4ex rune), whereas poe.ninja's
-// volume-weighted aggregate is closer to reality there. Above this stock floor the
-// book is competitive enough to be the better, fresher number. Tune to taste.
-// (poe.ninja's coverage GAPS — e.g. soul cores it can't price — still fall back to
-// the book regardless of stock; there's no better source for those.)
-const RUNE_FRESH_MIN_STOCK = 30;
 let runeBookRefreshInFlight = null; // Promise | null while a refresh is running
 
 function readRuneBook(league) {
@@ -1879,8 +1870,12 @@ async function fetchRunePrices(text, league, forceFresh) {
   // blocks — the book fills in the background and the next check is accurate.
   if (forceFresh && !initialTradeStatus.limited) {
     const norms = runePastedNorms(limitedRawLines);
+    // Only the book fill matters for the button (it's what surfaces live trade
+    // prices). Don't ALSO force a currency-rate sweep concurrently — that doubled
+    // the queue burst and routinely self-tripped the shared rate limit, so the
+    // book wrote nothing. The divine rate is served stale-while-revalidate below.
     await Promise.race([
-      Promise.allSettled([refreshRuneBook(league, norms, true), getExchangeData(league, true)]),
+      refreshRuneBook(league, norms, true).catch(() => {}),
       new Promise((resolve) => setTimeout(resolve, RUNE_FRESH_DEADLINE_MS)),
     ]);
   }
@@ -1995,18 +1990,15 @@ async function fetchRunePrices(text, league, forceFresh) {
     seenCleanNames.add(norm);
     if (!isSkillOrSupport) pastedNorms.push(norm);
 
-    // On-demand fresh (the "Fetch fresh prices" button): prefer the LIVE Trade2
-    // exchange price over poe.ninja — but ONLY where the exchange is liquid enough
-    // to trust (book depth >= RUNE_FRESH_MIN_STOCK). On a thin book the cheapest
-    // standing offer is noise, so below the floor we fall through to poe.ninja's
-    // aggregate. (Items poe.ninja can't price at all are still book-filled later,
-    // regardless of stock — see bookResultFor calls below.)
+    // On-demand fresh (the "Fetch fresh prices" button): the user is explicitly
+    // asking for the LIVE Trade2 exchange price, so prefer the book whenever it has
+    // one (the forced refresh above just filled it for these items). The row shows
+    // the offer stock + a confidence badge, so the user can judge a thin/noisy
+    // quote themselves. The DEFAULT "Check picks" still keeps poe.ninja's finer,
+    // volume-weighted price where it has one (see the match branch below).
     if (forceFresh && !isSkillOrSupport) {
-      const b = runeBookPrices[norm];
-      if (b && b.ex > 0 && (b.stock || 0) >= RUNE_FRESH_MIN_STOCK) {
-        const bk = bookResultFor(norm, parsed.qty, cleanName);
-        if (bk) { results.push(bk); continue; }
-      }
+      const bk = bookResultFor(norm, parsed.qty, cleanName);
+      if (bk) { results.push(bk); continue; }
     }
 
     let match = all.find((item) => item.normalizedName === norm);
