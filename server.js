@@ -1224,9 +1224,9 @@ const ECONOMY_ITEMS = [
   { id: "omen-of-whittling", name: "Omen of Whittling", div: true },
   { id: "omen-of-light", name: "Omen of Light", div: true },
   { id: "hinekoras-lock", name: "Hinekora's Lock", div: true },
-  // Mirror is intentionally absent: it doesn't trade on the bulk currency exchange
-  // (one side had a single ~10k-div price wall, the other a lowball), so there's no
-  // honest price to sample. It trades as item listings, not a fungible currency.
+  // Mirror is absent: it doesn't trade on the bulk currency exchange (a single
+  // ~10k-div price wall on one side, a lowball on the other) so there's no honest
+  // Trade2 price to sample. Would need Trade2 item-search to add back.
 ];
 let economySampleInFlight = null;
 
@@ -1234,21 +1234,25 @@ function readEconomy() {
   try { return JSON.parse(fs.readFileSync(ECONOMY_FILE, "utf8")); } catch { return null; }
 }
 
-// Market divine-per-item across divine-side exchange offers (item stock >= minStock).
-// Used for high-value items (omens, Hinekora's) whose only liquidity is the divine
-// side; returns 0 if none. The cheapest offer is NOT the price here: these books are
-// littered with lowball bait BELOW the real cluster (live omen books run 1·2·3·4
-// then a wall of 5·6·7 offers — the 1-4 are traps). So drop exact-par swaps, then
-// take the 25th-percentile offer: robust to both the bait floor and over-priced
-// walls, it lands in the cluster where sellers actually sit (~5-6 for Whittling,
-// ~7-8 for Light). p25 ≈ cheapest for tightly-priced items (Hinekora's stays ~680).
+// Market divine-per-item for high-value items (omens, Hinekora's) off the divine
+// side of the bulk exchange. The cheapest offer is NOT the price: these books are
+// littered with lowball bait BELOW the real cluster (live omen books ramp 1·2·3·4
+// then a wall of 5·6·7 — the 1-4 are traps) plus the odd lone over-priced wall.
+// The price is the cheapest offer that sits in a CLUSTER — has >=3 peers within
+// ±15%, i.e. where real sellers agree. Isolated baits and lone walls have no peers
+// and are skipped no matter how many; taking the cheapest CLUSTERED offer (not the
+// densest band) tracks the real fill price without the high bias that standing
+// offers create (cheap offers fill and vanish, dear ones pile up). Drops exact-par
+// swaps first. Verified vs the live books: Whittling 5, Light 7, Hinekora's 655 div
+// (poe.ninja's volume-weighted values were 4.92 / 7.4 / 662.9 — within ~5%).
 function divineMarketPrice(data, wantId, minStock) {
-  const ratios = collectExchangeOffers(data, "divine", wantId)
+  const r = collectExchangeOffers(data, "divine", wantId)
     .filter((o) => o.receiveStock >= minStock && o.receiveAmount > 0 && o.payAmount !== o.receiveAmount)
     .map((o) => o.payAmount / o.receiveAmount)
     .sort((a, b) => a - b);
-  if (!ratios.length) return 0;
-  return ratios[Math.floor(0.25 * (ratios.length - 1))];
+  if (!r.length) return 0;
+  const clustered = r.filter((x) => r.reduce((n, y) => n + (y >= x * 0.85 && y <= x * 1.15 ? 1 : 0), 0) >= 3);
+  return (clustered.length ? clustered : r)[0];   // cheapest clustered price (or cheapest if too thin)
 }
 
 async function sampleEconomy(league) {
@@ -1266,10 +1270,9 @@ async function sampleEconomy(league) {
   }
   const exPerDiv = ex.divine || 0;
   if (!exPerDiv) return readEconomy();  // need divine to price the divine-side items
-  // High-value items (omens, Hinekora's Lock): their exalted side is junk, the real
-  // liquid market is the DIVINE side. Take the cluster price (divineMarketPrice) and
-  // convert to ex. (bestExchangeOffer is exalted-oriented — wrong stock side — and
-  // the cheapest offer is bait here, so price these directly off the divine side.)
+  // High-value items (omens, Hinekora's): exalted side is junk, the real market is
+  // the DIVINE side. Price by the densest cluster (divineMarketPrice) and convert to
+  // ex via the live anchor.
   const divIds = ECONOMY_ITEMS.filter((i) => i.div).map((i) => i.id);
   if (divIds.length) {
     const buyD = await fetchExchangeChunked(league, "divine", divIds);

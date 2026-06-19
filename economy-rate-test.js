@@ -43,9 +43,10 @@ const cheap = { result: [
 assert.ok(bestExchangeOffer(cheap, "exalted", "transmute", 5).payPerReceive < 0.12, "cheap currency unaffected by the floor");
 
 // Divine-side high-value items (omens, Hinekora's): live books are par 1:1 bait,
-// then scattered non-par lowballs (2·3·4 div), then the real cluster (5·6·7). The
-// cheapest survivor is still a bait, so divineMarketPrice takes the 25th-percentile
-// offer to land in the cluster. (pay = divine, receive = the item.)
+// then scattered non-par lowballs (2·3·4 div), then the real cluster (5·6·7), with
+// the odd over-priced wall above. divineMarketPrice takes the cheapest CLUSTERED
+// offer (>=3 peers within ±15%), so isolated baits and lone walls are skipped no
+// matter how many there are. (pay = divine, receive = the item.)
 const dOffer = (divPay, recv, stock) => ({
   exchange: { currency: "divine", amount: divPay, stock: 9999 },
   item: { currency: "omen-of-light", amount: recv, stock },
@@ -53,15 +54,19 @@ const dOffer = (divPay, recv, stock) => ({
 const omenBook = { result: [
   dOffer(1, 1, 6),                                   // par 1:1 -> dropped
   dOffer(2, 1, 3), dOffer(3, 1, 5), dOffer(4, 1, 4), // non-par lowball bait, below cluster
-  dOffer(5, 1, 8), dOffer(5, 1, 6), dOffer(5, 1, 5), dOffer(10, 2, 7), dOffer(5, 1, 4), dOffer(5, 1, 3), // cluster ~5
-  dOffer(6, 1, 4), dOffer(6, 1, 2), dOffer(7, 1, 3), dOffer(7, 1, 4),
+  dOffer(5, 1, 8), dOffer(5, 1, 6), dOffer(5, 1, 5), dOffer(10, 2, 7), dOffer(5, 1, 4), // cluster at 5
+  dOffer(6, 1, 4), dOffer(6, 1, 2), dOffer(7, 1, 3),
+  dOffer(40, 1, 2),                                  // lone over-priced wall -> ignored
 ] };
 assert.strictEqual(divineMarketPrice(omenBook, "omen-of-light", 2), 5,
-  "p25 lands in the 5-div cluster, not the 2-div bait floor");
+  "densest cluster wins: omen prices at 5, not the 2-div bait or the 40-div wall");
 
-// Tightly-priced item (no bait spread, e.g. Hinekora's ~680): p25 ≈ the floor, so
-// the robust estimator doesn't inflate items that were already correct.
-const tight = { result: [dOffer(680, 1, 3), dOffer(690, 1, 2), dOffer(700, 1, 4), dOffer(720, 1, 2)] };
-assert.strictEqual(divineMarketPrice(tight, "omen-of-light", 2), 680, "tight book stays at its floor");
+// Tightly-clustered item with a distant lowball bait (e.g. Hinekora's ~660 + a
+// 100-div trap): the cluster has peers, the bait doesn't, so the bait loses.
+const hine = { result: [
+  dOffer(100, 1, 3),                                                 // distant bait
+  dOffer(655, 1, 2), dOffer(660, 1, 4), dOffer(665, 1, 3), dOffer(680, 1, 2), dOffer(690, 1, 2),
+] };
+assert.strictEqual(divineMarketPrice(hine, "omen-of-light", 2), 655, "distant lowball bait is ignored; lands in the ~660 cluster");
 
 console.log("economy-rate-test: OK");
