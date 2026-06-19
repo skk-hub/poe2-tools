@@ -87,20 +87,38 @@ h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;l
 @keyframes fxshimmer{0%{background-position:100% 0}100%{background-position:0 0}}
 @media(prefers-reduced-motion:reduce){.fxchip.skel .fxbar{animation:none}}
 
-/* Tools grid — product cards */
-.tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
-.tool{position:relative;display:flex;flex-direction:column;background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));border:1px solid var(--border);border-radius:var(--r-lg);padding:22px;box-shadow:var(--shadow-sm),var(--inset-hi);
-  transition:transform var(--t),box-shadow var(--t),border-color var(--t)}
-.tool:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg);border-color:var(--border-strong)}
-.tool.ready:hover{border-color:var(--border-gold)}
-.tool-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
-.tool-icon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--gold);background:var(--gold-soft);border:1px solid var(--border-gold)}
-.tool-icon svg{width:22px;height:22px}
-.tool.soon .tool-icon{color:var(--text-faint);background:var(--surface-2);border-color:var(--border)}
-.tool-name{font:700 16px var(--font-ui);color:var(--text);letter-spacing:-.01em;margin:0}
-.tool-desc{color:var(--text-muted);font-size:13px;line-height:1.55;margin:8px 0 0;flex:1}
-.tool-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
-.tool-meta{color:var(--text-faint);font:500 11.5px var(--font-mono)}
+/* Economy dashboard (home) — replaces the tool cards */
+.econ{animation:fadeIn .4s var(--ease) both}
+.econ-head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.econ-head .section-label{margin:0 0 4px}
+.econ-sub{color:var(--text-muted);font:500 12px var(--font-mono);margin:0}
+.econ-headline{margin-left:auto;text-align:right;line-height:1.1}
+.econ-headline b{color:var(--gold-bright);font:700 24px var(--font-mono)}
+.econ-headline span{display:block;color:var(--text-faint);font:500 10px var(--font-mono);text-transform:uppercase;letter-spacing:.08em}
+.econ-chartwrap{background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));border:1px solid var(--border);border-radius:var(--r-lg);padding:16px 18px;box-shadow:var(--shadow-sm),var(--inset-hi);margin-bottom:16px}
+.econ-chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:10px}
+.econ-chart-title{color:var(--gold);font:600 11px var(--font-mono);letter-spacing:.1em;text-transform:uppercase}
+.econ-chart-title small{color:var(--text-faint);font-weight:500;letter-spacing:.04em;text-transform:none;margin-left:6px}
+.econ-legend{display:flex;flex-wrap:wrap;gap:6px 14px}
+.econ-leg{display:inline-flex;align-items:center;gap:6px;color:var(--text-muted);font:500 11.5px var(--font-ui)}
+.econ-leg i{width:9px;height:9px;border-radius:50%;flex:none}
+.econ-leg b{font-family:var(--font-mono);font-weight:600;color:var(--text-faint)}
+.econ-leg b.up{color:var(--green)} .econ-leg b.down{color:var(--red)}
+.econ-svg{width:100%;height:auto;display:block}
+.econ-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+.econ-card{background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 15px;box-shadow:var(--shadow-sm)}
+.econ-card-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.econ-card-top i{width:9px;height:9px;border-radius:50%;flex:none}
+.econ-card-name{color:var(--text-muted);font:600 12px var(--font-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.econ-card-val{color:var(--text);font:700 19px var(--font-mono)}
+.econ-card-val small{color:var(--text-faint);font-size:12px;font-weight:500}
+.econ-card-ex{display:block;color:var(--text-faint);font:500 11px var(--font-mono);margin-top:2px}
+.econ-card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;min-height:22px}
+.econ-card-chg{font:600 12px var(--font-mono);color:var(--text-faint)}
+.econ-card-chg small{font-weight:500;font-size:10px}
+.econ-card-chg.up{color:var(--green)} .econ-card-chg.down{color:var(--red)}
+.econ-spark{width:76px;height:22px;flex:none;opacity:.85}
+.econ-empty{color:var(--text-muted);font:500 13px var(--font-ui);padding:18px;text-align:center;border:1px dashed var(--border);border-radius:var(--r-lg)}
 
 /* Page head (tool views) */
 .pagehead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}
@@ -138,7 +156,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
 @media(max-width:560px){
   .shell{padding:20px 14px 40px}.appbarin{padding:10px 14px}
   .hero{padding:24px 20px}h1{font-size:30px}
-  .tools{grid-template-columns:1fr}
+  .econ-headline{margin-left:0}
   input{width:100%}
 }
 
@@ -194,68 +212,25 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <div class="fxstrip-chips" id="fxStripChips"></div>
     </div>
 
-    <div class="section-label">Tools</div>
-    <div class="tools stagger">
-      <article class="tool soon">
-        <div class="tool-top">
-          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L4.8 18A2 2 0 0 0 6.6 21h10.8a2 2 0 0 0 1.8-3L14 8.5V3"/><path d="M7 14h10"/></svg></span>
-          <span class="badge badge-soon">Rebuilding</span>
+    <section class="econ" id="econ" hidden aria-label="Economy overview">
+      <div class="econ-head">
+        <div>
+          <div class="section-label">Economy</div>
+          <p class="econ-sub" id="econSub">Priced in Divine — tracking what's inflating against what.</p>
         </div>
-        <h3 class="tool-name">Craft Pricer</h3>
-        <p class="tool-desc">Being reimagined from scratch — a fresh take on craft cost planning is in the works.</p>
-        <div class="tool-foot">
-          <span class="tool-meta">Soon</span>
+        <div class="econ-headline" id="econHeadline"></div>
+        <button class="fxstrip-refresh" id="econRefresh" type="button" title="Sample the market now (~1 min)" aria-label="Sample economy now">↻</button>
+      </div>
+      <div class="econ-chartwrap" id="econChartWrap">
+        <div class="econ-chart-head">
+          <span class="econ-chart-title">Relative value <small>indexed to 100 at first sample</small></span>
+          <div class="econ-legend" id="econLegend"></div>
         </div>
-      </article>
-      <article class="tool ready">
-        <div class="tool-top">
-          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18M9 3 7 9l5 12 5-12-2-6"/></svg></span>
-          <span class="badge badge-live">Live</span>
-        </div>
-        <h3 class="tool-name">Rune Picker</h3>
-        <p class="tool-desc">Paste rune or reward choices, price each poe.ninja match, and highlight the highest-value pick.</p>
-        <div class="tool-foot">
-          <span class="tool-meta">poe.ninja</span>
-          <a class="btn btn-sm btn-primary" href="#rune-picker" data-view-link="rune-picker">Open</a>
-        </div>
-      </article>
-      <article class="tool ready">
-        <div class="tool-top">
-          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg></span>
-          <span class="badge badge-live">Live</span>
-        </div>
-        <h3 class="tool-name">Gear Search</h3>
-        <p class="tool-desc">Import gear, build slot-aware Trade2 filters, preview the query, and compare your items against live listings.</p>
-        <div class="tool-foot">
-          <span class="tool-meta">Trade2</span>
-          <a class="btn btn-sm btn-primary" href="#gear-search" data-view-link="gear-search">Open</a>
-        </div>
-      </article>
-      <article class="tool ready">
-        <div class="tool-top">
-          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 4-6 2v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span>
-          <span class="badge">Reference</span>
-        </div>
-        <h3 class="tool-name">Regex Cheat Sheet</h3>
-        <p class="tool-desc">Copy-paste stash Ctrl-F regex for waystone juicing and precursor tablets, plus a paste-an-item evaluator.</p>
-        <div class="tool-foot">
-          <span class="tool-meta">Offline</span>
-          <a class="btn btn-sm btn-primary" href="#map-juicer" data-view-link="map-juicer">Open</a>
-        </div>
-      </article>
-      <article class="tool ready">
-        <div class="tool-top">
-          <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></span>
-          <span class="badge badge-live">Live</span>
-        </div>
-        <h3 class="tool-name">Arbitrage Scanner</h3>
-        <p class="tool-desc">Manual Currency Exchange scan for ex-based flips across high-volume currency and fragments — stock capped, slippage buffered.</p>
-        <div class="tool-foot">
-          <span class="tool-meta">Trade2</span>
-          <a class="btn btn-sm btn-primary" href="#arbitrage" data-view-link="arbitrage">Open</a>
-        </div>
-      </article>
-    </div>
+        <div class="econ-chart" id="econChart"></div>
+      </div>
+      <div class="econ-cards" id="econCards"></div>
+      <p class="econ-empty" id="econEmpty" hidden></p>
+    </section>
   </section>
 
   <section id="craft-pricer" class="view" data-view="craft-pricer">

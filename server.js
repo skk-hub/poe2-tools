@@ -1188,6 +1188,79 @@ async function warmExchange(league = DEFAULT_LEAGUE) {
   try { await refreshExchangeData(sanitizeLeague(league)); } catch {}
 }
 
+// ── Economy history (home dashboard) ────────────────────────────────────────
+// Sample a handful of HIGH-VALUE currencies (all >= ~1ex; nothing sub-exalt) on a
+// twice-a-day cadence and keep a rolling history so the home page can graph what's
+// inflating vs. what. Divine is the display unit; values are stored in EXALTS (+
+// the ex/div rate) so the front end can render in divine and compute relative
+// movement. Prices come from the same bulk Currency Exchange the rest of the app
+// uses; very high-value items with no exalted-side offer (Mirror, Hinekora's Lock)
+// are priced against DIVINE and converted to ex.
+const ECONOMY_FILE = path.join(ROOT, ".economy-history.json");
+const ECONOMY_SAMPLE_MS = 12 * 60 * 60 * 1000;   // twice a day
+const ECONOMY_DEDUPE_MS = 60 * 60 * 1000;        // a manual refresh within 1h updates the last point instead of appending
+const ECONOMY_MAX_POINTS = 200;                  // ~3 months at 2/day; caps file size
+const ECONOMY_ITEMS = [
+  { id: "divine", name: "Divine Orb" },
+  { id: "greater-exalted-orb", name: "Greater Exalted Orb" },
+  { id: "perfect-exalted-orb", name: "Perfect Exalted Orb" },
+  { id: "omen-of-whittling", name: "Omen of Whittling" },
+  { id: "omen-of-light", name: "Omen of Light" },
+  { id: "hinekoras-lock", name: "Hinekora's Lock" },
+  { id: "mirror", name: "Mirror of Kalandra" },
+];
+let economySampleInFlight = null;
+
+function readEconomy() {
+  try { return JSON.parse(fs.readFileSync(ECONOMY_FILE, "utf8")); } catch { return null; }
+}
+
+async function sampleEconomy(league) {
+  league = sanitizeLeague(league);
+  if (tradeStatus().limited) return readEconomy();
+  const ids = ECONOMY_ITEMS.map((i) => i.id);
+  const buy = await fetchExchangeChunked(league, EXALTED_ID, ids);
+  const ex = {};
+  for (const id of ids) {
+    const b = bestExchangeOffer(buy, EXALTED_ID, id, 2) || bestExchangeOffer(buy, EXALTED_ID, id, 1);
+    if (b && b.payPerReceive > 0) ex[id] = Math.round(b.payPerReceive * 100) / 100;
+  }
+  const exPerDiv = ex.divine || 0;
+  // Mirror / Hinekora's Lock usually have NO exalted-side offer (they trade in
+  // divines) — price them against divine and convert.
+  const missing = ids.filter((id) => !ex[id]);
+  if (missing.length && exPerDiv > 0) {
+    const buyD = await fetchExchangeChunked(league, "divine", missing);
+    for (const id of missing) {
+      const b = bestExchangeOffer(buyD, "divine", id, 1);
+      if (b && b.payPerReceive > 0) ex[id] = Math.round(b.payPerReceive * exPerDiv);
+    }
+  }
+  if (!exPerDiv || Object.keys(ex).length < 2) return readEconomy();  // nothing useful this pass
+  const point = { t: new Date().toISOString(), exPerDiv, ex };
+  const prev = readEconomy();
+  const points = (prev && prev.league === league && Array.isArray(prev.points)) ? prev.points.slice() : [];
+  const lastP = points[points.length - 1];
+  if (lastP && Date.now() - new Date(lastP.t).getTime() < ECONOMY_DEDUPE_MS) points[points.length - 1] = point;
+  else points.push(point);
+  while (points.length > ECONOMY_MAX_POINTS) points.shift();
+  const out = { league, items: ECONOMY_ITEMS, points, updated: point.t };
+  try { fs.writeFileSync(ECONOMY_FILE, JSON.stringify(out, null, 2)); } catch {}
+  return out;
+}
+
+// Single-flight; only samples when the last point is >= ECONOMY_SAMPLE_MS old
+// (twice a day) and the queue is clear. Fire-and-forget from the timer + endpoint.
+function maybeSampleEconomy(league = DEFAULT_LEAGUE) {
+  if (economySampleInFlight) return economySampleInFlight;
+  const prev = readEconomy();
+  const last = prev && prev.points && prev.points.length ? new Date(prev.points[prev.points.length - 1].t).getTime() : 0;
+  if (Date.now() - last < ECONOMY_SAMPLE_MS) return Promise.resolve(prev);
+  if (tradeStatus().limited) return Promise.resolve(prev);
+  economySampleInFlight = sampleEconomy(league).catch(() => prev).finally(() => { economySampleInFlight = null; });
+  return economySampleInFlight;
+}
+
 // ── Rune Picker price book: accurate Trade2 exchange prices for runes/essences/
 // soul cores (poe.ninja's PoE2 coverage of these is thin = "useless"). Same bulk
 // exchange the currency uses. Served from a persistent cache INSTANTLY (poe.ninja
@@ -3941,6 +4014,18 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url.pathname === "/api/economy/history") {
+      const league = sanitizeLeague(url.searchParams.get("league"));
+      const force = url.searchParams.get("refresh") === "1";
+      // Force = sample now (manual ↻, bounded by the rate limit); otherwise sample
+      // in the background only when a twice-a-day point is due.
+      if (force) { try { await sampleEconomy(league); } catch {} }
+      else maybeSampleEconomy(league);
+      const data = readEconomy() || { league, items: ECONOMY_ITEMS, points: [] };
+      send(res, 200, JSON.stringify({ ...data, limited: tradeStatus().limited }), "application/json; charset=utf-8");
+      return;
+    }
+
     if (url.pathname === "/api/waystone/market-weights/refresh" && req.method === "POST") {
       const input = await readJson(req);
       const league = input.league || "Runes of Aldur";
@@ -4304,6 +4389,12 @@ if (require.main === module) {
   warmExchange().catch(() => {});
   const warmTimer = setInterval(() => { warmExchange().catch(() => {}); }, 2 * 60 * 1000);
   if (warmTimer.unref) warmTimer.unref();
+  // Economy history for the home dashboard: sample on boot if a twice-a-day point
+  // is due, then check every 30 min (the sampler only actually fetches when due +
+  // unthrottled, so this is cheap).
+  maybeSampleEconomy();
+  const econTimer = setInterval(() => { maybeSampleEconomy(); }, 30 * 60 * 1000);
+  if (econTimer.unref) econTimer.unref();
 }
 
 module.exports = {

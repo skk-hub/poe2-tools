@@ -107,4 +107,145 @@ window.__viewInit["home"] = function () {
 
   if (btn) btn.addEventListener("click", () => load(true));
   load(false);
+
+  // ── Economy dashboard (replaces the tool cards) ───────────────────────────
+  const econ = document.getElementById("econ");
+  const econHeadline = document.getElementById("econHeadline");
+  const econSub = document.getElementById("econSub");
+  const econRefresh = document.getElementById("econRefresh");
+  const econChartWrap = document.getElementById("econChartWrap");
+  const econChart = document.getElementById("econChart");
+  const econLegend = document.getElementById("econLegend");
+  const econCards = document.getElementById("econCards");
+  const econEmpty = document.getElementById("econEmpty");
+  if (!econ) return;
+  // Divine = gold, then distinct hues in ECONOMY_ITEMS order.
+  const COLORS = ["#e8b23a", "#5aa9e6", "#7ed957", "#e06c9f", "#b98cff", "#46d0c0", "#f2784b"];
+  let econRendered = false;
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[m])); }
+  function fmtDiv(v) {
+    if (!isFinite(v) || v <= 0) return "—";
+    if (v >= 100) return Math.round(v).toLocaleString();
+    if (v >= 10) return v.toFixed(1);
+    if (v >= 1) return v.toFixed(2);
+    if (v >= 0.01) return v.toFixed(3);
+    return v.toFixed(4);
+  }
+  function shortName(name) {
+    return name.replace(/^Orb of /, "").replace(/ Orb$/, "").replace(/ of Kalandra$/, "");
+  }
+
+  // Series present in the data (skip currencies that had no offer that sample).
+  function buildSeries(points, items) {
+    return items.map((it, idx) => {
+      const pts = [];
+      points.forEach((p, i) => { const v = p.ex && p.ex[it.id]; if (v > 0) pts.push({ i, v }); });
+      return { it, idx, pts };
+    }).filter(s => s.pts.length);
+  }
+
+  // Multi-line chart, each series indexed to 100 at its first sample → slopes show
+  // what's inflating relative to what. Default preserveAspectRatio keeps it
+  // undistorted; CSS scales width.
+  function lineChart(series, n) {
+    const W = 820, H = 240, pad = 10, innerW = W - pad * 2, innerH = H - pad * 2;
+    let minY = 100, maxY = 100;
+    series.forEach(s => {
+      const base = s.pts[0].v;
+      s.norm = s.pts.map(p => ({ i: p.i, y: p.v / base * 100 }));
+      s.norm.forEach(q => { minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y); });
+    });
+    const span = Math.max(8, maxY - minY);
+    minY -= span * 0.12; maxY += span * 0.12;
+    const X = i => n <= 1 ? pad + innerW / 2 : pad + (i / (n - 1)) * innerW;
+    const Y = y => pad + (1 - (y - minY) / (maxY - minY)) * innerH;
+    const base100 = Y(100).toFixed(1);
+    const grid = '<line x1="' + pad + '" y1="' + base100 + '" x2="' + (W - pad) + '" y2="' + base100 + '" stroke="var(--bd)" stroke-dasharray="3 5"/>';
+    const body = series.map(s => {
+      const c = COLORS[s.idx % COLORS.length];
+      const d = s.norm.map((q, k) => (k ? "L" : "M") + X(q.i).toFixed(1) + " " + Y(q.y).toFixed(1)).join(" ");
+      const dots = s.norm.map(q => '<circle cx="' + X(q.i).toFixed(1) + '" cy="' + Y(q.y).toFixed(1) + '" r="2.6" fill="' + c + '"/>').join("");
+      return '<path d="' + d + '" fill="none" stroke="' + c + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' + dots;
+    }).join("");
+    return '<svg class="econ-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Relative currency values over time">' + grid + body + "</svg>";
+  }
+
+  function legend(series) {
+    return series.map(s => {
+      const chg = Math.round(s.norm[s.norm.length - 1].y - 100);
+      const cls = chg > 0 ? "up" : chg < 0 ? "down" : "";
+      return '<span class="econ-leg"><i style="background:' + COLORS[s.idx % COLORS.length] + '"></i>' +
+        esc(shortName(s.it.name)) + ' <b class="' + cls + '">' + (chg > 0 ? "+" : "") + chg + "%</b></span>";
+    }).join("");
+  }
+
+  function sparkline(points, id, color) {
+    const vals = points.map(p => p.ex && p.ex[id]).filter(x => x > 0);
+    if (vals.length < 2) return "";
+    const w = 76, h = 22, min = Math.min(...vals), max = Math.max(...vals), rng = (max - min) || 1;
+    const d = vals.map((v, i) => (i ? "L" : "M") + (i / (vals.length - 1) * w).toFixed(1) + " " + ((1 - (v - min) / rng) * (h - 3) + 1.5).toFixed(1)).join(" ");
+    return '<svg class="econ-spark" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none"><path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
+  }
+
+  function cards(latest, exPerDiv, items, points) {
+    return items.map((it, idx) => {
+      const v = latest.ex && latest.ex[it.id];
+      if (!(v > 0)) return "";
+      const isDiv = it.id === "divine";
+      const main = isDiv ? fmtEx(v) + ' <small>ex</small>' : fmtDiv(v / exPerDiv) + ' <small>div</small>';
+      const subEx = isDiv ? "" : '<span class="econ-card-ex">' + fmtEx(v) + " ex</span>";
+      const hist = points.map(p => p.ex && p.ex[it.id]).filter(x => x > 0);
+      const chg = hist.length > 1 ? Math.round((v / hist[0] - 1) * 100) : null;
+      const cls = chg > 0 ? "up" : chg < 0 ? "down" : "";
+      const chgHtml = chg === null ? "" : '<span class="econ-card-chg ' + cls + '">' + (chg > 0 ? "+" : "") + chg + '% <small>vs start</small></span>';
+      return '<div class="econ-card"><div class="econ-card-top"><i style="background:' + COLORS[idx % COLORS.length] + '"></i>' +
+        '<span class="econ-card-name">' + esc(shortName(it.name)) + '</span></div>' +
+        '<div class="econ-card-val">' + main + "</div>" + subEx +
+        '<div class="econ-card-foot">' + chgHtml + sparkline(points, it.id, COLORS[idx % COLORS.length]) + "</div></div>";
+    }).join("");
+  }
+
+  function renderEconomy(d) {
+    econ.hidden = false;
+    if (!d || !d.points || !d.points.length) {
+      econChartWrap.hidden = true; econCards.innerHTML = ""; econHeadline.innerHTML = "";
+      econEmpty.hidden = false;
+      econEmpty.textContent = (d && d.limited)
+        ? "Trade2 rate-limited — tap ↻ to sample once it clears."
+        : "No economy samples yet — tap ↻ to take the first sample (~1 min).";
+      return;
+    }
+    const points = d.points, items = d.items || [], latest = points[points.length - 1];
+    const exPerDiv = latest.exPerDiv || 0;
+    econHeadline.innerHTML = exPerDiv ? '<b>' + fmtEx(exPerDiv) + '</b> <span>ex / Divine</span>' : "";
+    if (points.length >= 2) {
+      const series = buildSeries(points, items);
+      econChart.innerHTML = lineChart(series, points.length);
+      econLegend.innerHTML = legend(series);
+      econChartWrap.hidden = false; econEmpty.hidden = true;
+    } else {
+      econChartWrap.hidden = true; econEmpty.hidden = false;
+      econEmpty.textContent = "1 sample so far — the relative-value graph fills in as samples accumulate (twice a day). Current values below.";
+    }
+    econCards.innerHTML = cards(latest, exPerDiv, items, points);
+    econSub.textContent = "Priced in Divine · " + points.length + " sample" + (points.length === 1 ? "" : "s") +
+      (d.updated ? " · " + ago(d.updated) : "");
+    econRendered = true;
+  }
+
+  async function loadEconomy(force) {
+    if (econRefresh) { econRefresh.classList.add("spin"); econRefresh.disabled = true; }
+    if (force && !econRendered) { econEmpty.hidden = false; econEmpty.textContent = "Sampling the market… (~1 min)"; econ.hidden = false; }
+    try {
+      const r = await fetch("/api/economy/history?league=" + encodeURIComponent(LEAGUE) + (force ? "&refresh=1" : ""));
+      renderEconomy(await r.json());
+    } catch {
+      if (!econRendered) econ.hidden = true;
+    } finally {
+      if (econRefresh) { econRefresh.classList.remove("spin"); econRefresh.disabled = false; }
+    }
+  }
+  if (econRefresh) econRefresh.addEventListener("click", () => loadEconomy(true));
+  loadEconomy(false);
 };

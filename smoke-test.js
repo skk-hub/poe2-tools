@@ -67,6 +67,9 @@ function staticChecks() {
   check(idx.includes('id="fxStrip"') && idx.includes('id="fxStripRefresh"'), "home has currency strip + refresh button");
   check(/\.fxchip\.skel/.test(idx) && /@keyframes fxshimmer/.test(idx), "home currency strip has loading-skeleton CSS");
   check(/showSkeleton/.test(read("home.js")), "home.js renders a loading skeleton on first fetch");
+  // Home: tool cards replaced by the economy dashboard.
+  check(idx.includes('id="econ"') && !/class="tools"/.test(idx) && !/class="tool /.test(idx), "home shows the economy dashboard (tool cards removed)");
+  check(/api\/economy\/history/.test(read("home.js")) && /lineChart/.test(read("home.js")), "home.js draws the economy chart from /api/economy/history");
   check(idx.includes('id="freshRunes"'), "rune-picker has a Fetch fresh prices button");
   check(/forceFresh\s*:/.test(read("rune-picker.js")), "rune-picker.js sends forceFresh to the API");
   check(/being rebuilt/i.test(idx) && !idx.includes('id="cpGrid"'), "craft-pricer is a blanked placeholder (no cpGrid)");
@@ -87,6 +90,7 @@ function staticChecks() {
   check(/noRevivesRegex/.test(mj), "map-juicer has the 0-revives regex generator");
   // Unification: one Trade2 exchange-rate provider; no poe.ninja currency calls.
   const srv = read("server.js");
+  check(/\/api\/economy\/history/.test(srv) && /function sampleEconomy/.test(srv) && /ECONOMY_ITEMS/.test(srv), "server has the economy history sampler + endpoint");
   check(/async function getExchangeData/.test(srv) && /async function getExchangeRates/.test(srv), "server has the unified Trade2 exchange-rate provider");
   check(!/await fetchCurrencyRates\(/.test(srv), "no poe.ninja fetchCurrencyRates calls remain (currency unified on Trade2)");
   check(/iconsById/.test(srv), "server resolves currency icons from Trade2 static data");
