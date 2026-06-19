@@ -193,8 +193,14 @@ window.__viewInit["home"] = function () {
       const v = latest.ex && latest.ex[it.id];
       if (!(v > 0)) return "";
       const isDiv = it.id === "divine";
-      const main = isDiv ? fmtEx(v) + ' <small>ex</small>' : fmtDiv(v / exPerDiv) + ' <small>div</small>';
-      const subEx = isDiv ? "" : '<span class="econ-card-ex">' + fmtEx(v) + " ex</span>";
+      const divVal = exPerDiv ? v / exPerDiv : 0;
+      // Worth less than a Divine reads better in ex (e.g. Greater Exalted ~12ex,
+      // not "0.07 div"). Lead with the natural unit; show the other as the sub.
+      const underDiv = !isDiv && divVal > 0 && divVal < 1;
+      const main = (isDiv || underDiv) ? fmtEx(v) + ' <small>ex</small>' : fmtDiv(divVal) + ' <small>div</small>';
+      const subEx = isDiv ? ""
+        : underDiv ? '<span class="econ-card-ex">' + fmtDiv(divVal) + " div</span>"
+        : '<span class="econ-card-ex">' + fmtEx(v) + " ex</span>";
       const hist = points.map(p => p.ex && p.ex[it.id]).filter(x => x > 0);
       const chg = hist.length > 1 ? Math.round((v / hist[0] - 1) * 100) : null;
       const cls = chg > 0 ? "up" : chg < 0 ? "down" : "";
