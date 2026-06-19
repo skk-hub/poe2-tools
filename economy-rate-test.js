@@ -6,7 +6,7 @@
 // skewing every derived price on the home dashboard. robustCheapestOffer must reject
 // it via the book's median floor. Uses the REAL exported function, no network.
 const assert = require("assert");
-const { bestExchangeOffer } = require("./server.js");
+const { bestExchangeOffer, divineMarketPrice } = require("./server.js");
 
 const offer = (payEx, recvDiv, recvStock) => ({
   exchange: { currency: "exalted", amount: payEx, stock: payEx * 100 },
@@ -41,5 +41,27 @@ const cheap = { result: [
   { exchange:{currency:"exalted",amount:1,stock:100}, item:{currency:"transmute",amount:10,stock:200} },
 ] };
 assert.ok(bestExchangeOffer(cheap, "exalted", "transmute", 5).payPerReceive < 0.12, "cheap currency unaffected by the floor");
+
+// Divine-side high-value items (omens, Hinekora's): live books are par 1:1 bait,
+// then scattered non-par lowballs (2·3·4 div), then the real cluster (5·6·7). The
+// cheapest survivor is still a bait, so divineMarketPrice takes the 25th-percentile
+// offer to land in the cluster. (pay = divine, receive = the item.)
+const dOffer = (divPay, recv, stock) => ({
+  exchange: { currency: "divine", amount: divPay, stock: 9999 },
+  item: { currency: "omen-of-light", amount: recv, stock },
+});
+const omenBook = { result: [
+  dOffer(1, 1, 6),                                   // par 1:1 -> dropped
+  dOffer(2, 1, 3), dOffer(3, 1, 5), dOffer(4, 1, 4), // non-par lowball bait, below cluster
+  dOffer(5, 1, 8), dOffer(5, 1, 6), dOffer(5, 1, 5), dOffer(10, 2, 7), dOffer(5, 1, 4), dOffer(5, 1, 3), // cluster ~5
+  dOffer(6, 1, 4), dOffer(6, 1, 2), dOffer(7, 1, 3), dOffer(7, 1, 4),
+] };
+assert.strictEqual(divineMarketPrice(omenBook, "omen-of-light", 2), 5,
+  "p25 lands in the 5-div cluster, not the 2-div bait floor");
+
+// Tightly-priced item (no bait spread, e.g. Hinekora's ~680): p25 ≈ the floor, so
+// the robust estimator doesn't inflate items that were already correct.
+const tight = { result: [dOffer(680, 1, 3), dOffer(690, 1, 2), dOffer(700, 1, 4), dOffer(720, 1, 2)] };
+assert.strictEqual(divineMarketPrice(tight, "omen-of-light", 2), 680, "tight book stays at its floor");
 
 console.log("economy-rate-test: OK");

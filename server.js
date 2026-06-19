@@ -1224,7 +1224,9 @@ const ECONOMY_ITEMS = [
   { id: "omen-of-whittling", name: "Omen of Whittling", div: true },
   { id: "omen-of-light", name: "Omen of Light", div: true },
   { id: "hinekoras-lock", name: "Hinekora's Lock", div: true },
-  { id: "mirror", name: "Mirror of Kalandra" },
+  // Mirror is intentionally absent: it doesn't trade on the bulk currency exchange
+  // (one side had a single ~10k-div price wall, the other a lowball), so there's no
+  // honest price to sample. It trades as item listings, not a fungible currency.
 ];
 let economySampleInFlight = null;
 
@@ -1232,14 +1234,21 @@ function readEconomy() {
   try { return JSON.parse(fs.readFileSync(ECONOMY_FILE, "utf8")); } catch { return null; }
 }
 
-// Cheapest divine-per-item across divine-side exchange offers, skipping offers whose
-// ITEM stock is below minStock (drops 1-stock lowballs). Used for high-value items
-// (omens, Hinekora's) whose only real liquidity is the divine side; returns 0 if none.
-function cheapestDivineOffer(data, wantId, minStock) {
-  const offers = collectExchangeOffers(data, "divine", wantId)
-    .filter((o) => o.receiveStock >= minStock && o.receiveAmount > 0)
-    .sort((a, b) => a.payAmount / a.receiveAmount - b.payAmount / b.receiveAmount);
-  return offers.length ? offers[0].payAmount / offers[0].receiveAmount : 0;
+// Market divine-per-item across divine-side exchange offers (item stock >= minStock).
+// Used for high-value items (omens, Hinekora's) whose only liquidity is the divine
+// side; returns 0 if none. The cheapest offer is NOT the price here: these books are
+// littered with lowball bait BELOW the real cluster (live omen books run 1·2·3·4
+// then a wall of 5·6·7 offers — the 1-4 are traps). So drop exact-par swaps, then
+// take the 25th-percentile offer: robust to both the bait floor and over-priced
+// walls, it lands in the cluster where sellers actually sit (~5-6 for Whittling,
+// ~7-8 for Light). p25 ≈ cheapest for tightly-priced items (Hinekora's stays ~680).
+function divineMarketPrice(data, wantId, minStock) {
+  const ratios = collectExchangeOffers(data, "divine", wantId)
+    .filter((o) => o.receiveStock >= minStock && o.receiveAmount > 0 && o.payAmount !== o.receiveAmount)
+    .map((o) => o.payAmount / o.receiveAmount)
+    .sort((a, b) => a - b);
+  if (!ratios.length) return 0;
+  return ratios[Math.floor(0.25 * (ratios.length - 1))];
 }
 
 async function sampleEconomy(league) {
@@ -1258,14 +1267,14 @@ async function sampleEconomy(league) {
   const exPerDiv = ex.divine || 0;
   if (!exPerDiv) return readEconomy();  // need divine to price the divine-side items
   // High-value items (omens, Hinekora's Lock): their exalted side is junk, the real
-  // liquid market is the DIVINE side. Take the cheapest decently-stocked divine offer
-  // and convert to ex. (bestExchangeOffer is exalted-oriented — wrong stock side & a
-  // par filter that drops legit 1div:1omen offers — so price these directly.)
+  // liquid market is the DIVINE side. Take the cluster price (divineMarketPrice) and
+  // convert to ex. (bestExchangeOffer is exalted-oriented — wrong stock side — and
+  // the cheapest offer is bait here, so price these directly off the divine side.)
   const divIds = ECONOMY_ITEMS.filter((i) => i.div).map((i) => i.id);
   if (divIds.length) {
     const buyD = await fetchExchangeChunked(league, "divine", divIds);
     for (const id of divIds) {
-      const perDiv = cheapestDivineOffer(buyD, id, 2) || cheapestDivineOffer(buyD, id, 1);
+      const perDiv = divineMarketPrice(buyD, id, 2) || divineMarketPrice(buyD, id, 1);
       if (perDiv > 0) ex[id] = Math.round(perDiv * exPerDiv * 100) / 100;
     }
   }
@@ -4435,6 +4444,7 @@ module.exports = {
   fetchExchangeChunked,
   collectExchangeOffers,
   bestExchangeOffer,
+  divineMarketPrice,
   sanitizeLeague,
   buildExchangeCatalog,
   analyzeGearSearch,
