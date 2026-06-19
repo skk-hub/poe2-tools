@@ -156,7 +156,7 @@ async function browserChecks() {
     await page.close();
 
     // deep-link init (the bug that regressed): load a tool hash directly -> its JS ran
-    for (const [hash, sel, what] of [["#gear-search", "#gear-search #preview, #gear-search pre", "query preview"], ["#map-juicer", "#tabs .tab", "content tabs"]]) {
+    for (const [hash, sel, what] of [["#gear-search", "#gear-search #preview, #gear-search pre", "query preview"], ["#map-juicer", ".toolroot-mj .regexbox", "regex rows"]]) {
       const p = await browser.newPage({ viewport: { width: 1280, height: 860 } });
       await p.goto(BASE + "/index.html" + hash, { waitUntil: "networkidle" }); await p.waitForTimeout(1400);
       const got = await p.evaluate(s => { const el = document.querySelector(s); return !!el && (el.children.length > 0 || /\S/.test(el.textContent)); }, sel);

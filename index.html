@@ -161,7 +161,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <a class="navbtn" href="#craft-pricer" data-view-link="craft-pricer">Craft Pricer</a>
       <a class="navbtn" href="#rune-picker" data-view-link="rune-picker">Rune Picker</a>
       <a class="navbtn" href="#gear-search" data-view-link="gear-search">Gear Search</a>
-      <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Map Juicer</a>
+      <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Regex Cheat Sheet</a>
       <a class="navbtn" href="#arbitrage" data-view-link="arbitrage">Arbitrage</a>
     </nav>
   </div>
@@ -234,10 +234,10 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <article class="tool ready">
         <div class="tool-top">
           <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 4-6 2v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></span>
-          <span class="badge badge-live">Live</span>
+          <span class="badge">Reference</span>
         </div>
-        <h3 class="tool-name">Map Juicer</h3>
-        <p class="tool-desc">Waystone juicing planner by content type — best blue-to-juiced path and copy-paste stash regex for waystones and tablets.</p>
+        <h3 class="tool-name">Regex Cheat Sheet</h3>
+        <p class="tool-desc">Copy-paste stash Ctrl-F regex for waystone juicing and precursor tablets, plus a paste-an-item evaluator.</p>
         <div class="tool-foot">
           <span class="tool-meta">Offline</span>
           <a class="btn btn-sm btn-primary" href="#map-juicer" data-view-link="map-juicer">Open</a>
@@ -458,35 +458,27 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     <div class="toolroot toolroot-mj">
       <div class="pagehead mj-head">
         <div>
-          <h1>Map Juicer</h1>
-          <p class="sub" id="patchline">Waystone juicing &amp; stash regex.</p>
+          <h1>Regex Cheat Sheet</h1>
+          <p class="sub" id="patchline">Waystone &amp; precursor-tablet stash regex.</p>
         </div>
-        <span class="fxchip" id="fxRate" style="display:none"></span>
       </div>
 
-      <div class="mj-bar" id="mjBar">
-        <div class="mj-field mj-field-mech">
-          <span class="mj-lab">Mechanic</span>
-          <div class="tabs" id="tabs"></div>
-        </div>
-        <div class="mj-field"><span class="mj-lab">Strategy</span><select id="mjStrat" class="mj-sel"></select></div>
-        <div class="mj-field"><span class="mj-lab">Tablets</span><select id="mjCount" class="mj-sel"></select></div>
-        <div class="mj-field"><span class="mj-lab">Tablet mix</span><select id="mjMix" class="mj-sel"></select></div>
-        <label class="mj-chk"><input type="checkbox" id="mjCorrupt"> Corrupted map</label>
-        <label class="mj-chk"><input type="checkbox" id="mjSafe" checked> Clear speed is fine (not dying)</label>
+      <div class="mj-legend">
+        <span><code>"…"</code> = AND</span>
+        <span><code>|</code> = OR (inside a block)</span>
+        <span><code>!"…"</code> = exclude</span>
+        <span class="mj-legend-end">Paste into the in-game stash search (Ctrl-F) · 250-char limit</span>
       </div>
 
-      <div class="mj-reco" id="mjReco"></div>
-
-      <div class="mj-grid">
-        <div class="mj-col" id="mjLeft"></div>
-        <div class="mj-col" id="mjRight"></div>
+      <div class="mj-main">
+        <div class="mj-sheet" id="mjSheet"></div>
+        <aside class="mj-aside" id="mjAside"></aside>
       </div>
 
       <details class="mj-d mj-eval">
         <summary>Evaluate a copied waystone or tablet</summary>
         <div class="eval">
-          <p class="sub">Copy an item in-game (Ctrl+C) and paste it — get its approx. value, best content pairing, and master fit.</p>
+          <p class="sub">Copy an item in-game (Ctrl+C) and paste it — get its approx. value and best content pairing.</p>
           <textarea id="evalInput" spellcheck="false" placeholder="Paste copied item text here…&#10;(includes the 'Rarity:' line and its modifiers)"></textarea>
           <button class="primary" id="evalBtn" type="button">Evaluate</button>
           <div id="evalOut"></div>
@@ -495,8 +487,8 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
 
       <p class="foot">
         Regex is for the in-game stash search (Ctrl-F) — this tool can't read your stash. Data is for patch <b id="footPatch"></b>;
-        edit <code>waystone-data.js</code> to update it. Master node names verified vs poe2db + community (Jun 2026); exact %s
-        approximate — cross-check mod wording with <a href="https://poe2.re" target="_blank" rel="noreferrer">poe2.re</a>.
+        edit <code>waystone-data.js</code> to update it. Mod wording follows the 0.5 "Label: +X%" format —
+        cross-check against <a href="https://poe2.re" target="_blank" rel="noreferrer">poe2.re</a>.
       </p>
     </div>
   </section>

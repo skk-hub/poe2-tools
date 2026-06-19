@@ -65,17 +65,6 @@ window.WAYSTONE_DATA = {
     "Hallowed", "of Nemeses", "Perennial's", "Rusted", "Sacrificial",
   ],
 
-  // Top waystone reward mods to target when juicing, ORDERED BY MARKET VALUE
-  // (see marketWeights below). Value is %-DEPENDENT — these notes say where on
-  // the curve each stat is worth chasing.
-  waystoneTargets: [
-    "increased Item Rarity — the top chase: value explodes past ~60% (70%+ ≈ 325ex). Mid rarity (≤50%) is cheap.",
-    "increased Pack Size — best value per % at mid rolls; aim ≥30%. Caps ~40% ≈ 40ex (lower ceiling than Rarity).",
-    "increased Monster Effectiveness / Magic Monsters — tracks Pack Size; aim ≥40% ≈ 37ex.",
-    "increased Monster Rarity — worthless even at high rolls (~1ex); never pay for it.",
-    "more Waystones found in Area (sustain) — utility, not priced.",
-  ],
-
   // ── Market value of waystone reward stats (%-AWARE) ──────────────────────
   // Oracle: live PoE2 Trade2 "Waystone (Tier 16)" price-floor sweep. For each
   // stat we read the cheapest EXALTED-priced Tier-16 listing at several % of
@@ -108,44 +97,6 @@ window.WAYSTONE_DATA = {
         tip: "Worthless even at ≥40% (~1ex). Never pay for it." },
     ],
   },
-
-  // Shared blue->juiced crafting path (content-agnostic). Per-content notes add
-  // the right tablet + scaling tip.
-  juiceBase: [
-    "Pick a Magic (blue) waystone of your map tier that already rolled Rarity or Quantity (use the Blue regex).",
-    "Orb of Augmentation -> add the 2nd mod (aim for the other of Rarity / Quantity / Pack Size).",
-    "Regal Orb -> upgrade to Rare (3rd mod).",
-    "Exalted Orb x3 -> fill toward 6 mods. Use Omen of Sinistral Exaltation so each Exalt adds a PREFIX (the reward mods), and/or Omen of Greater Exaltation to add 2 at once.",
-    "If a risky suffix lands (less Recovery / reduced Flask / -max Player Res / less Cooldown), use Omen of Whittling + a Chaos Orb to strip your worst mod, or keep it for cheap throwaway maps.",
-    "Identify the waystone (0.5 requires ID before the Map Device).",
-    "In the Tower covering this map, socket up to 3 Precursor Tablets (see the content tablet below).",
-    "Shortcut: on a Rare waystone, use Omen of Chaotic Rarity / Quantity / Monsters + a Chaos Orb to replace ALL mods with that one theme (pure-rarity / all-pack-size / all-monster maps).",
-  ],
-
-  // Omens that help juice waystones. On waystones, PREFIXES are the reward mods
-  // and SUFFIXES are the risk mods, so prefix-forcing omens are the MVP. Omens
-  // trigger automatically when you use the matching orb — carry ONLY the omen
-  // you want so they don't conflict. (Verify left/right side naming in-game.)
-  omens: [
-    { name: "Omen of Chaotic Rarity", orb: "Chaos", effect: "Next Chaos Orb replaces ALL waystone mods with mods that grant Item Rarity",
-      use: "Map-juicing shortcut: turn a rare waystone into a pure-Rarity map in one Chaos. Best for loot-quality / currency farming." },
-    { name: "Omen of Chaotic Quantity", orb: "Chaos", effect: "Next Chaos Orb replaces ALL waystone mods with mods that grant Pack Size (note: 'Quantity' omen = Pack Size)",
-      use: "Turn a rare waystone into an all-Pack-Size map — max monster count for Delirium / Breach / density farming." },
-    { name: "Omen of Chaotic Monsters", orb: "Chaos", effect: "Next Chaos Orb replaces ALL waystone mods with mods that grant Rare & Magic Monsters",
-      use: "All-monster map: more rares/magics for Ritual tribute, drops, and elite farming. Raises difficulty too." },
-    { name: "Omen of Sinistral Exaltation", orb: "Exalted", effect: "Next Exalted Orb adds a PREFIX only",
-      use: "Best juice omen — reward mods (Rarity, Quantity, Pack Size, Waystones found) are prefixes, so this forces a good mod instead of a risky suffix." },
-    { name: "Omen of Greater Exaltation", orb: "Exalted", effect: "Next Exalted Orb adds 2 modifiers",
-      use: "Fill toward 6 mods twice as fast. Strong once your prefixes are the open slots." },
-    { name: "Omen of Whittling", orb: "Chaos", effect: "Next Chaos Orb removes the lowest-tier modifier",
-      use: "Clean a bricked map — strip your worst/risky mod instead of a random one, then re-Exalt." },
-    { name: "Omen of Dextral Exaltation", orb: "Exalted", effect: "Next Exalted Orb adds a SUFFIX only",
-      use: "Usually AVOID for safe juicing (suffixes are the risk/monster mods). Use only if you specifically want monster-difficulty mods." },
-    { name: "Omen of Homogenising Exaltation", orb: "Exalted", effect: "Next Exalted adds a modifier of a type already present",
-      use: "Legacy — no longer drops since 0.4, but existing copies still work." },
-    { name: "Omen of Corruption", orb: "Vaal", effect: "Next Vaal Orb cannot 'do nothing' — forces a corruption outcome",
-      use: "Gamble a finished map for a corrupt upgrade (extra mod / tier shift). High risk, no take-backs." },
-  ],
 
   // `scalesWith`: how much each content type benefits from a waystone's reward
   // stats (0–1 per stat). Used by the evaluator to suggest the best content to
@@ -220,111 +171,5 @@ window.WAYSTONE_DATA = {
         { name: "Omen of Chaotic Rarity", why: "Pure loot-quality farming — convert the whole map to Rarity." },
       ],
     },
-  ],
-
-  // ── Masters of the Atlas (PoE2 0.5.x "Masters of the Atlas") ─────────────
-  // Atlas-tree Ascendancy. You pick ONE master per map (free to swap before you
-  // enter), and spend 4 points down a 12-node tree (4 rows × 3 choices) — so a
-  // build is ONE node PER ROW. Masters are organized by GOAL — loot (Jado),
-  // bossing/density (Hilda), survival/utility/targeting (Doryani) — NOT by
-  // mechanic, so there is no "Abyss master" or "Ritual master": pick by your
-  // STRATEGY + whether you're dying. Each node carries its `row` (1–4); the 4
-  // `take:true` nodes are the recommended build (one per row). Node NAMES are
-  // cross-verified vs poe2db + community (Jun 2026); exact %s approximate.
-  // 0.5.2 (2026-06-12) tweaks folded in: Jado Partial Translations nerfed to a
-  // random 0–40% (was 20% chance to double); Expedition & Ritual rewards buffed
-  // (no direct Hilda/Doryani nerfs). Community consensus: Jado is the currency
-  // default ("most never leave it"); Doryani for survivability/juice/citadel on
-  // deep atlas; Hilda for boss/pinnacle fragment farming.
-  mastersNote: "One master per map (free swap), 4 points = one node per row. Default Jado for currency; Hilda competes on DENSITY mechanics (Abyss/Breach/Delirium); Doryani for survival/citadel/expedition. Grounded in community guides (Jun 2026, incl. 0.5.2) — exact %s approximate.",
-  patchNote: "0.5.2 (2026-06-12): Jado 'Partial Translations' nerfed to random 0–40% tablet-mod effect (was 20% chance to double) — STILL the core tablet-juicing node. Expedition (guaranteed Grand Expedition per ocean section) + Ritual (Mysterious Rites +10 omens) buffed. No direct Hilda/Doryani nerfs.",
-  progression: "Community flow: start Doryani (revives cover gear gaps) → switch to Jado once you sustain red maps ('most currency farmers never leave Jado') → only swap to Hilda for boss/pinnacle-fragment income, or for high-density mechanics (Abyss) if you survive the empowered packs.",
-  // Per-mechanic master guidance (where community sources disagree with a flat
-  // "Jado default"). Surfaced in the content-notes card.
-  masterHints: {
-    breach: "Density mechanic — Hilda (Breeding Season + Ancient Inscriptions + density) competes with Jado. Jado still fine for raw loot.",
-    abyss: "High-density mechanic — dedicated Abyss guides pick Hilda (rares + tablet effect + density) IF you survive empowered packs; otherwise Jado for raw currency.",
-    delirium: "Density / clear-speed — Hilda for density, Jado for loot. Doryani if the fog packs kill you.",
-    expedition: "Doryani's Refined Formula (+explosive radius) helps the mechanic; otherwise Jado for Logbook/Remnant loot. 0.5.2 guarantees a Grand Expedition per ocean section.",
-    ritual: "COMMON MISTAKE: don't auto-pick Hilda for empowered bosses. Ritual income is Omens + tributes → JADO's unique amplification scales it better. Stay Jado unless you're boss-fragment farming.",
-    general: "Pure rarity/currency → Jado, the default ('most never leave it').",
-  },
-  // Sources: aoeah 0.5 master/Abyss guides, akrpg/timesaver atlas strats, VULKK 0.5.2,
-  // poe2db, neonlightsmedia, Fubgun tree. Builds = ONE node per row (4 rows).
-  masters: {
-    jado: {
-      name: "Jado", tree: "Spycraft", role: "Loot & profit engine", short: "Currency · tablets", conf: "med",
-      why: "The currency default ('most never leave Jado'). For TABLET STACKING (your Abyss/Ritual setup) Partial Translations doubling tablet mods — Waystone Quantity, pack size — is the core node. Also amplifies Ritual Omens/tributes and unique drops. No defence: only when you survive.",
-      nodes: [
-        { row: 1, name: "Trove Seekers", effect: "+100% Rare Chests; Strongboxes far likelier to be Unique", take: true },
-        { row: 1, name: "In The Wrong Hands", effect: "Powerful Map Bosses drop an extra Unique (boss-heavy maps)" },
-        { row: 1, name: "Unexpected Missions", effect: "Corrupted Waystones gain extra mods + Mortuary Map (corrupted runs)" },
-        { row: 2, name: "Unforeseen Threats", effect: "Chance to reveal Anomaly Maps on completion (high-value)", take: true },
-        { row: 2, name: "Mysterious Gifts", effect: "Rare/Unique Strongbox monsters drop Cryptic Keys (strongbox build)" },
-        { row: 3, name: "Partial Translations", effect: "Random 0–40% increased Tablet explicit-mod effect — THE tablet-stacking node (0.5.2: was 20% chance to double)", take: true, conf: "low" },
-        { row: 3, name: "Stolen Relics", effect: "Unique Strongboxes can drop Twilight Reliquary Keys (strongbox build)" },
-        { row: 4, name: "Keen Appraisal", effect: "+50% Exceptional Items found", take: true },
-        { row: 4, name: "Untold Histories", effect: "+Lineage Supports; Pinnacle Bosses tougher" },
-      ],
-    },
-    hilda: {
-      name: "Hilda", tree: "Hunting", role: "Density & bosses", short: "Density · bosses", conf: "med",
-      why: "Density + boss engine. Top pick for high-density mechanics (Abyss): Breeding Season adds rares and Ancient Inscriptions scales tablet effect per type. Also THE boss/pinnacle-fragment master — but only if you survive empowered packs.",
-      nodes: [
-        { row: 1, name: "Breeding Season", effect: "+15% Rare Monsters — stacks with all rare bonuses (density)", take: true },
-        { row: 1, name: "Mighty Prey", effect: "25% chance to upgrade Map Bosses to Powerful (boss build)" },
-        { row: 2, name: "Will of the Draíocht", effect: "Azmeri Spirits cannot possess Rare monsters (keeps your rares)", take: true },
-        { row: 2, name: "Soul Eaters", effect: "Map Bosses scale by monsters defeated in the map (boss build)" },
-        { row: 3, name: "Ancient Inscriptions", effect: "+Tablet explicit-mod effect for EACH tablet type — Hilda's tablet node", take: true, conf: "low" },
-        { row: 3, name: "Lethal Adaptation", effect: "+40% effectiveness of Unique monsters with modifiers" },
-        { row: 4, name: "Patient Battue", effect: "Chance to replace Rare Monsters with random Map Bosses", take: true },
-        { row: 4, name: "Gutting and Skinning", effect: "Pinnacle Bosses & Unique monsters drop additional items (pinnacle build)" },
-      ],
-    },
-    doryani: {
-      name: "Doryani", tree: "Science", role: "Survival, utility & targeting", short: "Revives · citadel · juice", conf: "med",
-      why: "Keeps you alive and adds juice/targeting: extra revive, irradiated maps, +waystone effect, Citadel reveal, Terraformers, expedition radius. The early-progression pick; its pure-safety value is wasted once you survive.",
-      nodes: [
-        { row: 1, name: "Stitch the Flesh", effect: "Maps gain an additional Revival", take: true },
-        { row: 1, name: "Refined Formula", effect: "+150% Expedition Explosive Radius (expedition build)", conf: "low" },
-        { row: 2, name: "Disengaged Safeties", effect: "Maps become Irradiated — harder, more reward/juice", take: true },
-        { row: 2, name: "Improved Calibration", effect: "Waystone modifiers gain ~25% increased effect (juice)", conf: "low" },
-        { row: 3, name: "Hidden Patterns", effect: "10% chance to unlock nearby maps — atlas traversal", take: true },
-        { row: 3, name: "Volatile Connection", effect: "15% chance areas are Cleansed or Corrupted" },
-        { row: 4, name: "Head of the Snake", effect: "Pinnacle Bosses gain drops & revival, and REVEAL Citadels (citadel hunting)", take: true },
-        { row: 4, name: "Remnants of Greatness", effect: "Map Bosses may guard a Precursor Terraformer (terraformer build)" },
-      ],
-    },
-  },
-
-  // Control-bar selector options (the dashboard reads these).
-  strategies: [
-    { id: "profit", label: "Profit" },
-    { id: "safe", label: "Safe" },
-    { id: "corrupted", label: "Corrupted" },
-    { id: "boss", label: "Boss / Citadel" },
-    { id: "pinnacle", label: "Pinnacle" },
-    { id: "strongbox", label: "Strongbox / Keys" },
-  ],
-  tabletMixes: [
-    { id: "same", label: "Same content spam" },
-    { id: "2plus1", label: "2 content + 1 irradiated" },
-    { id: "3plus1", label: "3 content + 1 irradiated" },
-    { id: "mixed", label: "Mixed tablet types" },
-  ],
-
-  // Dense situation → master table (the "Replace long cards with tables" ask).
-  // `conf`: high = mechanically clear; med = sound inference from verified nodes.
-  masterSituations: [
-    { sit: "General rarity / currency farm", master: "Jado", nodes: "Trove Seekers, Keen Appraisal, In The Wrong Hands", when: "You clear comfortably and want raw loot", avoid: "You're dying — Jado has no defence", conf: "med" },
-    { sit: "Strongbox / key / reliquary maps", master: "Jado", nodes: "Trove Seekers, Mysterious Gifts", when: "Chasing unique strongboxes / Cryptic & Reliquary keys", avoid: "—", conf: "med" },
-    { sit: "Same-content tablet spam (+ irradiated)", master: "Jado", nodes: "Loot core + Partial Translations", when: "Profit-focused, surviving fine", avoid: "Running many DIFFERENT tablet types → Hilda", conf: "med" },
-    { sit: "Mixed tablet types", master: "Hilda", nodes: "Ancient Inscriptions (+per type)", when: "You run 3+ different tablet types at once", avoid: "All one content (no per-type bonus)", conf: "med" },
-    { sit: "Boss / powerful map bosses", master: "Hilda", nodes: "Mighty Prey, Patient Battue, Soul Eaters", when: "Farming map bosses for drops", avoid: "You die to upgraded bosses → Doryani", conf: "med" },
-    { sit: "Citadel hunting", master: "Doryani", nodes: "Head of the Snake (reveals Citadels)", when: "Actively searching for Citadels", avoid: "—", conf: "med" },
-    { sit: "Pinnacle bosses", master: "Hilda", nodes: "Gutting and Skinning", when: "Farming pinnacle drops & comfortable", avoid: "Need citadel reveal / revives → Doryani", conf: "med" },
-    { sit: "Expedition", master: "Doryani", nodes: "Refined Formula (+explosive radius)", when: "Expedition-focused maps", avoid: "Pure density goal → Hilda also works", conf: "med" },
-    { sit: "Corrupted maps", master: "Jado (value) / Doryani (if dying)", nodes: "Unexpected Missions / Stitch the Flesh", when: "Jado for extra mods+loot; Doryani only if you die", avoid: "Don't default Doryani just because it's corrupted", conf: "med" },
-    { sit: "Deadly / can't survive", master: "Doryani", nodes: "Stitch the Flesh (+revive)", when: "You die, or run 0-revive 6-mods", avoid: "You're not dying — switch to a loot master", conf: "high" },
   ],
 };
