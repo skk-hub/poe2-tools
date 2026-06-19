@@ -475,18 +475,27 @@ function collectExchangeOffers(data, haveId, wantId) {
 }
 
 // The cheapest standing offer that isn't junk. The bulk Currency Exchange is
-// littered with mispriced/spam "par" listings that swap the base unit
-// one-for-one (e.g. 1 exalted : 1 divine — giving away ~165 ex). For any
-// above-1ex currency these sort to the very top and would be taken as the
-// "cheapest", poisoning the derived rate — this is why Divine resolved to 1 ex,
-// and Vaal/GCP to 1 instead of their true floor. No legitimate seller offers a
-// par swap against exalted, so drop par offers and take the cheapest real one;
-// only fall back to par if that's all there is. Sub-1ex currencies (e.g.
-// Transmutation/Augmentation) are unaffected — their genuine floor is already
-// below the par junk, so it never wins anyway. (offers sorted ascending by ratio.)
+// littered with mispriced/spam listings that poison the derived rate:
+//   1. PAR swaps that trade the base unit one-for-one (e.g. 1 exalted : 1 divine
+//      — giving away ~165 ex). No legit seller does this, so drop exact-par.
+//   2. LOWBALL bait priced far below the market (e.g. "3 exalted : 1 divine" with
+//      real stock when divine is ~180). These pass every stock filter and sort to
+//      the very top as the "cheapest", dragging the rate down — exactly how Divine
+//      kept resolving to ~3 ex. You can't actually fill them; they're traps.
+// So: drop par, then reject anything sitting below a quarter of the book's MEDIAN
+// ratio (a robust market proxy — a handful of baits can't move it), and take the
+// cheapest of what's left. Sub-1ex currencies are unaffected: their whole book is
+// near the median so nothing legit gets cut. (offers sorted ascending by ratio.)
 function robustCheapestOffer(sortedOffers) {
+  if (!sortedOffers.length) return undefined;
   const real = sortedOffers.filter((o) => o.payAmount !== o.receiveAmount);
-  return real.length ? real[0] : sortedOffers[0];
+  const pool = real.length ? real : sortedOffers;
+  if (pool.length < 4) return pool[0];   // too thin to tell a bait from the floor
+  const ratio = (o) => o.payAmount / o.receiveAmount;
+  const median = ratio(pool[Math.floor(pool.length / 2)]);   // pool is sorted asc
+  const floor = median * 0.25;
+  const sane = pool.filter((o) => ratio(o) >= floor);
+  return (sane.length ? sane : pool)[0];
 }
 
 function bestExchangeOffer(data, haveId, wantId, minStock) {
@@ -1240,12 +1249,9 @@ async function sampleEconomy(league) {
   const buy = await fetchExchangeChunked(league, EXALTED_ID, exaltIds);
   const ex = {};
   for (const id of exaltIds) {
-    // Require stock >= 5 (same floor the currency overview uses), falling back to
-    // any offer only for genuinely thin items. A looser floor (was 2) let a thin
-    // lowball snipe offer (e.g. "~3 exalted : 1 divine", stock 2) win the cheapest
-    // race and poison the divine anchor — the rest of the dashboard multiplies by
-    // exPerDiv, so one bad offer skewed every price. (Divine has deep stock, so the
-    // 5-floor reliably lands on the real ~180ex market offer.)
+    // Stock>=5 (matching the currency overview) drops thin junk; the real defence
+    // against well-stocked lowball bait poisoning the divine anchor is the median
+    // floor in robustCheapestOffer. exPerDiv multiplies every price on the board.
     const b = bestExchangeOffer(buy, EXALTED_ID, id, 5) || bestExchangeOffer(buy, EXALTED_ID, id, 1);
     if (b && b.payPerReceive > 0) ex[id] = Math.round(b.payPerReceive * 100) / 100;
   }
