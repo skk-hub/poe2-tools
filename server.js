@@ -1458,21 +1458,37 @@ async function waystoneFloor(league, mapFilters, prop) {
   return { total, floor: robustWaystoneFloor(rows.map((r) => r.p)), maxRoll: Math.max(0, ...rows.map((r) => r.roll)) };
 }
 
+// One sweep is ~30 Trade2 calls; a single slow request used to abort (timeout) and
+// throw, nuking the whole refresh with "This operation was aborted". Make each point
+// best-effort: a transient failure (abort/timeout/network) just skips that point, the
+// curve fills from the rest. Only a real rate-limit propagates (so the UI can show
+// the cooldown); a sweep that collected NOTHING throws so the cache is kept.
+async function waystoneFloorSafe(league, mapFilters, prop) {
+  try {
+    return await waystoneFloor(league, mapFilters, prop);
+  } catch (err) {
+    if (/rate limited/i.test(String(err && err.message))) throw err;
+    return { total: 0, floor: null, maxRoll: 0, skipped: true };
+  }
+}
+
 async function runWaystoneSweep(league) {
-  const baseline = await waystoneFloor(league, {});
+  const baseline = await waystoneFloorSafe(league, {});
   const base = baseline.floor || 1;
   const stats = [];
+  let points = 0;
   for (const s of WAYSTONE_SWEEP.stats) {
     const curve = [];
     let ceiling = 0;
     for (const t of s.thresholds) {
-      const r = await waystoneFloor(league, { [s.filter]: { min: t } }, s.prop);
-      if (r.floor != null) curve.push([t, Math.round(r.floor)]);
+      const r = await waystoneFloorSafe(league, { [s.filter]: { min: t } }, s.prop);
+      if (r.floor != null) { curve.push([t, Math.round(r.floor)]); points++; }
       ceiling = Math.max(ceiling, r.maxRoll || 0);
     }
     const peakEx = curve.length ? curve[curve.length - 1][1] : 0;
     stats.push({ key: s.key, label: s.label, tip: s.tip, curve, ceiling, peakEx });
   }
+  if (!points) throw new Error("sweep returned no data — market may be slow, try again");
   const maxPeak = Math.max(1, ...stats.map((st) => st.peakEx));
   for (const st of stats) st.weight = Math.round((st.peakEx / maxPeak) * 100) / 100;
   stats.sort((a, b) => b.peakEx - a.peakEx);
