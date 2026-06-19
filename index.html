@@ -438,18 +438,6 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         </div>
       </div>
 
-      <div class="mj-legend">
-        <span><code>"…"</code> = AND</span>
-        <span><code>|</code> = OR (inside a block)</span>
-        <span><code>!"…"</code> = exclude</span>
-        <span class="mj-legend-end">Paste into the in-game stash search (Ctrl-F) · 250-char limit</span>
-      </div>
-
-      <div class="mj-main">
-        <div class="mj-sheet" id="mjSheet"></div>
-        <aside class="mj-aside" id="mjAside"></aside>
-      </div>
-
       <details class="mj-d mj-eval">
         <summary>Evaluate a copied waystone or tablet</summary>
         <div class="eval">
@@ -460,10 +448,14 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         </div>
       </details>
 
+      <div class="mj-main">
+        <div class="mj-sheet" id="mjSheet"></div>
+        <aside class="mj-aside" id="mjAside"></aside>
+      </div>
+
       <p class="foot">
-        Regex is for the in-game stash search (Ctrl-F) — this tool can't read your stash. Data is for patch <b id="footPatch"></b>;
-        edit <code>waystone-data.js</code> to update it. Mod wording follows the 0.5 "Label: +X%" format —
-        cross-check against <a href="https://poe2.re" target="_blank" rel="noreferrer">poe2.re</a>.
+        Paste into the in-game stash search (Ctrl-F, 250-char limit). <code>"…"</code> AND · <code>|</code> OR · <code>!"…"</code> exclude.
+        Data is patch <b id="footPatch"></b> — cross-check <a href="https://poe2.re" target="_blank" rel="noreferrer">poe2.re</a>.
       </p>
     </div>
   </section>

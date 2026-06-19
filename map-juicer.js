@@ -29,11 +29,15 @@ window.__viewInit["map-juicer"]=function(){
   function regexRow(title, regex, sub){
     const len = regex.length, over = len > D.regexLimit;
     return `
-      <div class="rx">
-        <div class="rx-top"><span class="rx-title">${esc(title)}</span><span class="rx-len ${over?"over":""}">${len}/${D.regexLimit}</span></div>
-        <div class="regexrow"><code class="regexbox">${esc(regex)}</code><button class="copy" type="button" data-copy="${esc(regex)}">Copy</button></div>
+      <details class="rx">
+        <summary class="rx-top">
+          <span class="rx-title">${esc(title)}</span>
+          <span class="rx-len ${over?"over":""}">${len}</span>
+          <button class="copy" type="button" data-copy="${esc(regex)}">Copy</button>
+        </summary>
+        <div class="regexrow"><code class="regexbox">${esc(regex)}</code></div>
         ${sub?`<div class="rx-sub">${esc(sub)}</div>`:""}
-      </div>`;
+      </details>`;
   }
 
   // ── Cheat sheet ───────────────────────────────────────────────────────────
@@ -64,9 +68,8 @@ window.__viewInit["map-juicer"]=function(){
     const exclude = `"!${T.danger}"`;
     const danger = (D.dangerousMods||[]).map(m=>`<li>${esc(m)}</li>`).join("");
     const removed = (D.removedInPatch||[]).join(", ");
-    return rxcard("Avoid / bait mods", "skip", `
-      <div class="regexrow"><code class="regexbox">${esc(exclude)}</code><button class="copy" type="button" data-copy="${esc(exclude)}">Copy</button></div>
-      <div class="rxcard-note">Excludes the risk suffixes (the run / blue regex already fold this in). Strip a bricked map with Omen of Whittling + Chaos.</div>
+    return rxcard("Avoid / bait mods", "skip",
+      regexRow("Exclude risk suffixes", exclude, "The run / blue regex already fold this in. Strip a bricked map with Omen of Whittling + Chaos.") + `
       <ul class="avoidlist">${danger}</ul>
       ${removed?`<div class="rxcard-note">Removed in 0.5 (don't target): <b>${esc(removed)}</b></div>`:""}`);
   }
@@ -77,7 +80,8 @@ window.__viewInit["map-juicer"]=function(){
   }
   function bindCopy(){
     document.querySelectorAll(".toolroot-mj [data-copy]").forEach(b=>{
-      b.addEventListener("click", async ()=>{
+      b.addEventListener("click", async (e)=>{
+        e.preventDefault(); e.stopPropagation();   // don't toggle the <details> it sits in
         const txt = b.getAttribute("data-copy"), orig = b.textContent;
         try { await navigator.clipboard.writeText(txt); b.textContent="Copied"; }
         catch { b.textContent="Copy failed"; }
@@ -102,19 +106,21 @@ window.__viewInit["map-juicer"]=function(){
     const max = Math.max(1, ...stats.map(peakEx));
     const rows = stats.map(s=>{
       const pk = peakEx(s), pct = Math.round(pk / max * 100);
-      return `<tr>
-        <td><div class="mw-name">${esc(s.label)}</div><div class="mw-bar"><span style="width:${pct}%"></span></div></td>
-        <td class="mw-val"><b>${pk}</b> ex${s.ceiling?`<span class="mw-cap">cap ~${s.ceiling}%</span>`:""}</td>
-      </tr>`;
+      return `<li class="mw-item">
+        <div class="mw-line"><span class="mw-name">${esc(s.label)}</span><span class="mw-val"><b>${pk}</b> ex</span></div>
+        <div class="mw-bar"><span style="width:${pct}%"></span></div>
+        ${s.ceiling?`<div class="mw-cap">best roll caps ~${s.ceiling}%</div>`:""}
+      </li>`;
     }).join("");
     els.aside.innerHTML = `
       <div class="rxcard mj-mod">
         <div class="rxcard-head"><span class="rxcard-title">Mod Value</span><span class="rxcard-kind">${live?"live":"baked"}</span></div>
         <div class="rxcard-body">
-          <table class="mwtable"><thead><tr><th>Affix</th><th>Peak value</th></tr></thead><tbody>${rows}</tbody></table>
+          <div class="mw-legend">Bar = peak value vs. the most valuable mod</div>
+          <ul class="mwlist">${rows}</ul>
           ${mwStatus?`<div class="mw-status">${esc(mwStatus)}</div>`:""}
           <button class="mw-refresh" id="weightRefresh" type="button"${refreshing?" disabled":""}>${refreshing?"Sweeping…":"Refresh from market"}</button>
-          <div class="rxcard-note">Tier-16 price-vs-% sweep${mw.analyzed?` · ${esc(mw.analyzed)}`:""}. Peak ex at the stat's best roll; re-run each patch.</div>
+          <div class="rxcard-note">Tier-16 price-vs-% sweep${mw.analyzed?` · ${esc(mw.analyzed)}`:""}. Re-run each patch.</div>
         </div>
       </div>`;
     const btn = els.aside.querySelector("#weightRefresh");
