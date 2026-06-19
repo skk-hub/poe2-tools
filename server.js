@@ -1240,7 +1240,13 @@ async function sampleEconomy(league) {
   const buy = await fetchExchangeChunked(league, EXALTED_ID, exaltIds);
   const ex = {};
   for (const id of exaltIds) {
-    const b = bestExchangeOffer(buy, EXALTED_ID, id, 2) || bestExchangeOffer(buy, EXALTED_ID, id, 1);
+    // Require stock >= 5 (same floor the currency overview uses), falling back to
+    // any offer only for genuinely thin items. A looser floor (was 2) let a thin
+    // lowball snipe offer (e.g. "~3 exalted : 1 divine", stock 2) win the cheapest
+    // race and poison the divine anchor — the rest of the dashboard multiplies by
+    // exPerDiv, so one bad offer skewed every price. (Divine has deep stock, so the
+    // 5-floor reliably lands on the real ~180ex market offer.)
+    const b = bestExchangeOffer(buy, EXALTED_ID, id, 5) || bestExchangeOffer(buy, EXALTED_ID, id, 1);
     if (b && b.payPerReceive > 0) ex[id] = Math.round(b.payPerReceive * 100) / 100;
   }
   const exPerDiv = ex.divine || 0;

@@ -117,6 +117,13 @@ function staticChecks() {
   } catch {
     check(false, "exchange backfill recovers page-starved currencies (backfill-test.js)");
   }
+  // economy divine-anchor: thin lowball offers can't poison exPerDiv (stock floor)
+  try {
+    require("child_process").execFileSync("node", [path.join(ROOT, "economy-rate-test.js")], { stdio: "ignore", env: { ...process.env, POE2_NO_OPEN: "1" } });
+    check(true, "economy divine anchor rejects thin lowball offers (economy-rate-test.js)");
+  } catch {
+    check(false, "economy divine anchor rejects thin lowball offers (economy-rate-test.js)");
+  }
 }
 
 // ---- 2) HTTP checks ----
