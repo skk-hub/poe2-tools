@@ -9,8 +9,14 @@ const { createTradeQueue } = require("./trade-queue");
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = 17777;
 const ROOT = __dirname;
-const POE_OAUTH_FILE = path.join(ROOT, ".poe-oauth.json");
-const POE_OAUTH_STATE_FILE = path.join(ROOT, ".poe-oauth-state.json");
+// Runtime state (caches, economy history, rate-limit safety, oauth) lives here.
+// Defaults to ROOT for local dev; in Docker set DATA_DIR to a mounted volume so a
+// `--build` redeploy doesn't wipe the container's writable layer (e.g. the rolling
+// economy-history graph). ponytail: one dir, no per-file mounts.
+const DATA_DIR = process.env.DATA_DIR || ROOT;
+try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+const POE_OAUTH_FILE = path.join(DATA_DIR, ".poe-oauth.json");
+const POE_OAUTH_STATE_FILE = path.join(DATA_DIR, ".poe-oauth-state.json");
 const TYPES = ["Currency", "Essences", "Ritual", "Abyss", "Breach"];
 const RUNE_CATEGORIES = [
   { type: "Currency", slug: "currency" },
@@ -278,13 +284,13 @@ const QUIVER_ROUTES = {
   },
 };
 const tradeQueue = createTradeQueue({
-  statusFile: path.join(ROOT, ".trade-status.json"),
+  statusFile: path.join(DATA_DIR, ".trade-status.json"),
   headers: TRADE_HEADERS,
   minGapMs: TRADE_MIN_GAP_MS,
   timeoutMs: TRADE_TIMEOUT_MS,
 });
 const comparableCache = new Map();
-const ARBITRAGE_CACHE_FILE = path.join(ROOT, ".arbitrage-scan-cache.json");
+const ARBITRAGE_CACHE_FILE = path.join(DATA_DIR, ".arbitrage-scan-cache.json");
 const ARBITRAGE_CACHE_MS = 2 * 60 * 1000;
 const EXALTED_ID = "exalted";
 const ARBITRAGE_ITEMS = [
@@ -1061,7 +1067,7 @@ async function getTradePrice(name, league, currencyRates, deadline = 0) {
 // when limited it serves the last cache. `rates` is keyed by trade currency id
 // AND normalised name (drop-in for the old fetchCurrencyRates); `items` carries
 // per-currency ex value + stock + icon for display.
-const CURRENCY_RATES_FILE = path.join(ROOT, ".currency-rates.json");
+const CURRENCY_RATES_FILE = path.join(DATA_DIR, ".currency-rates.json");
 const CURRENCY_RATES_TTL_MS = 10 * 60 * 1000;
 const CURRENCY_ALIASES = {
   alch: "orb of alchemy", alchemy: "orb of alchemy", regal: "regal orb",
@@ -1198,7 +1204,7 @@ async function warmExchange(league = DEFAULT_LEAGUE) {
 // high-value items (omens, Hinekora's Lock) have only junk offers on the exalted side
 // and their REAL liquid market is the DIVINE side (e.g. Hinekora's = ~680 div), so
 // those are flagged `div: true` and priced against divine, then converted to ex.
-const ECONOMY_FILE = path.join(ROOT, ".economy-history.json");
+const ECONOMY_FILE = path.join(DATA_DIR, ".economy-history.json");
 const ECONOMY_SAMPLE_MS = 12 * 60 * 60 * 1000;   // twice a day
 const ECONOMY_DEDUPE_MS = 60 * 60 * 1000;        // a manual refresh within 1h updates the last point instead of appending
 const ECONOMY_MAX_POINTS = 200;                  // ~3 months at 2/day; caps file size
@@ -1283,7 +1289,7 @@ function maybeSampleEconomy(league = DEFAULT_LEAGUE) {
 // in the BACKGROUND off one batched exchange call, so the book fills in from real
 // usage and the user never waits. Cheap/illiquid items with no exalted-side offer
 // simply stay on the poe.ninja fallback. ───────────────────────────────────────
-const RUNE_BOOK_FILE = path.join(ROOT, ".rune-exchange-book.json");
+const RUNE_BOOK_FILE = path.join(DATA_DIR, ".rune-exchange-book.json");
 const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
 // Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles
 // (its inter-call gap grows to several seconds under load), so a forced refresh of
@@ -1367,7 +1373,7 @@ const getCurrencyOverview = getExchangeData;
 // the cheapest exalted-priced Tier-N listing at increasing stat thresholds.
 // Goes through the shared adaptive Trade2 queue; cached to a file + rate-limit
 // + cooldown guarded so a button click can't exhaust the shared limit.
-const WAYSTONE_WEIGHTS_FILE = path.join(ROOT, ".waystone-weights.json");
+const WAYSTONE_WEIGHTS_FILE = path.join(DATA_DIR, ".waystone-weights.json");
 const WAYSTONE_SWEEP_COOLDOWN_MS = 2 * 60 * 1000;
 const WAYSTONE_SWEEP = {
   tier: 16,
@@ -1461,7 +1467,7 @@ async function runWaystoneSweep(league) {
 // Reads GGG's live bulk Currency Exchange (the in-game book), NOT poe.ninja.
 // Cached with a TTL so a page load triggers at most one trade call per window;
 // falls back to the last cached value (or {limited}) when the queue is blocked.
-const WAYSTONE_EXCHANGE_FILE = path.join(ROOT, ".waystone-exchange.json");
+const WAYSTONE_EXCHANGE_FILE = path.join(DATA_DIR, ".waystone-exchange.json");
 const EXCHANGE_TTL_MS = 5 * 60 * 1000;
 
 function readExchangeCache() {

@@ -1,0 +1,7 @@
+# Keep dev runtime-state out of the image so COPY . . can't bake stale local
+# caches/history over the server's. These live on the poe-data volume instead.
+.*.json
+.poe-oauth*.json
+.playwright-cli/
+node_modules/
+*.env
