@@ -2036,25 +2036,19 @@ async function fetchRunePrices(text, league, forceFresh) {
   const limitedRawLines = rawLines.slice(0, MAX_RUNE_LINES);
   let tradeFallbacks = 0;
 
-  // Fill the Trade2 exchange book for the pasted items BEFORE pricing, so a single
-  // click prices everything the exchange knows instead of showing NOT FOUND until a
-  // second pass. "Fetch fresh" (forceFresh) re-fetches every pasted item (busts the
-  // cache); the default "Check picks" only fills what's MISSING or stale from the
-  // book, so it stays instant once the book is warm but never misses an un-booked
-  // item like a freshly-pasted rune. Bounded by RUNE_FRESH_DEADLINE_MS either way so
-  // a throttled queue can't hang the request. (Currency rates come from
-  // getExchangeData below, stale-while-revalidate — not swept here; a concurrent
-  // currency sweep used to double the queue burst and trip the shared rate limit.)
-  if (!initialTradeStatus.limited) {
+  // "Fetch fresh prices" (forceFresh) ONLY: the user explicitly waits, so block
+  // BRIEFLY (bounded) to fill the book for the pasted items before pricing. The
+  // DEFAULT "Check picks" must NOT block-fill here — doing so, plus the per-item
+  // trade-search fallbacks below, bursts the shared queue and trips the IP rate
+  // limit (5 req / 15s) on a cold multi-item paste, locking the tool out for
+  // minutes. Default instead prices what's already booked instantly and kicks a
+  // GENTLE background fill at the end; un-booked exchange items show "pricing…" and
+  // resolve on the next check.
+  if (forceFresh && !initialTradeStatus.limited) {
     const norms = runePastedNorms(limitedRawLines);
-    const bp = (readRuneBook(league) || {}).prices || {};
-    const need = forceFresh ? norms : norms.filter((nn) => {
-      const b = bp[nn];
-      return !b || !b.updated || (Date.now() - new Date(b.updated).getTime() > RUNE_BOOK_TTL_MS);
-    });
-    if (need.length) {
+    if (norms.length) {
       await Promise.race([
-        refreshRuneBook(league, need, true).catch(() => {}),
+        refreshRuneBook(league, norms, true).catch(() => {}),
         new Promise((resolve) => setTimeout(resolve, RUNE_FRESH_DEADLINE_MS)),
       ]);
     }
@@ -2154,7 +2148,7 @@ async function fetchRunePrices(text, league, forceFresh) {
 
     if (match) {
       const lowVolume = match.volume >= 0 && match.volume < MIN_NINJA_VOLUME;
-      if (lowVolume && tradeFallbacks < MAX_TRADE_FALLBACKS) {
+      if (forceFresh && lowVolume && tradeFallbacks < MAX_TRADE_FALLBACKS) {
         tradeFallbacks++;
         const tradePrice = await getTradePrice(cleanName, league, currencyRates);
         if (tradePrice && tradePrice.limited) {
@@ -2204,11 +2198,21 @@ async function fetchRunePrices(text, league, forceFresh) {
       continue;
     }
 
-    // No poe.ninja match at all → the Trade2 exchange book is the accurate
-    // fallback (this is the main coverage win: items poe.ninja simply lacks).
+    // No currency match → the Trade2 exchange book is the accurate source for
+    // runes/essences/soul cores/etc. (the main coverage win).
     if (!isSkillOrSupport) {
       const bk = bookResultFor(norm, parsed.qty, cleanName);
       if (bk) { results.push(bk); continue; }
+      // Not booked yet. On the DEFAULT check, NEVER burst the queue with a per-item
+      // trade search (that + the fill is what tripped the rate limit). Show "pricing…"
+      // and let the gentle background fill below book it for the next check. The fill
+      // only targets real exchange items, so a genuinely off-exchange paste just stays
+      // "pricing…" (harmless — no calls wasted on it); "Fetch fresh" is the explicit
+      // bounded path that does the live trade search and the authoritative NOT FOUND.
+      if (!forceFresh) {
+        results.push({ qty: parsed.qty, name: cleanName, category: "pricing…", each: "", total: "", currency: "", source: "trade2 exchange", rawPrice: "fetching live price — check again in ~30s", change7d: "", confidence: "none", units: null });
+        continue;
+      }
     }
 
     let tradePrice = null;
