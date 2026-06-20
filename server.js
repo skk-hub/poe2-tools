@@ -973,6 +973,12 @@ async function importOauthCharacter(characterName, realm = "poe2") {
 
 function normalizeName(value) {
   return String(value)
+    // Strip combining diacritics first: OCR / odd copy-paste turns an apostrophe+
+    // letter ("t'") into a caron letter ("\u0165"), so "Girt's" arrives as "Gir\u0165s". NFD
+    // splits \u0165 -> t + combining caron; dropping the mark leaves "t", and the lost
+    // apostrophe doesn't matter (it's stripped below anyway). Without this, \u0165\u013e\u010f fell
+    // into the [^a-z0-9] catch-all and became spaces, so the name never matched.
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[\u2019']/g, "")
     .replace(/[()]/g, " ")
