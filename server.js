@@ -1108,9 +1108,49 @@ function readCurrencyRatesCache() {
   catch { return null; }
 }
 
+// Illiquid orbs whose SELL side (asks) is thin and aspirational, so the cheapest
+// ask is structurally far above the real market (Transmute resolved 30ex vs a true
+// ~0.1; Greater Exalted 44 vs ~3). For these the true rate sits between the deep
+// bid and deep ask, so we price them by the GEOMETRIC MID of both sides instead of
+// the one-sided cheapest ask. Verified vs the in-game market ratio: within ~1.6x,
+// where one-sided was 14-300x high. The liquid staples (divine/chaos/alch/…) stay
+// one-sided — they're correct there, and geo-mid would wrongly drag them toward
+// their lowball bids. INTERIM: the official cxapi currency-exchange endpoint gives
+// exact traded ratios and supersedes all of this once its service scope is granted.
+// (Perfect Exalted is NOT here: its book is 1-2 offers, so two-sided is meaningless
+// — geo-mid gave 200 vs a ~660 truth where the one-sided cheapest ask gave ~560.)
+const TWO_SIDED_IDS = new Set(["transmute", "aug", "greater-exalted-orb"]);
+
+// Geometric mid of the robust deep bid and deep ask, in exalt-per-item. ASK =
+// cheapest offer with real stock (skips thin baits) BUT the raw cheapest, not the
+// densest cluster (the cluster IS the overpriced wall for these). BID = highest
+// buy offer with stock, not crossed above the ask (drops highball baits). Returns
+// {ex, stock}; falls back to whichever side exists. The bid side is one extra
+// exchange call per item — only paid for the ~4 ids in TWO_SIDED_IDS.
+async function geoMidRate(league, id, askData) {
+  const asks = collectExchangeOffers(askData, EXALTED_ID, id)
+    .filter((o) => o.payAmount > 0 && o.receiveAmount > 0 && (o.receiveStock || 0) >= 5)
+    .map((o) => ({ px: o.payAmount / o.receiveAmount, stock: o.receiveStock || 0 }))
+    .sort((a, b) => a.px - b.px);
+  const askPx = asks.length ? asks[0].px : 0;
+  let bidPx = 0;
+  try {
+    const bidData = await fetchExchangeChunked(league, id, [EXALTED_ID]);
+    const bids = collectExchangeOffers(bidData, id, EXALTED_ID)
+      .filter((o) => o.payAmount > 0 && o.receiveAmount > 0)
+      .map((o) => ({ px: o.receiveAmount / o.payAmount, stock: o.payStock || 0 }))  // exalt per item
+      .sort((a, b) => b.px - a.px);
+    const ok = (b) => !askPx || b.px <= askPx * 1.05;       // drop bids crossed above ask
+    bidPx = (bids.find((b) => b.stock >= 5 && ok(b)) || bids.find(ok) || bids[0] || {}).px || 0;
+  } catch {}
+  const ex = (askPx > 0 && bidPx > 0) ? Math.sqrt(askPx * bidPx) : (askPx || bidPx || 0);
+  return { ex, stock: asks.length ? Math.floor(asks[0].stock) : 0 };
+}
+
 // One batched ex→currency exchange call; the best (cheapest) offer per currency
 // gives its ex-per-unit value. Goes through fetchExchangeChunked (cap 3) + the
-// shared queue, so a full refresh is ~3 calls for the 9 main currencies.
+// shared queue, so a full refresh is ~3 calls for the 9 main currencies. The few
+// illiquid orbs in TWO_SIDED_IDS each add one bid-side call (see geoMidRate).
 async function fetchExchangeData(league) {
   const resolved = await resolveArbitrageItems(league);
   const icons = (arbitrageStaticCache && arbitrageStaticCache.iconsById) || {};
@@ -1119,15 +1159,22 @@ async function fetchExchangeData(league) {
   const rates = { exalted: 1 };
   const items = [{ id: "exalted", name: "Exalted Orb", ex: 1, stock: 0, icon: normalizeIconUrl(icons.exalted), base: true }];
   for (const c of currencies) {
-    // Prefer a reasonably-stocked offer so one thin lowball listing can't skew
-    // the rate; fall back to any offer for genuinely thin currencies.
-    const best = bestExchangeOffer(buyData, EXALTED_ID, c.id, 5) || bestExchangeOffer(buyData, EXALTED_ID, c.id, 1);
-    if (!best) continue;
-    const ex = round4(best.payPerReceive);
+    let ex, stock;
+    if (TWO_SIDED_IDS.has(c.id)) {
+      // Illiquid orb: price by the two-sided geo-mid (cheapest ask is far too high).
+      const g = await geoMidRate(league, c.id, buyData);
+      ex = round4(g.ex); stock = g.stock;
+    } else {
+      // Prefer a reasonably-stocked offer so one thin lowball listing can't skew
+      // the rate; fall back to any offer for genuinely thin currencies.
+      const best = bestExchangeOffer(buyData, EXALTED_ID, c.id, 5) || bestExchangeOffer(buyData, EXALTED_ID, c.id, 1);
+      if (!best) continue;
+      ex = round4(best.payPerReceive); stock = Math.floor(best.receiveStock) || 0;
+    }
     if (!(ex > 0)) continue;
     rates[c.id] = ex;
     rates[normalizeName(c.name)] = ex;
-    items.push({ id: c.id, name: c.name, ex, stock: Math.floor(best.receiveStock) || 0, icon: normalizeIconUrl(icons[c.id]) });
+    items.push({ id: c.id, name: c.name, ex, stock, icon: normalizeIconUrl(icons[c.id]) });
   }
   for (const [alias, target] of Object.entries(CURRENCY_ALIASES)) {
     const t = rates[normalizeName(target)];
