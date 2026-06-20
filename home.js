@@ -256,15 +256,19 @@ window.__viewInit["home"] = function () {
     econ.hidden = false;
     const limited = !!(d && d.limited);
     if (!limited) { clearLimitCountdown(); econLimited = false; if (econRefresh) econRefresh.disabled = false; }
-    if (!d || !d.points || !d.points.length) {
+    const points = (d && d.points) || [], items = (d && d.items) || [];
+    // Headline + cards show CURRENT (live, shared with the currency strip); the
+    // history points only drive the trend graph + "% vs start".
+    const cur = d && d.current && d.current.ex && Object.keys(d.current.ex).length ? d.current : null;
+    const latest = cur || (points.length ? points[points.length - 1] : null);
+    if (!latest) {
       econChartWrap.hidden = true; econCards.innerHTML = ""; econHeadline.innerHTML = "";
       econEmpty.hidden = false;
       if (limited) applyLimit(d, true);
-      else econEmpty.textContent = "No economy samples yet — tap ↻ to take the first sample (~1 min).";
+      else econEmpty.textContent = "No economy data yet — tap ↻ to fetch (~1 min).";
       return;
     }
     if (limited) applyLimit(d, false);
-    const points = d.points, items = d.items || [], latest = points[points.length - 1];
     const exPerDiv = latest.exPerDiv || 0;
     econHeadline.innerHTML = exPerDiv ? '<b>' + fmtEx(exPerDiv) + '</b> <span>ex / Divine</span>' : "";
     if (points.length >= 2) {
@@ -274,11 +278,11 @@ window.__viewInit["home"] = function () {
       econChartWrap.hidden = false; econEmpty.hidden = true;
     } else {
       econChartWrap.hidden = true; econEmpty.hidden = false;
-      econEmpty.textContent = "1 sample so far — the relative-value graph fills in as samples accumulate (twice a day). Current values below.";
+      econEmpty.textContent = "Live values below — the relative-value trend graph fills in as history accumulates (sampled twice a day).";
     }
     econCards.innerHTML = cards(latest, exPerDiv, items, points);
-    econSub.textContent = "Priced in Divine · " + points.length + " sample" + (points.length === 1 ? "" : "s") +
-      (d.updated ? " · " + ago(d.updated) : "");
+    econSub.textContent = "Live · priced in Divine" + (points.length ? " · " + points.length + "-pt trend" : "") +
+      (cur ? "" : (d.updated ? " · " + ago(d.updated) : ""));
     econRendered = true;
   }
 

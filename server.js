@@ -313,6 +313,11 @@ const ARBITRAGE_ITEMS = [
   { id: "transmute", name: "Orb of Transmutation", category: "currency", enabled: false },
   { id: "aug", name: "Orb of Augmentation", category: "currency", enabled: false },
   { id: "fracturing-orb", name: "Fracturing Orb", category: "currency", enabled: false, aliases: ["Orb of Fracturing"] },
+  // Exalted family — priced here (one shared exchange call) so the home economy
+  // panel reads them off the SAME live rates the currency strip uses, instead of a
+  // separate twice-a-day fetch that drifted out of sync. enabled:false = rate-only.
+  { id: "greater-exalted-orb", name: "Greater Exalted Orb", category: "currency", enabled: false },
+  { id: "perfect-exalted-orb", name: "Perfect Exalted Orb", category: "currency", enabled: false },
   { id: "simulacrum-splinter", name: "Simulacrum Splinter", category: "fragments", enabled: true },
   { id: "breach-splinter", name: "Breach Splinter", category: "fragments", enabled: true },
   { id: "cowards-fate", name: "Coward's Fate", category: "fragments", enabled: false },
@@ -477,25 +482,30 @@ function collectExchangeOffers(data, haveId, wantId) {
 // The cheapest standing offer that isn't junk. The bulk Currency Exchange is
 // littered with mispriced/spam listings that poison the derived rate:
 //   1. PAR swaps that trade the base unit one-for-one (e.g. 1 exalted : 1 divine
-//      — giving away ~165 ex). No legit seller does this, so drop exact-par.
-//   2. LOWBALL bait priced far below the market (e.g. "3 exalted : 1 divine" with
-//      real stock when divine is ~180). These pass every stock filter and sort to
-//      the very top as the "cheapest", dragging the rate down — exactly how Divine
-//      kept resolving to ~3 ex. You can't actually fill them; they're traps.
-// So: drop par, then reject anything sitting below a quarter of the book's MEDIAN
-// ratio (a robust market proxy — a handful of baits can't move it), and take the
-// cheapest of what's left. Sub-1ex currencies are unaffected: their whole book is
-// near the median so nothing legit gets cut. (offers sorted ascending by ratio.)
+//      — giving away ~250 ex). No legit seller does this, so drop exact-par.
+//   2. LOWBALL bait priced far below the market (e.g. a lone "165 exalted : 1 divine"
+//      with real stock when the book is clustered at ~250). These pass every stock
+//      filter and sort to the very top as the "cheapest", dragging the rate down.
+//      You can't actually fill them; they're traps.
+// So: drop par, then take the cheapest offer that sits in a CLUSTER — has >=3 peers
+// within ±15%, i.e. where real sellers agree. Lone lowball bait and lone walls have
+// no cluster and are skipped no matter how cheap they sort. (This is the same robust
+// rule the divine-side omen pricing uses; it supersedes the old quarter-of-median
+// floor, which let a lone bait like 165 through when the real book sat at ~250.)
+// Thin books (<4 real offers) can't tell a bait from the floor → take the cheapest.
+// (offers sorted ascending by ratio.)
 function robustCheapestOffer(sortedOffers) {
   if (!sortedOffers.length) return undefined;
   const real = sortedOffers.filter((o) => o.payAmount !== o.receiveAmount);
   const pool = real.length ? real : sortedOffers;
   if (pool.length < 4) return pool[0];   // too thin to tell a bait from the floor
   const ratio = (o) => o.payAmount / o.receiveAmount;
-  const median = ratio(pool[Math.floor(pool.length / 2)]);   // pool is sorted asc
-  const floor = median * 0.25;
-  const sane = pool.filter((o) => ratio(o) >= floor);
-  return (sane.length ? sane : pool)[0];
+  const ratios = pool.map(ratio);
+  const clustered = pool.filter((o) => {
+    const r = ratio(o);
+    return ratios.reduce((n, y) => n + (y >= r * 0.85 && y <= r * 1.15 ? 1 : 0), 0) >= 3;
+  });
+  return (clustered.length ? clustered : pool)[0];
 }
 
 function bestExchangeOffer(data, haveId, wantId, minStock) {
@@ -1255,34 +1265,68 @@ function divineMarketPrice(data, wantId, minStock) {
   return (clustered.length ? clustered : r)[0];   // cheapest clustered price (or cheapest if too thin)
 }
 
+// Div-side prices (omens, Hinekora's) for the economy panel, in divine-per-item.
+// These aren't on the currency strip (the exalted side is junk for them), so they
+// get their own divine-side exchange call — but SWR-cached on the SAME 10-min TTL
+// the strip uses, so a panel load is cheap and the numbers track live, not a
+// twice-a-day snapshot. In-memory: a restart refetches once. (ponytail: no file.)
+let economyDivCache = null;        // { league, perDiv:{id:divPrice}, updated }
+let economyDivInFlight = null;
+function refreshEconomyDivSide(league) {
+  if (economyDivInFlight) return economyDivInFlight;
+  economyDivInFlight = (async () => {
+    try {
+      const divIds = ECONOMY_ITEMS.filter((i) => i.div).map((i) => i.id);
+      if (!divIds.length) return economyDivCache;
+      const buyD = await fetchExchangeChunked(league, "divine", divIds);
+      const perDiv = {};
+      for (const id of divIds) {
+        const p = divineMarketPrice(buyD, id, 2) || divineMarketPrice(buyD, id, 1);
+        if (p > 0) perDiv[id] = p;
+      }
+      if (Object.keys(perDiv).length) economyDivCache = { league, perDiv, updated: new Date().toISOString() };
+      return economyDivCache;
+    } finally { economyDivInFlight = null; }
+  })();
+  return economyDivInFlight;
+}
+async function economyDivSide(league) {
+  const mine = economyDivCache && economyDivCache.league === league ? economyDivCache : null;
+  const fresh = mine && Date.now() - new Date(mine.updated).getTime() < CURRENCY_RATES_TTL_MS;
+  if (fresh) return mine;
+  if (tradeStatus().limited) return mine;                 // serve stale if any
+  if (mine) { refreshEconomyDivSide(league).catch(() => {}); return mine; }  // stale-while-revalidate
+  return refreshEconomyDivSide(league).catch(() => null);  // cold: fetch once
+}
+
+// The live "current" economy point. Exalt-side items (Divine, Greater/Perfect
+// Exalted) come straight from getExchangeData — the SAME live, SWR-cached rates the
+// home currency strip renders — so a shared price like Divine is identical in both
+// places and refreshes together. Div-side items are anchored to that same Divine.
+async function economyCurrent(league) {
+  league = sanitizeLeague(league);
+  const exData = await getExchangeData(league).catch(() => null);
+  const exPerDiv = (exData && exData.rates && exData.rates.divine) || 0;
+  if (!exPerDiv) return null;                              // no Divine anchor → nothing to show
+  const ex = {};
+  for (const it of ECONOMY_ITEMS) {
+    if (it.div) continue;
+    const v = exData.rates[it.id];
+    if (v > 0) ex[it.id] = Math.round(v * 100) / 100;
+  }
+  const dz = await economyDivSide(league);
+  if (dz && dz.perDiv) for (const [id, perDiv] of Object.entries(dz.perDiv)) {
+    if (perDiv > 0) ex[id] = Math.round(perDiv * exPerDiv * 100) / 100;
+  }
+  if (Object.keys(ex).length < 2) return null;
+  return { t: new Date().toISOString(), exPerDiv, ex };
+}
+
 async function sampleEconomy(league) {
   league = sanitizeLeague(league);
   if (tradeStatus().limited) return readEconomy();
-  const exaltIds = ECONOMY_ITEMS.filter((i) => !i.div).map((i) => i.id);
-  const buy = await fetchExchangeChunked(league, EXALTED_ID, exaltIds);
-  const ex = {};
-  for (const id of exaltIds) {
-    // Stock>=5 (matching the currency overview) drops thin junk; the real defence
-    // against well-stocked lowball bait poisoning the divine anchor is the median
-    // floor in robustCheapestOffer. exPerDiv multiplies every price on the board.
-    const b = bestExchangeOffer(buy, EXALTED_ID, id, 5) || bestExchangeOffer(buy, EXALTED_ID, id, 1);
-    if (b && b.payPerReceive > 0) ex[id] = Math.round(b.payPerReceive * 100) / 100;
-  }
-  const exPerDiv = ex.divine || 0;
-  if (!exPerDiv) return readEconomy();  // need divine to price the divine-side items
-  // High-value items (omens, Hinekora's): exalted side is junk, the real market is
-  // the DIVINE side. Price by the densest cluster (divineMarketPrice) and convert to
-  // ex via the live anchor.
-  const divIds = ECONOMY_ITEMS.filter((i) => i.div).map((i) => i.id);
-  if (divIds.length) {
-    const buyD = await fetchExchangeChunked(league, "divine", divIds);
-    for (const id of divIds) {
-      const perDiv = divineMarketPrice(buyD, id, 2) || divineMarketPrice(buyD, id, 1);
-      if (perDiv > 0) ex[id] = Math.round(perDiv * exPerDiv * 100) / 100;
-    }
-  }
-  if (Object.keys(ex).length < 2) return readEconomy();  // nothing useful this pass
-  const point = { t: new Date().toISOString(), exPerDiv, ex };
+  const point = await economyCurrent(league);
+  if (!point) return readEconomy();  // nothing useful this pass
   const prev = readEconomy();
   const points = (prev && prev.league === league && Array.isArray(prev.points)) ? prev.points.slice() : [];
   const lastP = points[points.length - 1];
@@ -1945,20 +1989,28 @@ async function fetchRunePrices(text, league, forceFresh) {
   const limitedRawLines = rawLines.slice(0, MAX_RUNE_LINES);
   let tradeFallbacks = 0;
 
-  // On-demand "Fetch fresh prices": block BRIEFLY (bounded by RUNE_FRESH_DEADLINE_MS)
-  // to refresh the Trade2 exchange book + currency rates for the pasted items
-  // before pricing, so the response reflects live numbers. The default path never
-  // blocks — the book fills in the background and the next check is accurate.
-  if (forceFresh && !initialTradeStatus.limited) {
+  // Fill the Trade2 exchange book for the pasted items BEFORE pricing, so a single
+  // click prices everything the exchange knows instead of showing NOT FOUND until a
+  // second pass. "Fetch fresh" (forceFresh) re-fetches every pasted item (busts the
+  // cache); the default "Check picks" only fills what's MISSING or stale from the
+  // book, so it stays instant once the book is warm but never misses an un-booked
+  // item like a freshly-pasted rune. Bounded by RUNE_FRESH_DEADLINE_MS either way so
+  // a throttled queue can't hang the request. (Currency rates come from
+  // getExchangeData below, stale-while-revalidate — not swept here; a concurrent
+  // currency sweep used to double the queue burst and trip the shared rate limit.)
+  if (!initialTradeStatus.limited) {
     const norms = runePastedNorms(limitedRawLines);
-    // Only the book fill matters for the button (it's what surfaces live trade
-    // prices). Don't ALSO force a currency-rate sweep concurrently — that doubled
-    // the queue burst and routinely self-tripped the shared rate limit, so the
-    // book wrote nothing. The divine rate is served stale-while-revalidate below.
-    await Promise.race([
-      refreshRuneBook(league, norms, true).catch(() => {}),
-      new Promise((resolve) => setTimeout(resolve, RUNE_FRESH_DEADLINE_MS)),
-    ]);
+    const bp = (readRuneBook(league) || {}).prices || {};
+    const need = forceFresh ? norms : norms.filter((nn) => {
+      const b = bp[nn];
+      return !b || !b.updated || (Date.now() - new Date(b.updated).getTime() > RUNE_BOOK_TTL_MS);
+    });
+    if (need.length) {
+      await Promise.race([
+        refreshRuneBook(league, need, true).catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, RUNE_FRESH_DEADLINE_MS)),
+      ]);
+    }
   }
 
   // Currency ex-values + the divine→ex rate come from the unified Trade2 exchange.
@@ -3994,8 +4046,13 @@ const server = http.createServer(async (req, res) => {
       if (force) { try { await sampleEconomy(league); } catch {} }
       else maybeSampleEconomy(league);
       const data = readEconomy() || { league, items: ECONOMY_ITEMS, points: [] };
+      // Headline + cards render off `current` — the live, strip-shared rates — so
+      // they show what's current, not the last twice-a-day history point. `points`
+      // still drives the trend graph + "% vs start".
+      let current = null;
+      try { current = await economyCurrent(league); } catch {}
       const st = tradeStatus();
-      send(res, 200, JSON.stringify({ ...data, limited: st.limited, tradeLimitedUntil: st.tradeLimitedUntil, secondsRemaining: st.secondsRemaining }), "application/json; charset=utf-8");
+      send(res, 200, JSON.stringify({ ...data, items: ECONOMY_ITEMS, current, limited: st.limited, tradeLimitedUntil: st.tradeLimitedUntil, secondsRemaining: st.secondsRemaining }), "application/json; charset=utf-8");
       return;
     }
 
