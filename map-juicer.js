@@ -22,69 +22,127 @@ window.__viewInit["map-juicer"]=function(){
   let rarityMin = 60, packMin = 30;
   function tens(pct){ const d = Math.max(2, Math.floor(pct / 10)); return d >= 2 && d <= 9 ? `[${d}-9].` : "\\d."; }
   function atLeast(token, pct){ return `${token} \\+(${tens(pct)}|1..)%`; }
-  function runRegex(){ return `"(${atLeast(L.itemRarity, rarityMin)}|${atLeast(L.packSize, packMin)})" "!${T.danger}"`; }
-  function blueRegex(){ return `"(${L.itemRarity}|${L.packSize}|${L.magicMonsters}|${L.rareMonsters}|${L.waystoneDrop})" "!${T.danger}"`; }
   function noRevivesRegex(){ return `"${T.revivesZero}"`; }
-  function tabletRegex(token){ return `"${token}" "${T.tabletDesirable}"`; }
-  function regexRow(title, regex, sub){
-    const len = regex.length, over = len > D.regexLimit;
-    return `
-      <details class="rx">
-        <summary class="rx-top">
-          <span class="rx-title">${esc(title)}</span>
-          <span class="rx-len ${over?"over":""}">${len}</span>
-          <button class="copy" type="button" data-copy="${esc(regex)}">Copy</button>
-        </summary>
-        <div class="regexrow"><code class="regexbox">${esc(regex)}</code></div>
-        ${sub?`<div class="rx-sub">${esc(sub)}</div>`:""}
-      </details>`;
-  }
 
-  // ── Cheat sheet ───────────────────────────────────────────────────────────
-  function rxcard(title, kind, body){
-    return `<div class="rxcard">
-      <div class="rxcard-head"><span class="rxcard-title">${esc(title)}</span><span class="rxcard-kind">${esc(kind)}</span></div>
-      <div class="rxcard-body">${body}</div>
+  // ── Regex Forge — answer a few questions, the regex rebuilds on every change ──
+  let target = "waystones";    // "waystones" | "tablets"
+  let wMatch = "floor";        // "floor" (rarity/pack ≥) | "blue" (any reward mod)
+  let wRevives = false;        // require fully-juiced (0 revives)
+  let wExclude = true;         // exclude risk suffixes
+  const tContent = new Set();  // selected tablet content-type ids
+  let tDesirable = true;       // require a desirable mod beside the content keyword
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  function buildWaystone(){
+    const blocks = [];
+    if (wMatch === "blue") blocks.push(`"(${L.itemRarity}|${L.packSize}|${L.magicMonsters}|${L.rareMonsters}|${L.waystoneDrop})"`);
+    else blocks.push(`"(${atLeast(L.itemRarity, rarityMin)}|${atLeast(L.packSize, packMin)})"`);
+    if (wRevives) blocks.push(noRevivesRegex());
+    if (wExclude) blocks.push(`"!${T.danger}"`);
+    return blocks.join(" ");
+  }
+  function buildTablet(){
+    const toks = D.contentTypes.filter(c => tContent.has(c.id)).map(c => c.tabletToken);
+    if (!toks.length) return "";
+    const tok = toks.length === 1 ? `"${toks[0]}"` : `"(${toks.join("|")})"`;
+    return tDesirable ? `${tok} "${T.tabletDesirable}"` : tok;
+  }
+  function currentRegex(){ return target === "tablets" ? buildTablet() : buildWaystone(); }
+
+  // ── Controls ──
+  function seg(attr, val, cur, label){ return `<button class="seg-btn${val===cur?" on":""}" type="button" data-${attr}="${val}">${esc(label)}</button>`; }
+  function stepper(id, label, val, lo, hi){
+    return `<div class="forge-step"><span class="forge-step-lbl">${esc(label)}</span>
+      <button class="step" type="button" data-step="${id}" data-dir="-1"${val<=lo?" disabled":""} aria-label="decrease ${esc(label)}">−</button>
+      <span class="forge-step-val">${val}%</span>
+      <button class="step" type="button" data-step="${id}" data-dir="1"${val>=hi?" disabled":""} aria-label="increase ${esc(label)}">+</button></div>`;
+  }
+  function toggle(id, label, on){
+    return `<label class="forge-tog"><input type="checkbox" data-tog="${id}"${on?" checked":""}><span>${esc(label)}</span></label>`;
+  }
+  function waystoneQs(){
+    return `
+      <div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}</div>
+      ${wMatch==="floor"
+        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,40,70)}${stepper("pack","Min Pack Size",packMin,20,40)}</div>`
+        : `<p class="forge-hint">Matches any waystone carrying a reward mod — the blue stones worth upgrading.</p>`}
+      ${toggle("revives","Fully juiced only (0 revives = 6-mod map)",wRevives)}
+      ${toggle("exclude","Exclude risk suffixes (less recovery, −max res, …)",wExclude)}`;
+  }
+  function tabletQs(){
+    const chips = D.contentTypes.map(c => `<button class="chip${tContent.has(c.id)?" on":""}" type="button" data-chip="${c.id}">${esc(c.label)}</button>`).join("");
+    return `
+      <p class="forge-hint">Pick the content you're farming — socket the tablet in a Tower covering those maps.</p>
+      <div class="forge-chips">${chips}</div>
+      ${toggle("desirable","Require a desirable mod (pack size / monsters / rarity)",tDesirable)}`;
+  }
+  function forgeOutput(){
+    const rx = currentRegex(), len = rx.length, over = len > D.regexLimit, empty = !rx;
+    return `<div class="forge-out${empty?" empty":""}">
+      <code class="regexbox">${empty ? "Pick at least one content type…" : esc(rx)}</code>
+      <div class="forge-meta">
+        <span class="rx-len ${over?"over":""}">${len}/${D.regexLimit}</span>
+        <button class="copy" type="button" data-copy="${esc(rx)}"${empty?" disabled":""}>Copy</button>
+      </div>
     </div>`;
   }
-  function waystoneSection(){
-    const opt = (v, cur) => `<option value="${v}"${v===cur?" selected":""}>${v}%</option>`;
-    return rxcard("Waystones", "%-aware", `
-      <div class="rx-thresholds">
-        <label>Min Item Rarity <select id="rxRarity">${[40,50,60,70].map(v=>opt(v,rarityMin)).join("")}</select></label>
-        <label>Min Pack Size <select id="rxPack">${[20,30,40].map(v=>opt(v,packMin)).join("")}</select></label>
-      </div>
-      ${regexRow(`Best maps to run — Rarity ≥${rarityMin}% or Pack ≥${packMin}%, no risk suffixes`, runRegex())}
-      ${regexRow("Fully-juiced only — 6 mods / 0 revives left", noRevivesRegex(), "Revives drop 6→0 as mods are added; 0 revives = a 6-mod map (one death = fail).")}
-      ${regexRow("Any reward mod — blue waystones worth upgrading", blueRegex())}
-      <div class="rxcard-note">Matches the waystone "<b>Label: +X%</b>" reward block (0.5). Verify wording in your stash.</div>`);
-  }
-  function tabletSection(){
-    const rows = D.contentTypes.map(c => regexRow(`${c.label} tablet`, tabletRegex(c.tabletToken), c.blurb)).join("");
-    return rxcard("Precursor Tablets", "by content",
-      rows + `<div class="rxcard-note">Socket in a Tower covering the maps you run. Each matches the content keyword + a desirable mod (pack size / monsters / rarity).</div>`);
-  }
-  function avoidSection(){
-    const exclude = `"!${T.danger}"`;
-    const danger = (D.dangerousMods||[]).map(m=>`<li>${esc(m)}</li>`).join("");
-    const removed = (D.removedInPatch||[]).join(", ");
-    return rxcard("Avoid / bait mods", "skip",
-      regexRow("Exclude risk suffixes", exclude, "The run / blue regex already fold this in. Strip a bricked map with Omen of Whittling + Chaos.") + `
-      <ul class="avoidlist">${danger}</ul>
-      ${removed?`<div class="rxcard-note">Removed in 0.5 (don't target): <b>${esc(removed)}</b></div>`:""}`);
-  }
   function renderSheet(){
-    els.sheet.innerHTML = waystoneSection() + tabletSection() + avoidSection();
+    const note = target === "tablets"
+      ? `Each block is <code>"keyword"</code> AND <code>"desirable"</code>; multiple picks become <code>"(a|b|c)"</code>. Verify wording in your stash.`
+      : `Matches the waystone "<b>Label: +X%</b>" reward block (0.5). Risk excluded: <b>${esc((D.dangerousMods||[]).join(", "))}</b>.`;
+    els.sheet.innerHTML = `<div class="rxcard rx-forge">
+      <div class="rxcard-head"><span class="rxcard-title">Regex Forge</span><span class="rxcard-kind">live</span></div>
+      <div class="rxcard-body">
+        <div class="forge-seg forge-target" role="group" aria-label="Target">${seg("target","waystones",target,"Waystones")}${seg("target","tablets",target,"Precursor Tablets")}</div>
+        <div class="forge-qs">${target==="tablets" ? tabletQs() : waystoneQs()}</div>
+        ${forgeOutput()}
+        <div class="rxcard-note">${note}</div>
+      </div>
+    </div>`;
+    bindForge();
     bindCopy();
-    bindThresholds();
+  }
+  function bindForge(){
+    const root = els.sheet;
+    root.querySelectorAll("[data-target]").forEach(b => b.addEventListener("click", () => { target = b.getAttribute("data-target"); renderSheet(); }));
+    root.querySelectorAll("[data-wmatch]").forEach(b => b.addEventListener("click", () => { wMatch = b.getAttribute("data-wmatch"); renderSheet(); }));
+    root.querySelectorAll("[data-step]").forEach(b => b.addEventListener("click", () => {
+      const dir = Number(b.getAttribute("data-dir"));
+      if (b.getAttribute("data-step") === "rarity") rarityMin = clamp(rarityMin + dir*10, 40, 70);
+      else packMin = clamp(packMin + dir*10, 20, 40);
+      renderSheet();
+    }));
+    root.querySelectorAll("[data-tog]").forEach(c => c.addEventListener("change", () => {
+      const k = c.getAttribute("data-tog");
+      if (k === "revives") wRevives = c.checked; else if (k === "exclude") wExclude = c.checked; else if (k === "desirable") tDesirable = c.checked;
+      renderSheet();
+    }));
+    root.querySelectorAll("[data-chip]").forEach(b => b.addEventListener("click", () => {
+      const id = b.getAttribute("data-chip"); tContent.has(id) ? tContent.delete(id) : tContent.add(id); renderSheet();
+    }));
+  }
+  async function copyText(txt){
+    // navigator.clipboard only exists in a secure context (HTTPS/localhost).
+    // Over LAN/Tailscale on plain HTTP it's undefined → fall back to execCommand.
+    if (navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(txt); return true;
+    }
+    const ta = document.createElement("textarea");
+    ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    ta.remove();
+    return ok;
   }
   function bindCopy(){
     document.querySelectorAll(".toolroot-mj [data-copy]").forEach(b=>{
       b.addEventListener("click", async (e)=>{
         e.preventDefault(); e.stopPropagation();   // don't toggle the <details> it sits in
         const txt = b.getAttribute("data-copy"), orig = b.textContent;
-        try { await navigator.clipboard.writeText(txt); b.textContent="Copied"; }
-        catch { b.textContent="Copy failed"; }
+        let ok = false;
+        try { ok = await copyText(txt); } catch { ok = false; }
+        b.textContent = ok ? "Copied" : "Copy failed";
         setTimeout(()=>{ b.textContent=orig; }, 1200);
       });
     });

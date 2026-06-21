@@ -20,37 +20,55 @@
   .toolroot-mj .rxcard-note{color:var(--mu);font:12px var(--ff);margin-top:10px;padding-top:9px;border-top:1px dashed var(--bd)}
   .toolroot-mj .rxcard-note b{color:var(--tx)}
 
-  /* Regex rows — collapsed by default: title + Copy, click to reveal the regex */
+  /* Reused bits: char count, regex box, copy button */
   .toolroot-mj button{font:inherit;cursor:pointer;border-radius:var(--r-sm)}
-  .toolroot-mj .rx{border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--bg-deep);margin-bottom:8px;overflow:hidden;transition:border-color var(--t)}
-  .toolroot-mj .rx:last-child{margin-bottom:0}
-  .toolroot-mj .rx:hover{border-color:var(--border-gold)}
-  .toolroot-mj .rx[open]{border-color:var(--border-gold)}
-  .toolroot-mj .rx-top{list-style:none;display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;user-select:none}
-  .toolroot-mj .rx-top::-webkit-details-marker{display:none}
-  .toolroot-mj .rx-top::before{content:"▸";color:var(--mu);font-size:10px;transition:transform var(--t);flex:0 0 auto}
-  .toolroot-mj .rx[open] .rx-top::before{transform:rotate(90deg)}
-  .toolroot-mj .rx-title{flex:1;min-width:0;color:var(--tx);font:600 12.5px var(--ff)}
   .toolroot-mj .rx-len{color:var(--mu);font:11px var(--ff-mono);white-space:nowrap}
   .toolroot-mj .rx-len.over{color:var(--rd)}
-  .toolroot-mj .rx-sub{margin:0 12px 12px;color:var(--mu);font:11.5px var(--ff);line-height:1.45}
-  .toolroot-mj .regexrow{padding:0 12px 12px}
   .toolroot-mj .regexbox{display:block;font:12px var(--ff-mono);color:var(--gd);background:var(--surface-1);border:1px solid var(--bd);padding:10px 12px;border-radius:var(--r-sm);white-space:pre-wrap;word-break:break-all}
   .toolroot-mj .copy{padding:5px 12px;border:1px solid var(--border-gold);background:var(--gd-a);color:var(--gd);font:700 11px var(--ff-mono);text-transform:uppercase;white-space:nowrap}
   .toolroot-mj .copy:hover{filter:brightness(1.1)}
   .toolroot-mj .copy:active{transform:translateY(1px)}
+  .toolroot-mj .copy:disabled{opacity:.45;cursor:default;filter:none}
+  .toolroot-mj .rxcard-note code{font:11px var(--ff-mono);color:var(--gd);background:var(--gd-a);padding:1px 5px;border-radius:3px}
 
-  /* Threshold selects */
-  .toolroot-mj .rx-thresholds{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px}
-  .toolroot-mj .rx-thresholds label{display:inline-flex;align-items:center;gap:6px;color:var(--mu);font:11px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em}
-  .toolroot-mj .rx-thresholds select{font:600 12px var(--ff-mono);color:var(--tx);background:var(--bg-deep);border:1px solid var(--bd);border-radius:var(--r-sm);padding:5px 8px;cursor:pointer}
-  .toolroot-mj .rx-thresholds select:focus{outline:none;border-color:var(--border-gold)}
+  /* Regex Forge — segmented controls (target + match mode) */
+  .toolroot-mj .forge-seg{display:inline-flex;border:1px solid var(--bd);border-radius:var(--r-sm);overflow:hidden;background:var(--bg-deep)}
+  .toolroot-mj .forge-target{display:flex;width:100%;margin-bottom:16px}
+  .toolroot-mj .seg-btn{flex:1;padding:8px 14px;border:0;background:transparent;color:var(--mu);font:700 11px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em;transition:color var(--t),background var(--t)}
+  .toolroot-mj .seg-btn+.seg-btn{border-left:1px solid var(--bd)}
+  .toolroot-mj .seg-btn:hover{color:var(--tx)}
+  .toolroot-mj .seg-btn.on{background:var(--gd-a);color:var(--gd)}
 
-  /* Avoid list */
-  .toolroot-mj .avoidlist{margin:12px 0 0;padding:0;list-style:none}
-  .toolroot-mj .avoidlist li{color:var(--tx);font:12px var(--ff);padding:5px 0;border-bottom:1px solid var(--bd);display:flex;gap:8px}
-  .toolroot-mj .avoidlist li:last-child{border-bottom:0}
-  .toolroot-mj .avoidlist li::before{content:"✕";color:var(--rd);font:700 11px var(--ff-mono);flex:0 0 auto}
+  /* Question area */
+  .toolroot-mj .forge-qs{display:flex;flex-direction:column;gap:13px;margin-bottom:14px}
+  .toolroot-mj .forge-qs .forge-seg{align-self:flex-start}
+  .toolroot-mj .forge-hint{margin:0;color:var(--mu);font:12px var(--ff);line-height:1.45}
+
+  /* Steppers */
+  .toolroot-mj .forge-steps{display:flex;gap:24px;flex-wrap:wrap}
+  .toolroot-mj .forge-step{display:flex;align-items:center;gap:8px}
+  .toolroot-mj .forge-step-lbl{color:var(--mu);font:11px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em}
+  .toolroot-mj .step{width:26px;height:26px;display:grid;place-items:center;border:1px solid var(--bd);background:var(--bg-deep);color:var(--gd);font:700 15px var(--ff-mono);line-height:1}
+  .toolroot-mj .step:hover:not(:disabled){border-color:var(--border-gold)}
+  .toolroot-mj .step:disabled{opacity:.35;cursor:default}
+  .toolroot-mj .forge-step-val{min-width:44px;text-align:center;color:var(--tx);font:700 13px var(--ff-mono)}
+
+  /* Toggles */
+  .toolroot-mj .forge-tog{display:flex;align-items:center;gap:9px;color:var(--tx);font:12.5px var(--ff);cursor:pointer}
+  .toolroot-mj .forge-tog input{accent-color:var(--gd);width:15px;height:15px;cursor:pointer;flex:0 0 auto}
+
+  /* Content chips */
+  .toolroot-mj .forge-chips{display:flex;flex-wrap:wrap;gap:8px}
+  .toolroot-mj .chip{padding:6px 12px;border:1px solid var(--bd);background:var(--bg-deep);color:var(--mu);font:600 12px var(--ff);transition:color var(--t),border-color var(--t),background var(--t)}
+  .toolroot-mj .chip:hover{color:var(--tx);border-color:var(--border-gold)}
+  .toolroot-mj .chip.on{background:var(--gd-a);border-color:var(--border-gold);color:var(--gd)}
+
+  /* Live output */
+  .toolroot-mj .forge-out{border:1px solid var(--border-gold);border-radius:var(--r-sm);background:var(--surface-1);padding:12px;display:flex;flex-direction:column;gap:10px}
+  .toolroot-mj .forge-out.empty{border-color:var(--bd)}
+  .toolroot-mj .forge-out .regexbox{margin:0;border:0;padding:0;background:transparent}
+  .toolroot-mj .forge-out.empty .regexbox{color:var(--mu)}
+  .toolroot-mj .forge-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px dashed var(--bd);padding-top:9px}
 
   /* Collapsible evaluator */
   .toolroot-mj .mj-d{border:1px solid var(--bd);border-radius:var(--r-md);background:var(--surface-1);margin-top:18px;overflow:hidden}

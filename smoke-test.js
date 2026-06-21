@@ -334,18 +334,23 @@ async function browserChecks() {
       await p.close();
     }
 
-    // Map Juicer regex: %-aware run regex + 0-revives, and threshold select updates it
+    // Regex Forge: %-aware floor by default, steppers rebuild it, toggle adds the 0-revives block
     {
       const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       await p.goto(BASE + "/index.html#map-juicer", { waitUntil: "networkidle" }); await p.waitForTimeout(900);
-      const rx = await p.evaluate(() => [...document.querySelectorAll(".toolroot-mj .regexbox")].map(e => e.textContent));
-      const blob = rx.join("\n");
-      check(/\\\+\(\[6-9\]\.\|1\.\.\)%/.test(blob), "map-juicer run regex is %-aware (Rarity ≥60% range)");
-      check(/"revives available: 0"/.test(blob), "map-juicer emits the 0-revives regex");
-      // change Min Item Rarity to 40 -> regex range becomes [4-9]
-      await p.selectOption(".toolroot-mj #rxRarity", "40"); await p.waitForTimeout(300);
-      const rx40 = await p.evaluate(() => [...document.querySelectorAll(".toolroot-mj .regexbox")].map(e => e.textContent).join("\n"));
-      check(/\\\+\(\[4-9\]\.\|1\.\.\)%/.test(rx40), "map-juicer threshold select rebuilds the regex");
+      const out = () => p.evaluate(() => document.querySelector(".toolroot-mj .forge-out .regexbox").textContent);
+      check(/\\\+\(\[6-9\]\.\|1\.\.\)%/.test(await out()), "regex forge default is the %-aware floor (Rarity ≥60% range)");
+      // step Min Item Rarity down twice (60 -> 50 -> 40) -> range becomes [4-9]
+      await p.click('.toolroot-mj [data-step="rarity"][data-dir="-1"]'); await p.waitForTimeout(120);
+      await p.click('.toolroot-mj [data-step="rarity"][data-dir="-1"]'); await p.waitForTimeout(120);
+      check(/\\\+\(\[4-9\]\.\|1\.\.\)%/.test(await out()), "regex forge stepper rebuilds the regex (Rarity 40%)");
+      // toggle "fully juiced" -> the 0-revives block appears in the live output
+      await p.click('.toolroot-mj [data-tog="revives"]'); await p.waitForTimeout(120);
+      check(/"revives available: 0"/.test(await out()), "regex forge emits the 0-revives block when toggled");
+      // switch to tablets, pick a content chip -> a tablet regex is produced
+      await p.click('.toolroot-mj [data-target="tablets"]'); await p.waitForTimeout(120);
+      await p.click('.toolroot-mj .chip'); await p.waitForTimeout(120);
+      check(/"\w/.test(await out()), "regex forge builds a tablet regex from a content chip");
       await p.close();
     }
 
