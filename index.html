@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="gear-search.css">
 <link rel="stylesheet" href="rune-picker.css">
 <link rel="stylesheet" href="craft-pricer.css">
+<link rel="stylesheet" href="filter-helper.css">
 <style>
 /* ===== Hub: modern dashboard, built on theme.css tokens ===== */
 .shell{padding:32px 24px 56px;max-width:1280px;margin:0 auto}
@@ -181,6 +182,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <a class="navbtn" href="#gear-search" data-view-link="gear-search">Gear Search</a>
       <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Regex Cheat Sheet</a>
       <a class="navbtn" href="#arbitrage" data-view-link="arbitrage">Arbitrage</a>
+      <a class="navbtn" href="#filter-helper" data-view-link="filter-helper">Filter Helper</a>
     </nav>
   </div>
 </header>
@@ -494,6 +496,38 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     </div>
   </section>
 
+  <section id="filter-helper" class="view" data-view="filter-helper">
+   <div class="toolroot toolroot-fh">
+    <div class="pagehead">
+      <div>
+        <h1>Filter Helper</h1>
+        <p class="sub">Finds Currency Exchange items worth keeping (liquid, ≥ your threshold) and builds a top-priority <b>Show</b> block to paste at the top of your loot filter so they're never hidden.</p>
+      </div>
+      <div class="controls fh-controls">
+        <input id="fhLeague" value="Runes of Aldur" aria-label="League">
+        <label>Min ex <input id="fhMinEx" type="number" min="0" step="0.5" value="1"></label>
+        <label>Min volume <input id="fhMinVol" type="number" min="0" step="5" value="10"></label>
+        <button id="fhGen" type="button">Generate</button>
+        <div id="fhStatus" class="status">Sets a price floor and a liquidity floor, then scans.</div>
+      </div>
+    </div>
+    <p id="fhSub" class="sub"></p>
+    <div id="fhTableWrap" class="tablewrap" hidden>
+      <table>
+        <thead><tr><th>Item</th><th class="num">Price</th><th class="num">Volume</th></tr></thead>
+        <tbody id="fhRows"></tbody>
+      </table>
+    </div>
+    <div id="fhBlockWrap" class="fh-blockwrap" hidden>
+      <div class="fh-blockhead">
+        <p class="sub">Paste at the <b>very top</b> of your filter (first-match-wins, so a later Hide can't override it).</p>
+        <button id="fhCopy" type="button">Copy Show block</button>
+      </div>
+      <textarea id="fhBlock" spellcheck="false" readonly></textarea>
+    </div>
+   </div>
+  </section>
+
 </main>
 <script>
 // ===== App shell: hash-routed SPA. Each tool view registers a one-time init
@@ -531,5 +565,6 @@ window.addEventListener("DOMContentLoaded",()=>runViewInit(currentView()));
 <script src="arbitrage.js"></script>
 <script src="map-juicer.js"></script>
 <script src="gear-search.js"></script>
+<script src="filter-helper.js"></script>
 </body>
 </html>

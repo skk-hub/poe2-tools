@@ -1403,6 +1403,134 @@ function maybeSampleEconomy(league = DEFAULT_LEAGUE) {
   return economySampleInFlight;
 }
 
+// ── Filter Helper: find exchange items worth keeping that a loot filter might hide,
+// and emit a top-priority Show block to paste at the top of a NeverSink/custom
+// filter. Two-stage so we never scan dead markets: (1) poe.ninja PoE2 trade VOLUME
+// gates the candidates to liquid items (ponytail: poe.ninja TEMP volume-only — GGG
+// cxapi gives real volume natively, delete this whole poe.ninja path when its scope
+// lands); poe.ninja NEVER sets a displayed price. (2) the survivors are priced on
+// OUR Trade2 exchange (the only price we trust). Result is cached — it's a ~15-call
+// scan, not something to run per page load. ────────────────────────────────────────
+const FILTER_HELPER_FILE = path.join(DATA_DIR, ".filter-helper.json");
+const FILTER_HELPER_TTL_MS = 6 * 60 * 60 * 1000;   // prices for a paste-once filter block don't need to be fresher
+let filterHelperInFlight = null;
+
+function readFilterHelper() {
+  try { return JSON.parse(fs.readFileSync(FILTER_HELPER_FILE, "utf8")); } catch { return null; }
+}
+
+// poe.ninja PoE2 trade volume per item, across the exchange categories. Volume only.
+// Returns [{name, volume, ninjaVal, category}]. (ponytail: poe.ninja TEMP, delete at cxapi)
+async function fetchNinjaVolume(league) {
+  const out = [];
+  const seenType = new Set();
+  for (const cat of RUNE_CATEGORIES) {
+    if (seenType.has(cat.type)) continue;
+    seenType.add(cat.type);
+    try {
+      const url = "https://poe.ninja/poe2/api/economy/exchange/current/overview?league=" +
+        encodeURIComponent(league) + "&type=" + encodeURIComponent(cat.type);
+      const res = await fetchWithTimeout(url, {}, NINJA_TIMEOUT_MS);
+      if (!res.ok) continue;
+      const d = await res.json();
+      const nameById = {};
+      for (const it of (d.items || [])) nameById[it.id] = it.name;
+      for (const l of (d.lines || [])) {
+        const name = nameById[l.id];
+        if (name) out.push({ name, volume: l.volumePrimaryValue || 0, ninjaVal: l.primaryValue || 0, category: cat.type });
+      }
+    } catch {}
+  }
+  return out;
+}
+
+// A top-priority PoE2 filter Show block listing the given base types. First-match-
+// wins, so pasted at the TOP of a filter it force-shows these regardless of any
+// later Hide rule. Loud styling so a missed drop is obvious.
+function buildFilterShowBlock(items, minEx) {
+  if (!items.length) return "";
+  const bases = items.map((i) => '"' + i.name.replace(/"/g, "") + '"').join(" ");
+  return [
+    "# >= " + minEx + " ex on the Trade2 Currency Exchange (poe-tools Filter Helper).",
+    "# Paste at the TOP of your filter so these are never hidden. Regenerate as prices move.",
+    "Show",
+    "    BaseType == " + bases,
+    "    SetFontSize 45",
+    "    SetTextColor 255 255 255 255",
+    "    SetBackgroundColor 140 30 30 255",
+    "    SetBorderColor 255 220 100 255",
+    "    PlayAlertSound 2 300",
+    "    MinimapIcon 1 Yellow Star",
+    "    PlayEffect Yellow",
+  ].join("\n");
+}
+
+async function buildFilterHelper(league, minEx, minVol) {
+  league = sanitizeLeague(league);
+  const ninja = await fetchNinjaVolume(league);
+  const catalog = await getExchangeCatalog(league);
+  // Liquid (vol>=minVol) AND roughly valuable by poe.ninja (>= half the target, a
+  // generous floor so a noisy ninja price can't drop a real >=minEx item) AND on
+  // our exchange. poe.ninja's number is only a coarse gate; the real price is below.
+  const cands = [];
+  const seen = new Set();
+  for (const r of ninja) {
+    if (r.volume < minVol || r.ninjaVal < minEx * 0.5) continue;
+    const entry = catalog.get(normalizeName(r.name));
+    if (!entry || String(entry.id) === EXALTED_ID || seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    cands.push({ id: entry.id, name: entry.name, volume: Math.round(r.volume) });
+  }
+  // Confirm prices on OUR exchange — GENTLY. ~15 calls in a burst trips the shared IP
+  // limit (5/15s, 10/90s), so price 3 ids per call with an ~8s gap (≈1 call/8s, well
+  // under every rule). ~2 min for the full ~40-item set; runs in the background and
+  // caches, so it never blocks a request and can't lock the tool out. Stops early and
+  // saves partial progress if the queue is already limited. (cxapi would price the lot
+  // in one call AND supply the volume — this whole scan + poe.ninja path dies then.)
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const items = [];
+  let partial = false, scannedCands = 0;
+  const snapshot = () => {
+    const sorted = items.slice().sort((a, b) => b.ex - a.ex);
+    const o = { league, minEx, minVol, count: sorted.length, items: sorted, showBlock: buildFilterShowBlock(sorted, minEx), partial, scanned: scannedCands, candidates: cands.length, updated: new Date().toISOString() };
+    try { fs.writeFileSync(FILTER_HELPER_FILE, JSON.stringify(o, null, 2)); } catch {}
+    return o;
+  };
+  for (let i = 0; i < cands.length; i += 3) {
+    if (tradeStatus().limited) { partial = true; break; }
+    const group = cands.slice(i, i + 3);
+    let data;
+    try { data = await fetchExchangeChunked(league, EXALTED_ID, group.map((c) => c.id)); }
+    catch { partial = true; break; }
+    for (const c of group) {
+      const best = bestExchangeOffer(data, EXALTED_ID, c.id, 5) || bestExchangeOffer(data, EXALTED_ID, c.id, 1);
+      const ex = best && best.payPerReceive > 0 ? round4(best.payPerReceive) : 0;
+      if (ex >= minEx) items.push({ name: c.name, ex, volume: c.volume });
+    }
+    scannedCands = Math.min(i + 3, cands.length);
+    snapshot();  // progressive: items appear while the gentle scan runs; partial trip still saves
+    if (i + 3 < cands.length) await sleep(10000);  // ~1 call/10s stays under 10/90s — 8s tripped it
+  }
+  return snapshot();
+}
+
+// Non-blocking: the ~2-min gentle scan runs in the BACKGROUND (single-flight). The
+// endpoint serves whatever's cached now plus a `building` flag; the front end polls
+// until the rebuild lands. Kicks a rebuild when forced or stale (and not already
+// running / rate-limited).
+function getFilterHelper(league, minEx, minVol, force) {
+  const cached = readFilterHelper();
+  const matches = cached && cached.minEx === minEx && cached.minVol === minVol;
+  const fresh = matches && Date.now() - new Date(cached.updated).getTime() < FILTER_HELPER_TTL_MS;
+  if ((force || !fresh) && !tradeStatus().limited && !filterHelperInFlight) {
+    filterHelperInFlight = buildFilterHelper(league, minEx, minVol)
+      .catch((e) => { console.error("filter-helper build failed:", e && e.message); return null; })
+      .finally(() => { filterHelperInFlight = null; });
+  }
+  const base = matches ? cached : { league, minEx, minVol, items: [], showBlock: "", count: 0 };
+  return { ...base, building: Boolean(filterHelperInFlight) };
+}
+
 // ── Rune Picker price book: accurate Trade2 exchange prices for runes/essences/
 // soul cores (poe.ninja's PoE2 coverage of these is thin = "useless"). Same bulk
 // exchange the currency uses. Served from a persistent cache INSTANTLY (poe.ninja
@@ -4110,6 +4238,17 @@ const server = http.createServer(async (req, res) => {
       try { current = await economyCurrent(league); } catch {}
       const st = tradeStatus();
       send(res, 200, JSON.stringify({ ...data, items: ECONOMY_ITEMS, current, limited: st.limited, tradeLimitedUntil: st.tradeLimitedUntil, secondsRemaining: st.secondsRemaining }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/filter-helper") {
+      const league = sanitizeLeague(url.searchParams.get("league"));
+      const force = url.searchParams.get("refresh") === "1";
+      const minEx = Math.max(0, Number(url.searchParams.get("minEx")) || 1);
+      const minVol = Math.max(0, Number(url.searchParams.get("minVol")) || 10);
+      const data = await getFilterHelper(league, minEx, minVol, force);
+      const st = tradeStatus();
+      send(res, 200, JSON.stringify({ ...data, limited: st.limited, tradeLimitedUntil: st.tradeLimitedUntil, secondsRemaining: st.secondsRemaining }), "application/json; charset=utf-8");
       return;
     }
 
