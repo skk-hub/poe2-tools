@@ -1466,89 +1466,156 @@ function buildFilterShowBlock(items, minEx) {
 }
 
 const normBaseFH = (s) => String(s).toLowerCase().replace(/\s+/g, " ").trim();
+// Normalize a filter Class / our category to compare them: lowercase, strip
+// punctuation, drop a trailing plural 's' ("Soul Cores" -> "soul core" matches
+// filter Class "Soul Core"). ponytail: fuzzy substring match (below) — exact
+// class names per category would be tighter but PoE2's class strings drift; this
+// errs toward "shown" so it never over-scans, which is what the user wants.
+const normClassFH = (s) => String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/s$/, "");
 
-async function buildFilterHelper(league, minEx, minVol, hiddenSet) {
+// Turn the client's parsed-filter payload into a spec of normalized sets.
+function buildFilterSpec(f) {
+  if (!f || typeof f !== "object") return null;
+  return {
+    shownBases: new Set((f.shownBases || []).map(normBaseFH)),
+    hiddenBases: new Set((f.hiddenBases || []).map(normBaseFH)),
+    shownClasses: (f.shownClasses || []).map(normClassFH).filter(Boolean),
+    hiddenClasses: (f.hiddenClasses || []).map(normClassFH).filter(Boolean),
+    catchAllHide: Boolean(f.catchAllHide),
+  };
+}
+
+// Does this filter HIDE this candidate? A candidate is shown if any Show block
+// lists its BaseType or its Class (Show wins the first-match cascade), so it's
+// hidden when it's NOT shown AND either the filter ends in a catch-all Hide
+// (hides everything not shown — the normal case) or it's explicitly in a Hide.
+function filterHelperHides(cand, spec) {
+  const nb = normBaseFH(cand.name);
+  const nc = normClassFH(cand.category || "");
+  const classHit = (arr) => !!nc && arr.some((c) => c === nc || c.includes(nc) || nc.includes(c));
+  if (spec.shownBases.has(nb) || classHit(spec.shownClasses)) return false;
+  if (spec.catchAllHide) return true;
+  return spec.hiddenBases.has(nb) || classHit(spec.hiddenClasses);
+}
+
+// Cheap cache key so a different filter doesn't read another's cached result.
+function filterSpecSig(spec) {
+  return spec ? [spec.shownBases.size, spec.hiddenBases.size, spec.shownClasses.length, spec.hiddenClasses.length, spec.catchAllHide ? 1 : 0].join("-") : 0;
+}
+
+// Build the PRICE BOOK: price every liquid, valuable exchange item once and cache it
+// (independent of minEx / the pasted filter — those are applied at serve time, with
+// NO Trade2 calls). Runs ONLY on an explicit Generate (force) or a cold start, NEVER
+// automatically on page-open/filter-edit — auto-rebuilding on staleness is exactly
+// what made the tool re-scan the moment the limit cleared and "limit itself".
+async function buildFilterHelperBook(league, minVol, scan) {
   league = sanitizeLeague(league);
   const ninja = await fetchNinjaVolume(league);
   const catalog = await getExchangeCatalog(league);
-  // Liquid (vol>=minVol) AND roughly valuable by poe.ninja (>= half the target, a
-  // generous floor so a noisy ninja price can't drop a real >=minEx item) AND on
-  // our exchange. poe.ninja's number is only a coarse gate; the real price is below.
+  // Candidate GATE only (poe.ninja = volume/liquidity, not price): liquid AND worth
+  // roughly >= 0.5 ex by ninja (a low universal floor; the real minEx is a serve-time
+  // filter) AND on our exchange.
   const cands = [];
   const seen = new Set();
   for (const r of ninja) {
-    if (r.volume < minVol || r.ninjaVal < minEx * 0.5) continue;
+    if (r.volume < minVol || r.ninjaVal < 0.5) continue;
     const entry = catalog.get(normalizeName(r.name));
     if (!entry || String(entry.id) === EXALTED_ID || seen.has(entry.id)) continue;
     seen.add(entry.id);
-    cands.push({ id: entry.id, name: entry.name, volume: Math.round(r.volume) });
+    cands.push({ id: entry.id, name: entry.name, volume: Math.round(r.volume), category: r.category });
   }
-  // If the caller passed the set of base types their filter HIDES, only price those.
-  // This is the whole point of the filter: it shrinks the scan from ~60 liquid items
-  // to the handful the filter actually hides (often ~0 for a strict filter), so the
-  // scan is too small to contribute to a rate-limit trip. (Names are matched with the
-  // same lowercase/space normalization the client uses.)
-  const liquidTotal = cands.length;
-  if (hiddenSet && hiddenSet.size) {
-    for (let k = cands.length - 1; k >= 0; k--) {
-      if (!hiddenSet.has(normBaseFH(cands[k].name))) cands.splice(k, 1);
+  // SEED prices from caches we already keep warm — ZERO new calls: currency-rates
+  // cache + Rune Picker book + the economy panel's divine-side cache (omens /
+  // Hinekora's, whose real market is the divine side — priced in divine, converted
+  // to ex via the cached Divine rate).
+  const ratesCache = readCurrencyRatesCache();
+  const exById = new Map(), exByName = new Map();   // match by BOTH: the currency cache
+  let exPerDiv = 0;                                  // and the static catalog assign different
+  if (ratesCache && ratesCache.league === league) { // ids to the same item, so id-only missed most.
+    for (const it of (ratesCache.items || [])) if (it && it.ex > 0) {
+      if (it.id != null) exById.set(String(it.id), it.ex);
+      if (it.name) exByName.set(normalizeName(it.name), it.ex);
     }
+    exPerDiv = (ratesCache.rates && ratesCache.rates.divine) || 0;
   }
-  // Confirm prices on OUR exchange — GENTLY. ~15 calls in a burst trips the shared IP
-  // limit (5/15s, 10/90s), so price 3 ids per RAW batched call with a 10s gap (≈1
-  // call/10s, well under every rule). We deliberately use the raw exchange call, NOT
-  // fetchExchangeChunked: its starved-item backfill re-fetches every zero-offer id
-  // individually, and high-value items almost always have junk/empty exalted-side
-  // offers, so a "1-call" group ballooned to up to 4 back-to-back calls and tripped
-  // the limit. A starved id here just means "no exalted-side price" — skip it.
-  // ~2 min for the full ~40-item set; runs in the background and caches, so it never
-  // blocks a request and can't lock the tool out. Stops early and saves partial
-  // progress if the queue is already limited. (cxapi would price the lot in one call
-  // AND supply the volume — this whole scan + poe.ninja path dies then.)
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const items = [];
-  let partial = false, scannedCands = 0;
-  const hiddenSig = hiddenSet && hiddenSet.size ? hiddenSet.size : 0;
-  const snapshot = () => {
-    const sorted = items.slice().sort((a, b) => b.ex - a.ex);
-    const o = { league, minEx, minVol, hiddenSig, filtered: hiddenSig > 0, liquidTotal, count: sorted.length, items: sorted, showBlock: buildFilterShowBlock(sorted, minEx), partial, scanned: scannedCands, candidates: cands.length, updated: new Date().toISOString() };
+  const bookPrices = (readRuneBook(league) || {}).prices || {};
+  const divPerDiv = (economyDivCache && economyDivCache.league === league && economyDivCache.perDiv) || {};
+  const priceFromCache = (c) => {
+    const nn = normalizeName(c.name);
+    let ex = exById.get(String(c.id)) || exByName.get(nn);
+    if (!(ex > 0)) { const b = bookPrices[nn]; if (b && b.ex > 0) ex = b.ex; }
+    if (!(ex > 0) && exPerDiv > 0 && divPerDiv[String(c.id)] > 0) ex = divPerDiv[String(c.id)] * exPerDiv;
+    return ex > 0 ? round4(ex) : 0;
+  };
+
+  const prices = [];                       // {id,name,ex,volume,category}
+  const need = [];
+  for (const c of cands) {
+    const ex = priceFromCache(c);
+    if (ex > 0) prices.push({ ...c, ex }); else need.push(c);
+  }
+  let partial = false, scanned = 0;
+  const save = () => {
+    const o = { league, minVol, candidates: cands.length, prices, partial, scanned, updated: new Date().toISOString() };
     try { fs.writeFileSync(FILTER_HELPER_FILE, JSON.stringify(o, null, 2)); } catch {}
     return o;
   };
-  for (let i = 0; i < cands.length; i += 3) {
+  save();  // persist the cache-seeded book immediately, before any network
+  if (!scan) return save();  // cold-start seed: caches only, ZERO Trade2 calls
+  // GENTLY price the rest against exalted: 1 RAW batched call (3 ids) per ~10s — no
+  // backfill (a starved id just means "no exalted-side price", skip it), stops dead
+  // if the shared limit is already on, and NEVER auto-retries. Spaced + user-triggered
+  // = the safe pattern. ~10s × ceil(need/3); progressive save so a stop keeps progress.
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < need.length; i += 3) {
     if (tradeStatus().limited) { partial = true; break; }
-    const group = cands.slice(i, i + 3);
+    const group = need.slice(i, i + 3);
     let data;
     try { data = await exchangeRawImpl(league, EXALTED_ID, group.map((c) => c.id)); }
     catch { partial = true; break; }
     for (const c of group) {
       const best = bestExchangeOffer(data, EXALTED_ID, c.id, 5) || bestExchangeOffer(data, EXALTED_ID, c.id, 1);
-      const ex = best && best.payPerReceive > 0 ? round4(best.payPerReceive) : 0;
-      if (ex >= minEx) items.push({ name: c.name, ex, volume: c.volume });
+      if (best && best.payPerReceive > 0) prices.push({ ...c, ex: round4(best.payPerReceive) });
     }
-    scannedCands = Math.min(i + 3, cands.length);
-    snapshot();  // progressive: items appear while the gentle scan runs; partial trip still saves
-    if (i + 3 < cands.length) await sleep(10000);  // ~1 call/10s stays under 10/90s — 8s tripped it
+    scanned = Math.min(i + 3, need.length);
+    save();
+    if (i + 3 < need.length) await sleep(10000);
   }
-  return snapshot();
+  return save();
 }
 
-// Non-blocking: the ~2-min gentle scan runs in the BACKGROUND (single-flight). The
-// endpoint serves whatever's cached now plus a `building` flag; the front end polls
-// until the rebuild lands. Kicks a rebuild when forced or stale (and not already
-// running / rate-limited).
-function getFilterHelper(league, minEx, minVol, force, hiddenSet) {
-  const cached = readFilterHelper();
-  const sig = hiddenSet && hiddenSet.size ? hiddenSet.size : 0;
-  const matches = cached && cached.minEx === minEx && cached.minVol === minVol && (cached.hiddenSig || 0) === sig;
-  const fresh = matches && Date.now() - new Date(cached.updated).getTime() < FILTER_HELPER_TTL_MS;
-  if ((force || !fresh) && !tradeStatus().limited && !filterHelperInFlight) {
-    filterHelperInFlight = buildFilterHelper(league, minEx, minVol, hiddenSet)
+// Apply minEx + the pasted filter to the cached price book — pure in-memory, ZERO
+// Trade2 calls — so opens and filter edits are instant and can never touch the limit.
+function serveFilterHelper(book, minEx, minVol, filterSpec, building) {
+  const usable = book && book.minVol === minVol;
+  const all = usable ? (book.prices || []) : [];
+  const liquidTotal = all.length;
+  const items = all
+    .filter((p) => p.ex >= minEx && (!filterSpec || filterHelperHides(p, filterSpec)))
+    .map((p) => ({ name: p.name, ex: p.ex, volume: p.volume }))
+    .sort((a, b) => b.ex - a.ex);
+  return {
+    league: book && book.league, minEx, minVol, filtered: Boolean(filterSpec),
+    liquidTotal, count: items.length, items, showBlock: buildFilterShowBlock(items, minEx),
+    candidates: usable ? book.candidates : 0, partial: Boolean(usable && book.partial),
+    updated: usable ? book.updated : null, building: Boolean(building),
+  };
+}
+
+// Serve the cached book (filtered) instantly. Kick a fresh price-book scan ONLY on
+// an explicit Generate (force) or a true cold start (no book yet) — and only when the
+// shared limit is clear. Never rebuilds just because the cache went stale.
+function getFilterHelper(league, minEx, minVol, force, filterSpec) {
+  const book = readFilterHelper();
+  const haveUsable = book && book.minVol === minVol;
+  const coldStart = !haveUsable && !force;          // first open with no book: seed from caches only (no scan)
+  const wantScan = force && !tradeStatus().limited; // the live scan needs a clear limit; the cache seed never calls Trade2
+  if ((wantScan || coldStart) && !filterHelperInFlight) {
+    filterHelperInFlight = buildFilterHelperBook(league, minVol, wantScan)
       .catch((e) => { console.error("filter-helper build failed:", e && e.message); return null; })
       .finally(() => { filterHelperInFlight = null; });
   }
-  const base = matches ? cached : { league, minEx, minVol, filtered: sig > 0, items: [], showBlock: "", count: 0 };
-  return { ...base, building: Boolean(filterHelperInFlight) };
+  return serveFilterHelper(book, minEx, minVol, filterSpec, filterHelperInFlight);
 }
 
 // ── Rune Picker price book: accurate Trade2 exchange prices for runes/essences/
@@ -4262,19 +4329,20 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === "/api/filter-helper") {
-      // POST with {hidden:[...]} scopes the scan to only the base types the filter
-      // hides (tiny — keeps it under the rate limit); GET = the full liquid scan.
+      // POST with {filter:{...parsed...}} scopes the scan to only the items the filter
+      // HIDES (tiny — keeps it under the rate limit); GET = the full liquid scan.
       const body = req.method === "POST" ? await readJson(req).catch(() => ({})) : {};
       const league = sanitizeLeague(body.league || url.searchParams.get("league"));
       const force = body.refresh === true || url.searchParams.get("refresh") === "1";
       const minEx = Math.max(0, Number(body.minEx != null ? body.minEx : url.searchParams.get("minEx")) || 1);
       const minVol = Math.max(0, Number(body.minVol != null ? body.minVol : url.searchParams.get("minVol")) || 10);
-      const hiddenSet = Array.isArray(body.hidden) && body.hidden.length
-        ? new Set(body.hidden.map((s) => String(s).toLowerCase().replace(/\s+/g, " ").trim()).filter(Boolean))
-        : null;
-      const data = await getFilterHelper(league, minEx, minVol, force, hiddenSet);
+      const filterSpec = req.method === "POST" ? buildFilterSpec(body.filter) : null;
+      // Opens/filter-edits serve the cached book with ZERO Trade2 calls. A Generate
+      // (force) kicks the gentle scan — but only if the shared limit is clear, so we
+      // pass `limited` through informationally (the tool still shows cached prices).
+      const data = await getFilterHelper(league, minEx, minVol, force, filterSpec);
       const st = tradeStatus();
-      send(res, 200, JSON.stringify({ ...data, limited: st.limited, tradeLimitedUntil: st.tradeLimitedUntil, secondsRemaining: st.secondsRemaining }), "application/json; charset=utf-8");
+      send(res, 200, JSON.stringify({ ...data, limited: st.limited, secondsRemaining: st.secondsRemaining }), "application/json; charset=utf-8");
       return;
     }
 
@@ -4659,5 +4727,7 @@ module.exports = {
   analyzeGearSearch,
   buildGearSearchQuery,
   gearSearchSlots,
+  buildFilterSpec,
+  filterHelperHides,
   __setExchangeRawImpl(fn) { exchangeRawImpl = fn; },
 };

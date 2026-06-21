@@ -124,6 +124,13 @@ function staticChecks() {
   } catch {
     check(false, "economy divine anchor rejects thin lowball offers (economy-rate-test.js)");
   }
+  // Filter Helper only scans items the filter HIDES (no over-scan of shown items)
+  try {
+    require("child_process").execFileSync("node", [path.join(ROOT, "filter-helper-test.js")], { stdio: "ignore", env: { ...process.env, POE2_NO_OPEN: "1" } });
+    check(true, "filter helper hides = not-shown, never over-scans (filter-helper-test.js)");
+  } catch {
+    check(false, "filter helper hides = not-shown, never over-scans (filter-helper-test.js)");
+  }
 }
 
 // ---- 2) HTTP checks ----
