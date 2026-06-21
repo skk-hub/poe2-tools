@@ -78,58 +78,49 @@ window.__viewInit["filter-helper"] = function () {
     return { shown, hidden };
   }
 
-  function buildShowBlock(items, floor) {
-    if (!items.length) return "";
-    const bases = items.map((i) => '"' + i.name.replace(/"/g, "") + '"').join(" ");
-    return [
-      "# >= " + floor + " ex on the Trade2 Currency Exchange (poe-tools Filter Helper).",
-      "# Paste at the TOP of your filter so these are never hidden. Regenerate as prices move.",
-      "Show",
-      "    BaseType == " + bases,
-      "    SetFontSize 45",
-      "    SetTextColor 255 255 255 255",
-      "    SetBackgroundColor 140 30 30 255",
-      "    SetBorderColor 255 220 100 255",
-      "    PlayAlertSound 2 300",
-      "    MinimapIcon 1 Yellow Star",
-      "    PlayEffect Yellow",
-    ].join("\n");
-  }
-
   function render(d) {
     lastData = d;
-    const allItems = (d && d.items) || [];
+    const items = (d && d.items) || [];        // server already scoped to the filter's hidden set
     const floor = (d && d.minEx) || minEx.value || 1;
-    const ft = filterArea ? filterArea.value.trim() : "";
-    let items = allItems, pruneNote = "";
-    if (ft) {
-      const { shown, hidden } = parseFilter(ft);
-      items = allItems.filter((it) => { const n = normBase(it.name); return hidden.has(n) && !shown.has(n); });
-      pruneNote = items.length
-        ? items.length + " of " + allItems.length + " hidden by your filter"
-        : (allItems.length ? "your filter already shows all " + allItems.length + " valuable items — nothing to unhide 👍" : "");
-    }
     rows.innerHTML = items.map((it) =>
       "<tr><td>" + esc(it.name) + "</td><td class=\"num\">" + esc(fmtEx(it.ex)) + "</td><td class=\"num muted\">" + esc(it.volume) + "</td></tr>"
     ).join("");
     wrap.hidden = !items.length;
-    const block = ft ? buildShowBlock(items, floor) : (d && d.showBlock) || "";
-    blockWrap.hidden = !block;
-    if (block) blockArea.value = block;
+    blockWrap.hidden = !(d && d.showBlock);
+    if (d && d.showBlock) blockArea.value = d.showBlock;
     const bits = [];
-    if (pruneNote) bits.push(pruneNote);
-    else if (typeof d.count === "number") bits.push(d.count + " item" + (d.count === 1 ? "" : "s") + " ≥ " + floor + " ex");
-    if (d.candidates) bits.push(d.candidates + " liquid candidates scanned");
+    if (d.filtered) {
+      bits.push(items.length + " item" + (items.length === 1 ? "" : "s") + " your filter hides ≥ " + floor + " ex" + (d.liquidTotal ? " (of " + d.liquidTotal + " liquid)" : ""));
+      if (!items.length && !d.building) bits.push("your filter already shows everything valuable — nothing to unhide 👍");
+    } else if (typeof d.count === "number") {
+      bits.push(d.count + " item" + (d.count === 1 ? "" : "s") + " ≥ " + floor + " ex");
+      if (d.candidates) bits.push(d.candidates + " liquid candidates scanned");
+    }
     if (d.partial) bits.push("partial — rate limit hit, click Refresh to finish");
     if (d.updated) bits.push("updated " + new Date(d.updated).toLocaleString());
     sub.textContent = bits.join(" · ");
   }
 
+  // Build the request: with a filter pasted we POST the hidden base set so the server
+  // only prices what the filter hides (tiny scan, can't trip the rate limit); without
+  // one we GET the full liquid scan.
+  function buildReq(force) {
+    const ft = filterArea ? filterArea.value.trim() : "";
+    const lg = league.value.trim() || "Runes of Aldur", ex = Number(minEx.value) || 1, vol = Number(minVol.value) || 10;
+    if (ft) {
+      const { shown, hidden } = parseFilter(ft);
+      const hiddenList = [...hidden].filter((h) => !shown.has(h));
+      return ["/api/filter-helper", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ league: lg, minEx: ex, minVol: vol, hidden: hiddenList, refresh: !!force }) }];
+    }
+    return ["/api/filter-helper?league=" + encodeURIComponent(lg) + "&minEx=" + ex + "&minVol=" + vol + (force ? "&refresh=1" : ""), { method: "GET" }];
+  }
+
   async function load(force) {
     clearTimers();
     try {
-      const r = await fetch("/api/filter-helper?league=" + encodeURIComponent(league.value.trim() || "Runes of Aldur") +
-        "&minEx=" + encodeURIComponent(minEx.value || "1") + "&minVol=" + encodeURIComponent(minVol.value || "10") + (force ? "&refresh=1" : ""));
+      const [u, opts] = buildReq(force);
+      const r = await fetch(u, opts);
       const d = await r.json();
       if (d.limited) {
         const until = d.tradeLimitedUntil ? new Date(d.tradeLimitedUntil).getTime() : (Date.now() + (d.secondsRemaining || 0) * 1000);
@@ -151,7 +142,13 @@ window.__viewInit["filter-helper"] = function () {
   }
 
   genBtn.addEventListener("click", () => { setStatus("Starting scan…", ""); load(true); });
-  if (filterArea) filterArea.addEventListener("input", () => { if (lastData) render(lastData); });
+  // Filter pasted/edited → re-scan (debounced). With a filter the scan is scoped to
+  // just what it hides, so it's tiny and safe to re-run.
+  let filterDebounce = null;
+  if (filterArea) filterArea.addEventListener("input", () => {
+    clearTimeout(filterDebounce);
+    filterDebounce = setTimeout(() => { setStatus("Applying your filter…", ""); load(false); }, 1500);
+  });
   copyBtn.addEventListener("click", async () => {
     if (!blockArea.value) return;
     try { await navigator.clipboard.writeText(blockArea.value); copyBtn.textContent = "Copied!"; setTimeout(() => (copyBtn.textContent = "Copy Show block"), 1500); }

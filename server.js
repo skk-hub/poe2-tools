@@ -1465,7 +1465,9 @@ function buildFilterShowBlock(items, minEx) {
   ].join("\n");
 }
 
-async function buildFilterHelper(league, minEx, minVol) {
+const normBaseFH = (s) => String(s).toLowerCase().replace(/\s+/g, " ").trim();
+
+async function buildFilterHelper(league, minEx, minVol, hiddenSet) {
   league = sanitizeLeague(league);
   const ninja = await fetchNinjaVolume(league);
   const catalog = await getExchangeCatalog(league);
@@ -1481,6 +1483,17 @@ async function buildFilterHelper(league, minEx, minVol) {
     seen.add(entry.id);
     cands.push({ id: entry.id, name: entry.name, volume: Math.round(r.volume) });
   }
+  // If the caller passed the set of base types their filter HIDES, only price those.
+  // This is the whole point of the filter: it shrinks the scan from ~60 liquid items
+  // to the handful the filter actually hides (often ~0 for a strict filter), so the
+  // scan is too small to contribute to a rate-limit trip. (Names are matched with the
+  // same lowercase/space normalization the client uses.)
+  const liquidTotal = cands.length;
+  if (hiddenSet && hiddenSet.size) {
+    for (let k = cands.length - 1; k >= 0; k--) {
+      if (!hiddenSet.has(normBaseFH(cands[k].name))) cands.splice(k, 1);
+    }
+  }
   // Confirm prices on OUR exchange — GENTLY. ~15 calls in a burst trips the shared IP
   // limit (5/15s, 10/90s), so price 3 ids per call with an ~8s gap (≈1 call/8s, well
   // under every rule). ~2 min for the full ~40-item set; runs in the background and
@@ -1490,9 +1503,10 @@ async function buildFilterHelper(league, minEx, minVol) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const items = [];
   let partial = false, scannedCands = 0;
+  const hiddenSig = hiddenSet && hiddenSet.size ? hiddenSet.size : 0;
   const snapshot = () => {
     const sorted = items.slice().sort((a, b) => b.ex - a.ex);
-    const o = { league, minEx, minVol, count: sorted.length, items: sorted, showBlock: buildFilterShowBlock(sorted, minEx), partial, scanned: scannedCands, candidates: cands.length, updated: new Date().toISOString() };
+    const o = { league, minEx, minVol, hiddenSig, filtered: hiddenSig > 0, liquidTotal, count: sorted.length, items: sorted, showBlock: buildFilterShowBlock(sorted, minEx), partial, scanned: scannedCands, candidates: cands.length, updated: new Date().toISOString() };
     try { fs.writeFileSync(FILTER_HELPER_FILE, JSON.stringify(o, null, 2)); } catch {}
     return o;
   };
@@ -1518,16 +1532,17 @@ async function buildFilterHelper(league, minEx, minVol) {
 // endpoint serves whatever's cached now plus a `building` flag; the front end polls
 // until the rebuild lands. Kicks a rebuild when forced or stale (and not already
 // running / rate-limited).
-function getFilterHelper(league, minEx, minVol, force) {
+function getFilterHelper(league, minEx, minVol, force, hiddenSet) {
   const cached = readFilterHelper();
-  const matches = cached && cached.minEx === minEx && cached.minVol === minVol;
+  const sig = hiddenSet && hiddenSet.size ? hiddenSet.size : 0;
+  const matches = cached && cached.minEx === minEx && cached.minVol === minVol && (cached.hiddenSig || 0) === sig;
   const fresh = matches && Date.now() - new Date(cached.updated).getTime() < FILTER_HELPER_TTL_MS;
   if ((force || !fresh) && !tradeStatus().limited && !filterHelperInFlight) {
-    filterHelperInFlight = buildFilterHelper(league, minEx, minVol)
+    filterHelperInFlight = buildFilterHelper(league, minEx, minVol, hiddenSet)
       .catch((e) => { console.error("filter-helper build failed:", e && e.message); return null; })
       .finally(() => { filterHelperInFlight = null; });
   }
-  const base = matches ? cached : { league, minEx, minVol, items: [], showBlock: "", count: 0 };
+  const base = matches ? cached : { league, minEx, minVol, filtered: sig > 0, items: [], showBlock: "", count: 0 };
   return { ...base, building: Boolean(filterHelperInFlight) };
 }
 
@@ -4242,11 +4257,17 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === "/api/filter-helper") {
-      const league = sanitizeLeague(url.searchParams.get("league"));
-      const force = url.searchParams.get("refresh") === "1";
-      const minEx = Math.max(0, Number(url.searchParams.get("minEx")) || 1);
-      const minVol = Math.max(0, Number(url.searchParams.get("minVol")) || 10);
-      const data = await getFilterHelper(league, minEx, minVol, force);
+      // POST with {hidden:[...]} scopes the scan to only the base types the filter
+      // hides (tiny — keeps it under the rate limit); GET = the full liquid scan.
+      const body = req.method === "POST" ? await readJson(req).catch(() => ({})) : {};
+      const league = sanitizeLeague(body.league || url.searchParams.get("league"));
+      const force = body.refresh === true || url.searchParams.get("refresh") === "1";
+      const minEx = Math.max(0, Number(body.minEx != null ? body.minEx : url.searchParams.get("minEx")) || 1);
+      const minVol = Math.max(0, Number(body.minVol != null ? body.minVol : url.searchParams.get("minVol")) || 10);
+      const hiddenSet = Array.isArray(body.hidden) && body.hidden.length
+        ? new Set(body.hidden.map((s) => String(s).toLowerCase().replace(/\s+/g, " ").trim()).filter(Boolean))
+        : null;
+      const data = await getFilterHelper(league, minEx, minVol, force, hiddenSet);
       const st = tradeStatus();
       send(res, 200, JSON.stringify({ ...data, limited: st.limited, tradeLimitedUntil: st.tradeLimitedUntil, secondsRemaining: st.secondsRemaining }), "application/json; charset=utf-8");
       return;
