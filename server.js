@@ -1495,11 +1495,16 @@ async function buildFilterHelper(league, minEx, minVol, hiddenSet) {
     }
   }
   // Confirm prices on OUR exchange — GENTLY. ~15 calls in a burst trips the shared IP
-  // limit (5/15s, 10/90s), so price 3 ids per call with an ~8s gap (≈1 call/8s, well
-  // under every rule). ~2 min for the full ~40-item set; runs in the background and
-  // caches, so it never blocks a request and can't lock the tool out. Stops early and
-  // saves partial progress if the queue is already limited. (cxapi would price the lot
-  // in one call AND supply the volume — this whole scan + poe.ninja path dies then.)
+  // limit (5/15s, 10/90s), so price 3 ids per RAW batched call with a 10s gap (≈1
+  // call/10s, well under every rule). We deliberately use the raw exchange call, NOT
+  // fetchExchangeChunked: its starved-item backfill re-fetches every zero-offer id
+  // individually, and high-value items almost always have junk/empty exalted-side
+  // offers, so a "1-call" group ballooned to up to 4 back-to-back calls and tripped
+  // the limit. A starved id here just means "no exalted-side price" — skip it.
+  // ~2 min for the full ~40-item set; runs in the background and caches, so it never
+  // blocks a request and can't lock the tool out. Stops early and saves partial
+  // progress if the queue is already limited. (cxapi would price the lot in one call
+  // AND supply the volume — this whole scan + poe.ninja path dies then.)
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const items = [];
   let partial = false, scannedCands = 0;
@@ -1514,7 +1519,7 @@ async function buildFilterHelper(league, minEx, minVol, hiddenSet) {
     if (tradeStatus().limited) { partial = true; break; }
     const group = cands.slice(i, i + 3);
     let data;
-    try { data = await fetchExchangeChunked(league, EXALTED_ID, group.map((c) => c.id)); }
+    try { data = await exchangeRawImpl(league, EXALTED_ID, group.map((c) => c.id)); }
     catch { partial = true; break; }
     for (const c of group) {
       const best = bestExchangeOffer(data, EXALTED_ID, c.id, 5) || bestExchangeOffer(data, EXALTED_ID, c.id, 1);
