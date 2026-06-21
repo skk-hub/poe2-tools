@@ -14,3 +14,11 @@
   white-space: pre; tab-size: 4;
 }
 .toolroot-fh #fhGen.loading { opacity: .7; cursor: progress; }
+.toolroot-fh .fh-filterbox { margin: .6rem 0 1rem; }
+.toolroot-fh .fh-filterbox > summary { cursor: pointer; color: var(--muted, #9aa); font-size: .9rem; }
+.toolroot-fh .fh-filterbox .sub { margin: .5rem 0; }
+.toolroot-fh #fhFilter {
+  width: 100%; min-height: 120px; resize: vertical;
+  font-family: var(--mono, "JetBrains Mono", monospace); font-size: .78rem; line-height: 1.45;
+  white-space: pre; tab-size: 4;
+}

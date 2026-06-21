@@ -511,6 +511,11 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div id="fhStatus" class="status">Sets a price floor and a liquidity floor, then scans.</div>
       </div>
     </div>
+    <details class="fh-filterbox">
+      <summary>Paste your loot filter (optional) — only list what it actually <b>hides</b></summary>
+      <p class="sub">Stays in your browser. Prunes the list to items your filter hides (so you don't get a block full of stuff you already see), and rebuilds the Show block from just those.</p>
+      <textarea id="fhFilter" spellcheck="false" placeholder="Paste your .filter file here…"></textarea>
+    </details>
     <p id="fhSub" class="sub"></p>
     <div id="fhTableWrap" class="tablewrap" hidden>
       <table>
