@@ -52,6 +52,20 @@ window.WAYSTONE_DATA = {
     tabletDesirable: "ack s|onster|rar",
   },
 
+  // Desirable TABLET mods, surfaced as toggle chips in the Regex Forge. Tokens are
+  // case-insensitive substrings; `|` = OR (so one chip can cover spelling variants).
+  // VERIFY wording against your stash — the niche 0.5 mods (Wombgift, Hive Blood,
+  // Abyssal pits, Vaal crystals) are best-effort. `tabletGeneral` applies to any tablet.
+  tabletGeneral: [
+    { label: "Item Quantity", token: "uantity of item" },
+    { label: "Item Rarity", token: "arity of item" },
+    { label: "Pack Size", token: "ack size" },
+    { label: "Magic Monsters", token: "agic monster" },
+    { label: "Rare Monsters", token: "are monster" },
+    { label: "Irradiated", token: "rradiat" },
+    { label: "Effectiveness", token: "ffectiveness" },
+  ],
+
   // The avoid-list shown in the UI (matches `tokens.danger`).
   dangerousMods: [
     "X% less Recovery Rate of Life and Energy Shield",
@@ -107,6 +121,12 @@ window.WAYSTONE_DATA = {
       id: "breach",
       label: "Breach",
       tabletToken: "reach",
+      desirable: [
+        { label: "Extra Rare Monster", token: "dditional rare monster|extra rare monster" },
+        { label: "Wombgift", token: "ombgift|omb gift" },
+        { label: "Hive Blood", token: "iveblood|ive blood" },
+        { label: "Additional Breach", token: "dditional breach" },
+      ],
       scalesWith: { packSize: 1.0, monsterRarity: 0.85, itemRarity: 0.4 },
       blurb: "Breaches drop Splinters & Clasped Hands; scale hard with Pack Size, Rare Monsters and Rarity. Stack Breach atlas nodes + Breach tablets.",
       juiceNote: "Pair with Breach Precursor Tablets (rolled Rarity/Quantity/Monsters). Pack size & rare-monster mods convert directly into Breach loot.",
@@ -119,6 +139,12 @@ window.WAYSTONE_DATA = {
       id: "abyss",
       label: "Abyss",
       tabletToken: "byss",
+      desirable: [
+        { label: "Extra Rare Monster", token: "dditional rare monster|extra rare monster" },
+        { label: "Additional Pit", token: "dditional pit|byssal pit" },
+        { label: "Additional Abyss", token: "dditional abyss" },
+        { label: "Abyssal Modifier", token: "byssal modifier" },
+      ],
       scalesWith: { packSize: 1.0, monsterEffectiveness: 0.7 },
       blurb: "Abyss pits lead to Abyssal Depths; reward scales with monster density / pack size. Atlas: From Below, Dark Depths, then Lord of the Pit.",
       juiceNote: "Pair with Abyss Precursor Tablets + monster-effectiveness. Density and pack size matter more than raw quantity.",
@@ -131,6 +157,11 @@ window.WAYSTONE_DATA = {
       id: "delirium",
       label: "Delirium",
       tabletToken: "eliri",
+      desirable: [
+        { label: "Simulacrum Splinter", token: "imulacrum" },
+        { label: "Mirror Shard", token: "irror" },
+        { label: "Unique Boss", token: "nique boss" },
+      ],
       scalesWith: { packSize: 1.0, monsterEffectiveness: 0.65 },
       blurb: "Delirium fog grants reward per % progress; scales with Pack Size and monster density. Delirium tablets add Mirrors of Delirium in range.",
       juiceNote: "Pair with Delirium Precursor Tablets. Prioritise Pack Size + clear speed so you push deep into the fog before it ends.",
@@ -153,6 +184,11 @@ window.WAYSTONE_DATA = {
       id: "ritual",
       label: "Ritual",
       tabletToken: "itual",
+      desirable: [
+        { label: "Rerolls", token: "eroll|additional time" },
+        { label: "Omens", token: "men" },
+        { label: "Tribute", token: "ribute" },
+      ],
       scalesWith: { monsterRarity: 1.0, packSize: 0.6 },
       blurb: "Ritual altars give Tribute to spend; scales with rare-monster density. Ritual tablets add altars / increase Tribute & rerolls.",
       juiceNote: "Pair with Ritual Precursor Tablets. Rare-monster and pack-size mods raise Tribute generated.",
@@ -170,6 +206,16 @@ window.WAYSTONE_DATA = {
       omenPicks: [
         { name: "Omen of Chaotic Rarity", why: "Pure loot-quality farming — convert the whole map to Rarity." },
       ],
+    },
+    {
+      id: "temple",
+      label: "Vaal / Temple",
+      tabletToken: "aal|emple",   // VERIFY: tablet keyword may be "Vaal" or "Temple" in-stash
+      desirable: [
+        { label: "Beacon Crystals", token: "rystal" },
+        { label: "Vaal Beacon", token: "eacon" },
+      ],
+      blurb: "Vaal/Temple tablets add Vaal Beacons; extra crystals around the beacons are the chase. Confirm the keyword + crystal wording in your stash.",
     },
   ],
 };

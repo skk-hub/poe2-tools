@@ -19,9 +19,9 @@ window.__viewInit["map-juicer"]=function(){
 
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
-  let rarityMin = 60, packMin = 30;
-  function tens(pct){ const d = Math.max(2, Math.floor(pct / 10)); return d >= 2 && d <= 9 ? `[${d}-9].` : "\\d."; }
-  function atLeast(token, pct){ return `${token} \\+(${tens(pct)}|1..)%`; }
+  let rarityMin = 60, packMin = 30, wdropMin = 0;   // 0 = drop that stat from the floor
+  function tens(pct){ const d = Math.floor(pct / 10); if (d >= 10) return "1.."; return d >= 1 ? `[${d}-9].` : "\\d."; }
+  function atLeast(token, pct){ const t = tens(pct); return t === "1.." ? `${token} \\+(1..)%` : `${token} \\+(${t}|1..)%`; }
   function noRevivesRegex(){ return `"${T.revivesZero}"`; }
 
   // ── Regex Forge — answer a few questions, the regex rebuilds on every change ──
@@ -30,13 +30,28 @@ window.__viewInit["map-juicer"]=function(){
   let wRevives = false;        // require fully-juiced (0 revives)
   let wExclude = true;         // exclude risk suffixes
   const tContent = new Set();  // selected tablet content-type ids
-  let tDesirable = true;       // require a desirable mod beside the content keyword
+  const tMods = new Set();      // selected desirable-mod tokens to require
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  // Desirable mods available for the current content picks: each content's own list, then the general set.
+  function gatherDesirables(){
+    const seen = new Set(), out = [];
+    const add = m => { if (!seen.has(m.token)) { seen.add(m.token); out.push(m); } };
+    D.contentTypes.filter(c => tContent.has(c.id)).forEach(c => (c.desirable || []).forEach(add));
+    (D.tabletGeneral || []).forEach(add);
+    return out;
+  }
 
   function buildWaystone(){
     const blocks = [];
-    if (wMatch === "blue") blocks.push(`"(${L.itemRarity}|${L.packSize}|${L.magicMonsters}|${L.rareMonsters}|${L.waystoneDrop})"`);
-    else blocks.push(`"(${atLeast(L.itemRarity, rarityMin)}|${atLeast(L.packSize, packMin)})"`);
+    if (wMatch === "blue") {
+      blocks.push(`"(${L.itemRarity}|${L.packSize}|${L.magicMonsters}|${L.rareMonsters}|${L.waystoneDrop})"`);
+    } else {
+      const parts = [];
+      if (rarityMin > 0) parts.push(atLeast(L.itemRarity, rarityMin));
+      if (packMin > 0)   parts.push(atLeast(L.packSize, packMin));
+      if (wdropMin > 0)  parts.push(atLeast(L.waystoneDrop, wdropMin));
+      if (parts.length) blocks.push(parts.length === 1 ? `"${parts[0]}"` : `"(${parts.join("|")})"`);
+    }
     if (wRevives) blocks.push(noRevivesRegex());
     if (wExclude) blocks.push(`"!${T.danger}"`);
     return blocks.join(" ");
@@ -44,8 +59,11 @@ window.__viewInit["map-juicer"]=function(){
   function buildTablet(){
     const toks = D.contentTypes.filter(c => tContent.has(c.id)).map(c => c.tabletToken);
     if (!toks.length) return "";
-    const tok = toks.length === 1 ? `"${toks[0]}"` : `"(${toks.join("|")})"`;
-    return tDesirable ? `${tok} "${T.tabletDesirable}"` : tok;
+    const kw = toks.length === 1 ? `"${toks[0]}"` : `"(${toks.join("|")})"`;
+    const mods = gatherDesirables().map(m => m.token).filter(t => tMods.has(t));
+    if (!mods.length) return kw;
+    const md = mods.length === 1 ? `"${mods[0]}"` : `"(${mods.join("|")})"`;
+    return `${kw} ${md}`;
   }
   function currentRegex(){ return target === "tablets" ? buildTablet() : buildWaystone(); }
 
@@ -64,22 +82,28 @@ window.__viewInit["map-juicer"]=function(){
     return `
       <div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}</div>
       ${wMatch==="floor"
-        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,40,70)}${stepper("pack","Min Pack Size",packMin,20,40)}</div>`
+        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,0,70)}${stepper("pack","Min Pack Size",packMin,0,40)}${stepper("wdrop","Min Waystone Drop",wdropMin,0,80)}</div>`
         : `<p class="forge-hint">Matches any waystone carrying a reward mod — the blue stones worth upgrading.</p>`}
       ${toggle("revives","Fully juiced only (0 revives = 6-mod map)",wRevives)}
       ${toggle("exclude","Exclude risk suffixes (less recovery, −max res, …)",wExclude)}`;
   }
   function tabletQs(){
     const chips = D.contentTypes.map(c => `<button class="chip${tContent.has(c.id)?" on":""}" type="button" data-chip="${c.id}">${esc(c.label)}</button>`).join("");
+    let mods = "";
+    if (tContent.size){
+      const modChips = gatherDesirables().map(m => `<button class="chip${tMods.has(m.token)?" on":""}" type="button" data-mod="${esc(m.token)}">${esc(m.label)}</button>`).join("");
+      mods = `<p class="forge-hint">Require any of these mods (the content's best are pre-picked — deselect to widen):</p><div class="forge-chips">${modChips}</div>`;
+    }
     return `
       <p class="forge-hint">Pick the content you're farming — socket the tablet in a Tower covering those maps.</p>
       <div class="forge-chips">${chips}</div>
-      ${toggle("desirable","Require a desirable mod (pack size / monsters / rarity)",tDesirable)}`;
+      ${mods}`;
   }
   function forgeOutput(){
     const rx = currentRegex(), len = rx.length, over = len > D.regexLimit, empty = !rx;
+    const ph = target === "tablets" ? "Pick at least one content type…" : "Set a minimum on at least one stat…";
     return `<div class="forge-out${empty?" empty":""}">
-      <code class="regexbox">${empty ? "Pick at least one content type…" : esc(rx)}</code>
+      <code class="regexbox">${empty ? ph : esc(rx)}</code>
       <div class="forge-meta">
         <span class="rx-len ${over?"over":""}">${len}/${D.regexLimit}</span>
         <button class="copy" type="button" data-copy="${esc(rx)}"${empty?" disabled":""}>Copy</button>
@@ -107,18 +131,25 @@ window.__viewInit["map-juicer"]=function(){
     root.querySelectorAll("[data-target]").forEach(b => b.addEventListener("click", () => { target = b.getAttribute("data-target"); renderSheet(); }));
     root.querySelectorAll("[data-wmatch]").forEach(b => b.addEventListener("click", () => { wMatch = b.getAttribute("data-wmatch"); renderSheet(); }));
     root.querySelectorAll("[data-step]").forEach(b => b.addEventListener("click", () => {
-      const dir = Number(b.getAttribute("data-dir"));
-      if (b.getAttribute("data-step") === "rarity") rarityMin = clamp(rarityMin + dir*10, 40, 70);
-      else packMin = clamp(packMin + dir*10, 20, 40);
+      const dir = Number(b.getAttribute("data-dir")), id = b.getAttribute("data-step");
+      if (id === "rarity") rarityMin = clamp(rarityMin + dir*10, 0, 70);
+      else if (id === "pack") packMin = clamp(packMin + dir*10, 0, 40);
+      else wdropMin = clamp(wdropMin + dir*10, 0, 80);
       renderSheet();
     }));
     root.querySelectorAll("[data-tog]").forEach(c => c.addEventListener("change", () => {
       const k = c.getAttribute("data-tog");
-      if (k === "revives") wRevives = c.checked; else if (k === "exclude") wExclude = c.checked; else if (k === "desirable") tDesirable = c.checked;
+      if (k === "revives") wRevives = c.checked; else if (k === "exclude") wExclude = c.checked;
       renderSheet();
     }));
     root.querySelectorAll("[data-chip]").forEach(b => b.addEventListener("click", () => {
-      const id = b.getAttribute("data-chip"); tContent.has(id) ? tContent.delete(id) : tContent.add(id); renderSheet();
+      const id = b.getAttribute("data-chip"), c = D.contentTypes.find(x => x.id === id);
+      if (tContent.has(id)) tContent.delete(id);
+      else { tContent.add(id); (c && c.desirable || []).forEach(m => tMods.add(m.token)); }  // pre-pick the content's best mods
+      renderSheet();
+    }));
+    root.querySelectorAll("[data-mod]").forEach(b => b.addEventListener("click", () => {
+      const t = b.getAttribute("data-mod"); tMods.has(t) ? tMods.delete(t) : tMods.add(t); renderSheet();
     }));
   }
   async function copyText(txt){
