@@ -344,9 +344,9 @@ async function browserChecks() {
       await p.click('.toolroot-mj [data-step="rarity"][data-dir="-1"]'); await p.waitForTimeout(120);
       await p.click('.toolroot-mj [data-step="rarity"][data-dir="-1"]'); await p.waitForTimeout(120);
       check(/\\\+\(\[4-9\]\.\|1\.\.\)%/.test(await out()), "regex forge stepper rebuilds the regex (Rarity 40%)");
-      // step Min Waystone Drop up once (0 -> 10) -> its token joins the OR floor
-      await p.click('.toolroot-mj [data-step="wdrop"][data-dir="1"]'); await p.waitForTimeout(120);
-      check(/w\.\+e:/.test(await out()), "regex forge adds the waystone-drop stat when stepped above 0");
+      // toggle Waystone Drop ≥100% -> its 100+ token joins the OR floor
+      await p.click('.toolroot-mj [data-tog="wdrop"]'); await p.waitForTimeout(120);
+      check(/w\.\+e: \\\+\(\[1-9\]\.\.\)%/.test(await out()), "regex forge adds waystone-drop ≥100% when toggled");
       // toggle "fully juiced" -> the 0-revives block appears in the live output
       await p.click('.toolroot-mj [data-tog="revives"]'); await p.waitForTimeout(120);
       check(/"revives available: 0"/.test(await out()), "regex forge emits the 0-revives block when toggled");

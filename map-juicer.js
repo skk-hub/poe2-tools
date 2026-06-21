@@ -19,9 +19,9 @@ window.__viewInit["map-juicer"]=function(){
 
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
-  let rarityMin = 60, packMin = 30, wdropMin = 0;   // 0 = drop that stat from the floor
-  function tens(pct){ const d = Math.floor(pct / 10); if (d >= 10) return "1.."; return d >= 1 ? `[${d}-9].` : "\\d."; }
-  function atLeast(token, pct){ const t = tens(pct); return t === "1.." ? `${token} \\+(1..)%` : `${token} \\+(${t}|1..)%`; }
+  let rarityMin = 60, packMin = 30, wdropMin = 0;   // wdrop is 0 (off) or 100 (≥100%); midrange is useless
+  function tens(pct){ const d = Math.floor(pct / 10); return d >= 1 ? `[${d}-9].` : "\\d."; }
+  function atLeast(token, pct){ return pct >= 100 ? `${token} \\+([1-9]..)%` : `${token} \\+(${tens(pct)}|1..)%`; }
   function noRevivesRegex(){ return `"${T.revivesZero}"`; }
 
   // ── Regex Forge — answer a few questions, the regex rebuilds on every change ──
@@ -82,8 +82,9 @@ window.__viewInit["map-juicer"]=function(){
     return `
       <div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}</div>
       ${wMatch==="floor"
-        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,0,70)}${stepper("pack","Min Pack Size",packMin,0,40)}${stepper("wdrop","Min Waystone Drop",wdropMin,0,80)}</div>`
+        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,0,70)}${stepper("pack","Min Pack Size",packMin,0,40)}</div>`
         : `<p class="forge-hint">Matches any waystone carrying a reward mod — the blue stones worth upgrading.</p>`}
+      ${wMatch==="floor" ? toggle("wdrop","Require Waystone Drop ≥100% (midrange isn't worth it)",wdropMin>=100) : ""}
       ${toggle("revives","Fully juiced only (0 revives = 6-mod map)",wRevives)}
       ${toggle("exclude","Exclude risk suffixes (less recovery, −max res, …)",wExclude)}`;
   }
@@ -133,13 +134,12 @@ window.__viewInit["map-juicer"]=function(){
     root.querySelectorAll("[data-step]").forEach(b => b.addEventListener("click", () => {
       const dir = Number(b.getAttribute("data-dir")), id = b.getAttribute("data-step");
       if (id === "rarity") rarityMin = clamp(rarityMin + dir*10, 0, 70);
-      else if (id === "pack") packMin = clamp(packMin + dir*10, 0, 40);
-      else wdropMin = clamp(wdropMin + dir*10, 0, 80);
+      else packMin = clamp(packMin + dir*10, 0, 40);
       renderSheet();
     }));
     root.querySelectorAll("[data-tog]").forEach(c => c.addEventListener("change", () => {
       const k = c.getAttribute("data-tog");
-      if (k === "revives") wRevives = c.checked; else if (k === "exclude") wExclude = c.checked;
+      if (k === "revives") wRevives = c.checked; else if (k === "exclude") wExclude = c.checked; else if (k === "wdrop") wdropMin = c.checked ? 100 : 0;
       renderSheet();
     }));
     root.querySelectorAll("[data-chip]").forEach(b => b.addEventListener("click", () => {
