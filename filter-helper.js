@@ -15,6 +15,29 @@ window.__viewInit["filter-helper"] = function () {
   function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = "status" + (cls ? " " + cls : ""); }
   function clearTimers() { if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; } if (limitTimer) { clearInterval(limitTimer); limitTimer = null; } }
 
+  // Tick down the API's unlock timestamp; when it elapses, re-confirm against
+  // /api/trade-status (that endpoint reads cached state — NO trade2 call, so it
+  // can't collide with the shared queue or other tools). Don't auto-scan; just
+  // re-enable Generate, or re-sync the countdown if a fresh limit is reported.
+  function startLimitCountdown(untilMs) {
+    clearTimers();
+    genBtn.disabled = true;
+    const tick = async () => {
+      const s = (untilMs - Date.now()) / 1000;
+      if (s > 0) { setStatus("Trade2 rate-limited — try in " + fmtDur(s) + ".", "err"); return; }
+      clearInterval(limitTimer); limitTimer = null;
+      try {
+        const st = await (await fetch("/api/trade-status")).json();
+        if (st.limited) {
+          const u = st.tradeLimitedUntil ? new Date(st.tradeLimitedUntil).getTime() : Date.now() + (st.secondsRemaining || 0) * 1000;
+          return startLimitCountdown(u);
+        }
+      } catch {}
+      genBtn.disabled = false; setStatus("Rate limit cleared — click Generate.", "");
+    };
+    tick(); limitTimer = setInterval(tick, 1000);
+  }
+
   function qs() {
     return "?league=" + encodeURIComponent(league.value.trim() || "Runes of Aldur") +
       "&minEx=" + encodeURIComponent(minEx.value || "1") +
@@ -44,9 +67,7 @@ window.__viewInit["filter-helper"] = function () {
       const d = await r.json();
       if (d.limited) {
         const until = d.tradeLimitedUntil ? new Date(d.tradeLimitedUntil).getTime() : (Date.now() + (d.secondsRemaining || 0) * 1000);
-        genBtn.disabled = true;
-        const tick = () => { const s = (until - Date.now()) / 1000; if (s <= 0) { clearInterval(limitTimer); limitTimer = null; genBtn.disabled = false; setStatus("Rate limit cleared — click Generate.", ""); } else setStatus("Trade2 rate-limited — try in " + fmtDur(s) + ".", "err"); };
-        tick(); limitTimer = setInterval(tick, 1000);
+        startLimitCountdown(until);
         render(d); return;
       }
       render(d);
