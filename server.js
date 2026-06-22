@@ -4236,6 +4236,21 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://" + HOST + ":" + PORT);
 
+    // Shared-secret gate — ONLY when bound beyond localhost (LAN/Tailscale) and a
+    // token is set, so default 127.0.0.1 dev is untouched and a missing token can't
+    // lock you out. Browsers can't add headers on navigation, so bootstrap once via
+    // ?key=… → long-lived cookie. ponytail: a single shared secret, not real auth;
+    // upgrade to per-user tokens only if this ever faces the open internet.
+    const GATE = HOST !== "127.0.0.1" && process.env.POE_AUTH_TOKEN;
+    if (GATE) {
+      const qsKey = url.searchParams.get("key");
+      if (qsKey === GATE) res.setHeader("Set-Cookie", "poe_auth=" + GATE + "; Path=/; Max-Age=31536000; SameSite=Lax");
+      if (qsKey !== GATE && !(req.headers.cookie || "").includes("poe_auth=" + GATE)) {
+        send(res, 403, "Forbidden — open this URL once with ?key=YOUR_TOKEN");
+        return;
+      }
+    }
+
     if (url.pathname === "/favicon.ico") {
       res.writeHead(204);
       res.end();
