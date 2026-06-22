@@ -1082,15 +1082,18 @@ function readTabCache(account, league) {
   return null;
 }
 
-// Read the tracked tab's contents via Trade2: for EACH marker divine price, search
-// the account filtered to that exact price (≤100 results/band) and fetch the items.
-// Union across markers → "Name xStack" lines. Graceful on a mid-sweep 429 (returns
-// what it got + hitLimit). This is the ONLY network-heavy step; it's cached.
-async function readTrackedTabListings(account, league, markers) {
+// Read the marker bands via Trade2, RESUMING from prior progress: each marker price
+// is one exact-price search (≤100 results/band), and a band already read (done) is
+// reused, not re-fetched. So a read cut short by a 429 caches the bands it finished,
+// and the next call continues with the rest — clicking "Value tab" makes progress
+// instead of restarting. Returns the per-band map {price: {lines, done}}.
+async function readTrackedBands(account, league, markers, prior) {
   const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
-  const lines = [];
-  let hitLimit = false, truncated = false, anyFound = false;
+  const bands = Object.assign({}, prior || {});
+  let hitLimit = false, truncated = false;
   for (const m of markers) {
+    const key = String(m);
+    if (bands[key] && bands[key].done) continue;            // already read — resume past it
     if (tradeStatus().limited) { hitLimit = true; break; }
     const body = JSON.stringify({
       query: { status: { option: "any" }, filters: { trade_filters: { filters: {
@@ -1103,21 +1106,24 @@ async function readTrackedTabListings(account, league, markers) {
     try { search = await fetchTrade(searchUrl, { method: "POST", body }); }
     catch (e) { hitLimit = true; break; }
     const ids = search.result || [];
-    if (ids.length) anyFound = true;
     if ((search.total || 0) > ids.length) truncated = true; // this one price has 100+ items
-    for (let i = 0; i < ids.length && !hitLimit; i += 10) {
+    const lines = [];
+    let bandDone = true;
+    for (let i = 0; i < ids.length; i += 10) {
       const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id);
       let fetched;
       try { fetched = await fetchTrade(fetchUrl); }
-      catch (e) { hitLimit = true; break; }
+      catch (e) { hitLimit = true; bandDone = false; break; }
       for (const r of fetched.result || []) {
         const item = r.item || {};
         const name = item.typeLine || item.baseType || item.name;
         if (name) lines.push(name + " x" + (item.stackSize || 1));
       }
     }
+    bands[key] = { lines, done: bandDone };
+    if (hitLimit) break;
   }
-  return { lines, hitLimit, truncated, empty: !anyFound && !hitLimit };
+  return { bands, hitLimit, truncated };
 }
 
 function parseTabLine(l) {
@@ -1131,31 +1137,35 @@ async function fetchTrackedTab(account, league, refresh, markers) {
   markers = (markers && markers.length) ? markers : TAB_MARKERS_DEFAULT.slice();
   const markerSig = markers.join(",");
 
-  // 1. Tab contents — cached (10 min) unless refresh or the marker set changed. The
-  //    read is the only heavy step, so re-pricing visits (auto-poll) skip it.
+  // 1. Tab contents — per-band cache (10 min). Reuse bands already read; on refresh,
+  //    RESUME any not-yet-done bands (a 429 mid-read caches the finished bands so the
+  //    next click continues instead of restarting). Price-only polls (refresh=false)
+  //    never touch the network — they just re-price the cached lines.
   let cache = readTabCache(account, league);
-  const fresh = cache && !refresh && cache.markerSig === markerSig &&
+  const reuse = cache && cache.markerSig === markerSig &&
     (Date.now() - new Date(cache.updated).getTime() < TAB_CACHE_TTL_MS);
-  if (!fresh) {
-    if (tradeStatus().limited) {
-      if (!cache || cache.markerSig !== markerSig) return { limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil, results: [] };
-      // else: fall through and price from the stale cached contents
-    } else {
-      const read = await readTrackedTabListings(account, league, markers);
-      if (read.lines.length) {
-        // Persist what we read. A rate-limited partial read is flagged so the UI can
-        // tell you it's incomplete (refresh re-reads); we still keep it so the value
-        // fills in and you make progress instead of starting from zero each time.
-        cache = { account, league, markerSig, lines: read.lines, truncated: !!read.truncated, partial: !!read.hitLimit, updated: new Date().toISOString() };
-        try { fs.writeFileSync(TAB_CACHE_FILE, JSON.stringify(cache, null, 2)); } catch {}
-      } else if (!cache || cache.markerSig !== markerSig) {
-        if (read.hitLimit) return { limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil, results: [] };
-        return { account, league, results: [], note: "No items found priced at " + markerSig + " divine under that account. Price your tracked items at one of those divine values." };
-      }
-    }
+  let bands = (reuse && cache.bands) ? cache.bands : {};
+  let truncated = reuse ? !!cache.truncated : false;
+  const isDone = (m) => bands[String(m)] && bands[String(m)].done;
+  const allDone = markers.every(isDone);
+
+  if (refresh && !allDone && !tradeStatus().limited) {
+    const read = await readTrackedBands(account, league, markers, bands);
+    bands = read.bands;
+    truncated = !!read.truncated;
+    cache = { account, league, markerSig, bands, truncated, updated: new Date().toISOString() };
+    try { fs.writeFileSync(TAB_CACHE_FILE, JSON.stringify(cache, null, 2)); } catch {}
   }
-  const items = ((cache && cache.lines) || []).map(parseTabLine);
-  if (!items.length) return { account, league, results: [], note: "Tracked tab is empty." };
+
+  const lines = [];
+  for (const m of markers) { const b = bands[String(m)]; if (b && b.lines) lines.push(...b.lines); }
+  const unreadBands = markers.filter((m) => !isDone(m)).length;
+  const items = lines.map(parseTabLine);
+
+  if (!items.length) {
+    if (unreadBands === 0) return { account, league, results: [], note: "No items found priced at " + markerSig + " divine under that account. Price your tracked items at one of those divine values.", markers, unreadBands: 0 };
+    return { account, league, results: [], limited: tradeStatus().limited, tradeLimitedUntil: tradeStatus().tradeLimitedUntil, unreadBands, markers };
+  }
 
   // 2. Price from the exchange book. Cap-fill the NEXT few unbooked items (≤2
   //    exchange calls — can't trip); the rest stay "pricing…" and fill on the
@@ -1192,8 +1202,10 @@ async function fetchTrackedTab(account, league, refresh, markers) {
     totalEx: Math.round(totalEx * 100) / 100,
     totalDiv: rates.divine ? Math.round((totalEx / rates.divine) * 100) / 100 : 0,
     limited: tradeStatus().limited,
-    truncated: !!(cache && cache.truncated),
-    partial: !!(cache && cache.partial),
+    truncated,
+    unreadBands,
+    partial: unreadBands > 0,
+    markers,
     updated: (cache && cache.updated) || new Date().toISOString(),
   };
 }
