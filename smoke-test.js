@@ -381,7 +381,7 @@ async function browserChecks() {
   let spawned = null;
   if (!(await waitUp(1))) {
     console.log("server not up — starting it...");
-    spawned = spawn("node", [path.join(ROOT, "server.js")], { stdio: "ignore", detached: false });
+    spawned = spawn("node", [path.join(ROOT, "server.js")], { stdio: "ignore", detached: false, env: { ...process.env, POE2_NO_OPEN: "1" } });
     if (!(await waitUp(15))) { console.log("could not start server.js"); process.exit(2); }
   }
   try {
