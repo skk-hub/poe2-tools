@@ -158,7 +158,7 @@ async function browserChecks() {
     const errs = []; page.on("pageerror", e => errs.push(e.message)); page.on("console", m => { if (m.type() === "error") errs.push(m.text()); });
     await page.goto(BASE + "/#home", { waitUntil: "networkidle" });
     let maxOv = 0, ifr = 0;
-    for (const v of ["gear-search", "map-juicer", "arbitrage", "rune-picker", "craft-pricer", "home"]) {
+    for (const v of ["gear-search", "map-juicer", "arbitrage", "rune-picker", "tab-tracker", "craft-pricer", "home"]) {
       await page.click(`[data-view-link="${v}"]`).catch(() => {});
       await page.waitForTimeout(500);
       maxOv = Math.max(maxOv, await page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth)));
@@ -370,7 +370,7 @@ async function browserChecks() {
     const m = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const pm = await m.newPage(); await pm.goto(BASE + "/#home", { waitUntil: "networkidle" }); await pm.waitForTimeout(400);
     let mOv = await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth));
-    for (const v of ["craft-pricer", "gear-search", "map-juicer", "arbitrage", "rune-picker"]) { await pm.click(`[data-view-link="${v}"]`); await pm.waitForTimeout(700); mOv = Math.max(mOv, await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth))); }
+    for (const v of ["craft-pricer", "gear-search", "map-juicer", "arbitrage", "rune-picker", "tab-tracker"]) { await pm.click(`[data-view-link="${v}"]`); await pm.waitForTimeout(700); mOv = Math.max(mOv, await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth))); }
     check(mOv === 0, "mobile: no horizontal overflow on tool views");
     await m.close();
   } finally { await browser.close(); }

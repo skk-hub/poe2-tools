@@ -1,0 +1,18 @@
+/* Tab Tracker — scoped under .toolroot-tt. Reuses the shared .pagehead/.controls/
+   .status/.tablewrap/table baseline from index <style>; only the total banner here. */
+.toolroot-tt .tt-total{
+  margin:14px 0 6px;
+  padding:12px 16px;
+  border:1px solid var(--line, #2a2a2a);
+  border-radius:var(--radius, 10px);
+  background:var(--surface-2, #161616);
+  display:flex;
+  align-items:baseline;
+  gap:10px;
+}
+.toolroot-tt .tt-total b{
+  font-family:var(--font-mono, monospace);
+  font-size:1.5rem;
+  color:var(--gold, #c9a227);
+}
+.toolroot-tt .tt-total span{ color:var(--muted, #9a9a9a); }

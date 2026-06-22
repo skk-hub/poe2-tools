@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="rune-picker.css">
 <link rel="stylesheet" href="craft-pricer.css">
 <link rel="stylesheet" href="filter-helper.css">
+<link rel="stylesheet" href="tab-tracker.css">
 <style>
 /* ===== Hub: modern dashboard, built on theme.css tokens ===== */
 .shell{padding:32px 24px 56px;max-width:1280px;margin:0 auto}
@@ -183,6 +184,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Regex Cheat Sheet</a>
       <a class="navbtn" href="#arbitrage" data-view-link="arbitrage">Arbitrage</a>
       <a class="navbtn" href="#filter-helper" data-view-link="filter-helper">Filter Helper</a>
+      <a class="navbtn" href="#tab-tracker" data-view-link="tab-tracker">Tab Tracker</a>
     </nav>
   </div>
 </header>
@@ -533,6 +535,30 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
    </div>
   </section>
 
+  <section id="tab-tracker" class="view" data-view="tab-tracker">
+   <div class="toolroot toolroot-tt">
+    <div class="pagehead">
+      <div>
+        <h1>Tab Tracker</h1>
+        <p class="sub">Values the currency parked in a stash tab at live market prices. Make ONE tab public and price every item in it at <b>10 divine</b> (the tracking marker) — this reads it via Trade2, no login needed.</p>
+      </div>
+      <div class="controls">
+        <input id="ttAccount" placeholder="Account name e.g. Name#1234" aria-label="Account name">
+        <input id="ttLeague" value="Runes of Aldur" aria-label="League">
+        <button id="ttLoad" type="button">Value tab</button>
+        <div id="ttStatus" class="status">Enter your account name and load your tracked tab.</div>
+      </div>
+    </div>
+    <div id="ttTotal" class="tt-total" hidden></div>
+    <div id="ttTableWrap" class="tablewrap" hidden>
+      <table>
+        <thead><tr><th class="num">Qty</th><th>Item</th><th class="num">Each</th><th class="num">Value</th><th>Source</th></tr></thead>
+        <tbody id="ttRows"></tbody>
+      </table>
+    </div>
+   </div>
+  </section>
+
 </main>
 <script>
 // ===== App shell: hash-routed SPA. Each tool view registers a one-time init
@@ -571,5 +597,6 @@ window.addEventListener("DOMContentLoaded",()=>runViewInit(currentView()));
 <script src="map-juicer.js"></script>
 <script src="gear-search.js"></script>
 <script src="filter-helper.js"></script>
+<script src="tab-tracker.js"></script>
 </body>
 </html>
