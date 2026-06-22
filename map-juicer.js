@@ -196,7 +196,7 @@ window.__viewInit["map-juicer"]=function(){
     const rows = stats.map(s=>{
       const pk = peakEx(s), pct = Math.round(pk / max * 100);
       return `<li class="mw-item">
-        <div class="mw-line"><span class="mw-name">${esc(s.label)}</span><span class="mw-val"><b>${pk}</b> ex</span></div>
+        <div class="mw-line"><span class="mw-name">${esc(s.label)}${s.est?` <span title="estimate — not yet Trade2-swept" style="color:var(--mu);font-size:.8em">(est)</span>`:""}</span><span class="mw-val"><b>${pk}</b> ex</span></div>
         <div class="mw-bar"><span style="width:${pct}%"></span></div>
         ${s.ceiling?`<div class="mw-cap">best roll caps ~${s.ceiling}%</div>`:""}
       </li>`;
@@ -239,8 +239,7 @@ window.__viewInit["map-juicer"]=function(){
   }
 
   // ── Paste evaluator (kept) ────────────────────────────────────────────────
-  const STAT_RE = { packSize: /pack size/i, monsterEffectiveness: /monster effectiveness|magic monster/i, itemRarity: /rarity of items|item rarity/i, monsterRarity: /monster rarity|rare monster/i };
-  const SUSTAIN_RE = /waystones? (found|in area)|waystone drop/i;
+  const STAT_RE = { packSize: /pack size/i, monsterEffectiveness: /monster effectiveness|magic monster/i, itemRarity: /rarity of items|item rarity/i, monsterRarity: /monster rarity|rare monster/i, waystoneDrop: /waystones? (found|in area)|waystone drop/i };
   function statRoll(text, re){
     let found=false, value=0;
     for (const line of String(text).split(/\n/)){ if (!re.test(line)) continue; found = true; const m = line.match(/(\d+(?:\.\d+)?)\s*%/); if (m) value = Math.max(value, parseFloat(m[1])); }
@@ -280,7 +279,6 @@ window.__viewInit["map-juicer"]=function(){
     const isTablet = /precursor tablet|\btablet\b/i.test(text);
     const isWaystone = /waystone/i.test(text);
     const dangers = DANGER.filter(r=>r[1].test(text)).map(r=>r[0]);
-    const sustain = SUSTAIN_RE.test(text);
     const ms = marketScore(text);
     let cls="warn", head="", lines=[], scoreHtml="";
     const rolls = {}; ms.rows.forEach(r => { rolls[r.key] = r.value; });
@@ -315,7 +313,6 @@ window.__viewInit["map-juicer"]=function(){
       }
       scoreHtml = `<div class="scoreline">Est. floor value <b>≈ ${Math.round(ex)} ex</b><span>(its best stat priced off the curve)</span></div>`;
       for (const r of ms.rows){ lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""} <span style="color:var(--mu)">≈ ${r.ex}ex</span>`); }
-      if (sustain) lines.push(`<span class="tag mid">sustain</span>Waystone drop chance — utility, not priced`);
       if (fits.length && fits[0].fit > 0.15){ const top = fits[0], driver = top.top ? statLabel(top.top.k) : ""; let pair = `<span class="tag mid">pair</span>Best for <b>${esc(top.ct.label)}</b>${driver?` (${esc(driver)}-heavy)`:""} — socket ${esc(top.ct.label)} tablets`; if (fits[1] && fits[1].fit >= top.fit * 0.8) pair += `, or ${esc(fits[1].ct.label)}`; lines.push(pair); }
     } else { cls="warn"; head="Couldn't tell if this is a waystone or tablet — paste the full copied item text"; }
     if (dangers.length) lines.push(`<span class="tag bad">risk</span>${dangers.join(", ")}`);

@@ -58,6 +58,7 @@ window.WAYSTONE_DATA = {
   // Abyssal pits, Vaal crystals) are best-effort. `tabletGeneral` applies to any tablet.
   tabletGeneral: [
     { label: "Item Quantity", token: "uantity of item" },
+    { label: "Waystone Quantity", token: "uantity of waystone" },  // % increased Quantity of Waystones found
     { label: "Item Rarity", token: "arity of item" },
     { label: "Pack Size", token: "ack size" },
     { label: "Magic Monsters", token: "agic monster" },
@@ -106,6 +107,9 @@ window.WAYSTONE_DATA = {
       { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.11, ceiling: 44, peakEx: 37,
         curve: [[20, 1], [40, 37]],
         tip: "Tracks Pack Size — strong mid-roll value, peaks ~40% → ~37ex." },
+      { key: "waystoneDrop", label: "Waystone Drop Chance", weight: 0.07, ceiling: 100, peakEx: 22, est: true,
+        curve: [[40, 1], [70, 8], [100, 22]],
+        tip: "ESTIMATE (not yet swept) — now priced, not utility: sustain has market value for endless T16 farming. Re-sweep Trade2 to confirm; peaks ~100% → ~22ex." },
       { key: "monsterRarity", label: "Monster Rarity", weight: 0.01, ceiling: 62, peakEx: 1,
         curve: [[40, 1]],
         tip: "Worthless even at ≥40% (~1ex). Never pay for it." },
