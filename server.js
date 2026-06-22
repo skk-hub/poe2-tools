@@ -1047,19 +1047,32 @@ async function fetchTrade(url, options = {}) {
 }
 
 // Tab Tracker — read a public stash tab's contents via Trade2 ONLY (no OAuth, no
-// cookie: PoE2's get-stash-items returns 403 unauthenticated). The user makes ONE
-// tab public and prices every item in it at a SENTINEL price (10 divine) to mark
-// it apart from real sales. We search Trade2 by their account, keep only the
-// sentinel-priced listings, and value each at live market via the exchange book
-// (reusing fetchRunePrices). ponytail: the sentinel is the user's own convention —
-// a genuine 10-div sale would also be picked up; reserve that price for tracking.
-const TAB_SENTINEL = { amount: 10, currency: "divine" };
+// cookie: PoE2's get-stash-items returns 403 unauthenticated). The user makes
+// tab(s) public and prices every item at a MARKER divine price to mark it apart
+// from real sales. trade2 returns ≤100 results per search, so we search EACH marker
+// price separately (filtered to that exact divine value) and union them — letting a
+// big set span multiple prices (e.g. 11/12/13/14 div) blow past the 100 cap. Every
+// filtered result IS a tracked item (the price filter isolates it — no sentinel
+// guessing). Values come from the exchange book. ponytail: a genuine sale priced at
+// exactly a marker value would be picked up too; reserve the marker prices.
+const TAB_MARKERS_DEFAULT = [11, 12, 13, 14];
 const TAB_CACHE_FILE = path.join(DATA_DIR, ".tab-tracker.json");
 const TAB_CACHE_TTL_MS = 10 * 60 * 1000;
 // Fill at most this many unbooked items per request. EXCHANGE_BATCH_CAP=3, so this
 // is ≤2 exchange calls/visit — small enough it can't burst the shared IP. The UI
 // auto-polls the CACHED path (no re-search) to fill the rest a batch at a time.
 const TAB_FILL_PER_VISIT = 6;
+
+// Parse a "11,12,13,14" markers string → distinct positive numbers (≤8, to bound
+// the per-price search count). Falls back to the default set.
+function parseTabMarkers(raw) {
+  const set = [];
+  for (const part of String(raw || "").split(/[, ]+/)) {
+    const n = Number(part);
+    if (Number.isFinite(n) && n > 0 && !set.includes(n)) set.push(n);
+  }
+  return set.length ? set.slice(0, 8) : TAB_MARKERS_DEFAULT.slice();
+}
 
 function readTabCache(account, league) {
   try {
@@ -1069,48 +1082,42 @@ function readTabCache(account, league) {
   return null;
 }
 
-// Read the tracked tab's contents via Trade2: search the account, sort price DESC
-// (genuine high sales sort ABOVE the 10-div sentinel block, cheaper sales below —
-// collect the contiguous block, stop once out of it), return "Name xStack" lines.
-// Graceful on a mid-sweep 429. This is the ONLY network-heavy step; it's cached.
-async function readTrackedTabListings(account, league) {
+// Read the tracked tab's contents via Trade2: for EACH marker divine price, search
+// the account filtered to that exact price (≤100 results/band) and fetch the items.
+// Union across markers → "Name xStack" lines. Graceful on a mid-sweep 429 (returns
+// what it got + hitLimit). This is the ONLY network-heavy step; it's cached.
+async function readTrackedTabListings(account, league, markers) {
   const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
-  const body = JSON.stringify({
-    query: { status: { option: "any" }, filters: { trade_filters: { filters: { account: { input: account } } } } },
-    sort: { price: "desc" },
-  });
-  let search;
-  try { search = await fetchTrade(searchUrl, { method: "POST", body }); }
-  catch (e) { return { lines: [], hitLimit: true }; }
-  const allIds = search.result || [];
-  if (!allIds.length) return { lines: [], empty: true };
-
-  // Scan all returned ids (trade2 caps result ids at ~100). Early-stop bounds the
-  // fetches: cheaper genuine sales sort below the 10-div block, so we stop right
-  // after it. The block can span multiple public tabs — it's an account-wide search.
   const lines = [];
-  let done = false, hitLimit = false;
-  for (let i = 0; i < allIds.length && !done; i += 10) {
-    const ids = allIds.slice(i, i + 10);
-    const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id);
-    let fetched;
-    try { fetched = await fetchTrade(fetchUrl); }
+  let hitLimit = false, truncated = false, anyFound = false;
+  for (const m of markers) {
+    if (tradeStatus().limited) { hitLimit = true; break; }
+    const body = JSON.stringify({
+      query: { status: { option: "any" }, filters: { trade_filters: { filters: {
+        account: { input: account },
+        price: { option: "divine", min: m, max: m },
+      } } } },
+      sort: { price: "desc" },
+    });
+    let search;
+    try { search = await fetchTrade(searchUrl, { method: "POST", body }); }
     catch (e) { hitLimit = true; break; }
-    for (const r of fetched.result || []) {
-      const price = r.listing && r.listing.price;
-      const item = r.item || {};
-      const name = item.typeLine || item.baseType || item.name;
-      const isSentinel = price && price.currency === TAB_SENTINEL.currency && Number(price.amount) === TAB_SENTINEL.amount;
-      if (isSentinel && name) lines.push(name + " x" + (item.stackSize || 1));
-      else if (lines.length) { done = true; break; }
+    const ids = search.result || [];
+    if (ids.length) anyFound = true;
+    if ((search.total || 0) > ids.length) truncated = true; // this one price has 100+ items
+    for (let i = 0; i < ids.length && !hitLimit; i += 10) {
+      const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id);
+      let fetched;
+      try { fetched = await fetchTrade(fetchUrl); }
+      catch (e) { hitLimit = true; break; }
+      for (const r of fetched.result || []) {
+        const item = r.item || {};
+        const name = item.typeLine || item.baseType || item.name;
+        if (name) lines.push(name + " x" + (item.stackSize || 1));
+      }
     }
   }
-  // trade2 returns at most ~100 result ids; if the account has more total listings
-  // AND we never hit a cheaper sale (no early-stop), the 10-div block may be clipped.
-  // (Only meaningful on a COMPLETE read — a rate-limited cut-short read also has
-  // done=false but isn't genuinely truncated.)
-  const truncated = !done && !hitLimit && (search.total || 0) > allIds.length;
-  return { lines, hitLimit, truncated };
+  return { lines, hitLimit, truncated, empty: !anyFound && !hitLimit };
 }
 
 function parseTabLine(l) {
@@ -1118,33 +1125,32 @@ function parseTabLine(l) {
   return m ? { name: m[1], qty: Number(m[2]) } : { name: l, qty: 1 };
 }
 
-async function fetchTrackedTab(account, league, refresh) {
+async function fetchTrackedTab(account, league, refresh, markers) {
   account = String(account || "").trim();
   if (!account) return { error: "Missing account name.", results: [] };
+  markers = (markers && markers.length) ? markers : TAB_MARKERS_DEFAULT.slice();
+  const markerSig = markers.join(",");
 
-  // 1. Tab contents — cached (10 min) unless refresh. The read is the only heavy
-  //    step, so re-pricing visits (auto-poll) skip it entirely.
+  // 1. Tab contents — cached (10 min) unless refresh or the marker set changed. The
+  //    read is the only heavy step, so re-pricing visits (auto-poll) skip it.
   let cache = readTabCache(account, league);
-  const fresh = cache && !refresh && (Date.now() - new Date(cache.updated).getTime() < TAB_CACHE_TTL_MS);
+  const fresh = cache && !refresh && cache.markerSig === markerSig &&
+    (Date.now() - new Date(cache.updated).getTime() < TAB_CACHE_TTL_MS);
   if (!fresh) {
     if (tradeStatus().limited) {
-      if (!cache) return { limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil, results: [] };
+      if (!cache || cache.markerSig !== markerSig) return { limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil, results: [] };
       // else: fall through and price from the stale cached contents
     } else {
-      const read = await readTrackedTabListings(account, league);
-      if (read.lines.length && !read.hitLimit) {
-        // Complete read — persist as the authoritative tab contents.
-        cache = { account, league, lines: read.lines, truncated: !!read.truncated, updated: new Date().toISOString() };
+      const read = await readTrackedTabListings(account, league, markers);
+      if (read.lines.length) {
+        // Persist what we read. A rate-limited partial read is flagged so the UI can
+        // tell you it's incomplete (refresh re-reads); we still keep it so the value
+        // fills in and you make progress instead of starting from zero each time.
+        cache = { account, league, markerSig, lines: read.lines, truncated: !!read.truncated, partial: !!read.hitLimit, updated: new Date().toISOString() };
         try { fs.writeFileSync(TAB_CACHE_FILE, JSON.stringify(cache, null, 2)); } catch {}
-      } else if (read.lines.length && read.hitLimit) {
-        // Partial read (rate-limited mid-sweep). Use what we got for THIS response
-        // but do NOT persist it — caching a cut-short read as complete would hide
-        // the rest of the tab. Prefer a prior good cache if we have one.
-        if (!cache) cache = { account, league, lines: read.lines, partial: true, updated: new Date().toISOString() };
-      } else if (!cache) {
+      } else if (!cache || cache.markerSig !== markerSig) {
         if (read.hitLimit) return { limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil, results: [] };
-        if (read.empty) return { account, league, results: [], note: "No listings found under that account in " + league + "." };
-        return { account, league, results: [], note: "No items priced at exactly " + TAB_SENTINEL.amount + " " + TAB_SENTINEL.currency + " (the tracking marker). Price your tracked tab at " + TAB_SENTINEL.amount + " divine." };
+        return { account, league, results: [], note: "No items found priced at " + markerSig + " divine under that account. Price your tracked items at one of those divine values." };
       }
     }
   }
@@ -4563,7 +4569,8 @@ const server = http.createServer(async (req, res) => {
       const account = (url.searchParams.get("account") || "").trim();
       const league = sanitizeLeague(url.searchParams.get("league") || "Runes of Aldur");
       const refresh = url.searchParams.get("refresh") === "1";
-      const body = JSON.stringify(await fetchTrackedTab(account, league, refresh));
+      const markers = parseTabMarkers(url.searchParams.get("markers"));
+      const body = JSON.stringify(await fetchTrackedTab(account, league, refresh, markers));
       send(res, 200, body, "application/json; charset=utf-8");
       return;
     }

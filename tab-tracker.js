@@ -6,6 +6,7 @@ window.__viewInit = window.__viewInit || {};
 window.__viewInit["tab-tracker"] = function () {
   const acctInput = document.getElementById("ttAccount");
   const leagueInput = document.getElementById("ttLeague");
+  const markersInput = document.getElementById("ttMarkers");
   const loadBtn = document.getElementById("ttLoad");
   const statusEl = document.getElementById("ttStatus");
   const totalEl = document.getElementById("ttTotal");
@@ -40,8 +41,8 @@ window.__viewInit["tab-tracker"] = function () {
     wrap.hidden=false;
   }
 
-  async function hit(account,league,refresh){
-    const r=await fetch("/api/tab-tracker?account="+encodeURIComponent(account)+"&league="+encodeURIComponent(league)+(refresh?"&refresh=1":""));
+  async function hit(account,league,markers,refresh){
+    const r=await fetch("/api/tab-tracker?account="+encodeURIComponent(account)+"&league="+encodeURIComponent(league)+"&markers="+encodeURIComponent(markers)+(refresh?"&refresh=1":""));
     if(!r.ok) throw new Error("server returned HTTP "+r.status);
     return r.json();
   }
@@ -50,12 +51,13 @@ window.__viewInit["tab-tracker"] = function () {
     if(polling) return;
     const account=acctInput.value.trim();
     const league=leagueInput.value.trim()||"Runes of Aldur";
+    const markers=markersInput.value.trim()||"11,12,13,14";
     if(!account){ setStatus("Enter your PoE account name (e.g. Name#1234).","err"); return; }
     loadBtn.disabled=true;
     polling=true;
     setStatus("Reading your tracked tab…","");
     try{
-      let data=await hit(account,league,true); // force a fresh read
+      let data=await hit(account,league,markers,true); // force a fresh read
       if(data.error){ setStatus(data.error,"err"); return; }
       if(data.limited && !(data.results||[]).length){ setStatus("Trade2 is rate-limited right now — try again shortly.","err"); return; }
       if(data.note && !(data.results||[]).length){ wrap.hidden=true; totalEl.hidden=true; setStatus(data.note,""); return; }
@@ -64,14 +66,15 @@ window.__viewInit["tab-tracker"] = function () {
       while((data.remaining||0)>0 && !data.limited){
         setStatus("Pricing "+(data.pricedCount||0)+" of "+data.results.length+" — filling live market values…","");
         await sleep(6000);
-        data=await hit(account,league,false);
+        data=await hit(account,league,markers,false);
         render(data);
       }
-      const warn=data.truncated?" ⚠ You have 100+ listings — some 10-div items may be missing; keep tracked items under ~100 or clear old sale listings.":"";
+      const warn=(data.truncated?" ⚠ One of your marker prices has 100+ items — spread those across more marker prices so none exceeds 100.":"")
+        +(data.partial?" ⚠ Read was cut short by the rate limit — click Value tab again to read the rest.":"");
       if(data.limited && (data.remaining||0)>0){
         setStatus("Priced "+data.pricedCount+" of "+data.results.length+". Trade2 hit its limit — click Value tab again in a bit to finish the rest."+warn,"err");
       }else{
-        setStatus("Valued all "+data.results.length+" items at live market prices."+warn,"ok");
+        setStatus("Valued all "+data.results.length+" items"+(data.partial?" read so far":"")+" at live market prices."+warn,"ok");
       }
     }catch(err){
       setStatus("Failed: "+err.message,"err");
