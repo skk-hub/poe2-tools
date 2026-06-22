@@ -4,6 +4,15 @@ window.__viewInit["map-juicer"]=function(){
   const T = D.tokens;
   let liveWeights = null;            // upgraded by loadCachedWeights; only feeds the evaluator
   function MW(){ return liveWeights || D.marketWeights; }
+  // The live sweep doesn't price every stat (waystoneDrop is an estimate, not
+  // Trade2-swept), so merge in any baked stat it omits — else it vanishes from
+  // the Mod Value table the moment live weights load.
+  function mergeLive(live){
+    if (!live || !live.stats) return live;
+    const have = new Set(live.stats.map(s => s.key));
+    const extra = (D.marketWeights.stats || []).filter(s => !have.has(s.key));
+    return Object.assign({}, live, { stats: live.stats.concat(extra) });
+  }
   const els = {
     patchline: document.getElementById("patchline"),
     sheet: document.getElementById("mjSheet"),
@@ -221,7 +230,7 @@ window.__viewInit["map-juicer"]=function(){
     try {
       const r = await fetch("/api/waystone/market-weights/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force: !!force }) });
       const d = await r.json();
-      if (d.weights) liveWeights = d.weights;
+      if (d.weights) liveWeights = mergeLive(d.weights);
       if (d.limited) mwStatus = "Trade2 rate-limited — showing last result. Try again in a few minutes.";
       else if (d.cooldown) mwStatus = "Refreshed recently — showing latest (cooldown ~2 min).";
       else if (d.refreshed) mwStatus = "Updated from live market just now.";
@@ -234,7 +243,7 @@ window.__viewInit["map-juicer"]=function(){
     try {
       const r = await fetch("/api/waystone/market-weights");
       const d = await r.json();
-      if (d && d.weights && d.weights.stats && d.weights.stats.length && d.weights.stats[0].curve){ liveWeights = d.weights; renderMarket(); }
+      if (d && d.weights && d.weights.stats && d.weights.stats.length && d.weights.stats[0].curve){ liveWeights = mergeLive(d.weights); renderMarket(); }
     } catch {}
   }
 
