@@ -115,9 +115,13 @@
   .toolroot-mj .mw-refresh:disabled{opacity:.5;cursor:default}
   .toolroot-mj .mw-status{margin-top:10px;color:var(--gd);font:11px var(--ff-mono);line-height:1.45}
   .toolroot-mj #mjAsideT{margin-top:18px}
-  .toolroot-mj .tv-group{margin-top:14px}
-  .toolroot-mj .tv-group:first-child{margin-top:0}
-  .toolroot-mj .tv-grouphead{display:flex;align-items:baseline;gap:8px;color:var(--gd);font:700 11px var(--ff-mono);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
+  .toolroot-mj .tv-group{margin-top:6px;border-top:1px solid var(--bd);padding-top:6px}
+  .toolroot-mj .tv-group:first-child{margin-top:0;border-top:0;padding-top:0}
+  .toolroot-mj .tv-grouphead{display:flex;align-items:baseline;gap:8px;color:var(--gd);font:700 11px var(--ff-mono);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;cursor:pointer;list-style:none;padding:4px 0}
+  .toolroot-mj .tv-grouphead::-webkit-details-marker{display:none}
+  .toolroot-mj .tv-grouphead::before{content:"▸";display:inline-block;color:var(--mu);transition:transform .15s}
+  .toolroot-mj details[open]>.tv-grouphead{margin-bottom:6px}
+  .toolroot-mj details[open]>.tv-grouphead::before{transform:rotate(90deg)}
   .toolroot-mj .tv-pc{margin-left:auto;color:var(--mu);font:10px var(--ff-mono);text-transform:none;letter-spacing:0}
   .toolroot-mj .tvlist{list-style:none;margin:0;padding:0}
   .toolroot-mj .tv-item{padding:9px 0;border-top:1px solid var(--bd)}

@@ -259,7 +259,7 @@ window.__viewInit["map-juicer"]=function(){
         <div class="tv-line"><span class="tv-name">${esc(m.label)}</span>${valBadge(m)}</div>
         ${m.note ? `<div class="tv-sub">${esc(m.note)}</div>` : ""}
       </li>`).join("");
-      return `<div class="tv-group"><div class="tv-grouphead">${esc(g.name)}${g.note ? `<span class="tv-pc">${esc(g.note)}</span>` : ""}</div><ul class="tvlist">${items}</ul></div>`;
+      return `<details class="tv-group"><summary class="tv-grouphead">${esc(g.name)}${g.note ? `<span class="tv-pc">${esc(g.note)}</span>` : ""}</summary><ul class="tvlist">${items}</ul></details>`;
     }).join("");
     slot.innerHTML = `
       <div class="rxcard mj-mod">
