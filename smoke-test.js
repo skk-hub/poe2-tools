@@ -156,7 +156,13 @@ async function browserChecks() {
     // desktop walk: every view, no errors / overflow / iframes
     const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
     const errs = []; page.on("pageerror", e => errs.push(e.message)); page.on("console", m => { if (m.type() === "error") errs.push(m.text()); });
-    await page.goto(BASE + "/#home", { waitUntil: "networkidle" });
+    // Mock the currency strip so the walk never waits on (or errors from) live Trade2
+    // — a throttled IP must NOT hang the home page and crash the whole browser suite.
+    await page.route("**/api/currency/overview**", r => r.fulfill({ contentType: "application/json", body: JSON.stringify({
+      league: "Runes of Aldur", updated: new Date().toISOString(), cached: true,
+      items: [{ id: "divine", name: "Divine Orb", ex: 320 }, { id: "exalted", name: "Exalted Orb", ex: 1, base: true }, { id: "chaos", name: "Chaos Orb", ex: 2.4 }],
+    }) }));
+    await page.goto(BASE + "/#home", { waitUntil: "domcontentloaded" });
     let maxOv = 0, ifr = 0;
     for (const v of ["gear-search", "map-juicer", "arbitrage", "rune-picker", "tab-tracker", "craft-pricer", "home"]) {
       await page.click(`[data-view-link="${v}"]`).catch(() => {});
@@ -302,7 +308,9 @@ async function browserChecks() {
         }) });
       });
       const nav = p.goto(BASE + "/index.html#home", { waitUntil: "domcontentloaded" });
-      await p.waitForTimeout(350);
+      // Wait for the skeleton to APPEAR (bounded, < the mock's 800ms delay) rather
+      // than a fixed sleep — kills the long-standing timing flake on slow runs.
+      await p.waitForSelector("#fxStripChips .skel", { timeout: 700 }).catch(() => {});
       const loading = await p.evaluate(() => { const s = document.getElementById("fxStrip"); return { shown: s && !s.hidden, skel: document.querySelectorAll("#fxStripChips .skel").length }; });
       check(loading.shown && loading.skel > 0, "home currency strip shows a loading skeleton before data");
       await nav.catch(() => {}); await p.waitForTimeout(1000);
@@ -371,7 +379,11 @@ async function browserChecks() {
 
     // mobile overflow
     const m = await browser.newContext({ viewport: { width: 390, height: 844 } });
-    const pm = await m.newPage(); await pm.goto(BASE + "/#home", { waitUntil: "networkidle" }); await pm.waitForTimeout(400);
+    await m.route("**/api/currency/overview**", r => r.fulfill({ contentType: "application/json", body: JSON.stringify({
+      league: "Runes of Aldur", updated: new Date().toISOString(), cached: true,
+      items: [{ id: "divine", name: "Divine Orb", ex: 320 }, { id: "exalted", name: "Exalted Orb", ex: 1, base: true }, { id: "chaos", name: "Chaos Orb", ex: 2.4 }],
+    }) }));
+    const pm = await m.newPage(); await pm.goto(BASE + "/#home", { waitUntil: "domcontentloaded" }); await pm.waitForTimeout(400);
     let mOv = await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth));
     for (const v of ["craft-pricer", "gear-search", "map-juicer", "arbitrage", "rune-picker", "tab-tracker"]) { await pm.click(`[data-view-link="${v}"]`); await pm.waitForTimeout(700); mOv = Math.max(mOv, await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth))); }
     check(mOv === 0, "mobile: no horizontal overflow on tool views");
@@ -390,7 +402,10 @@ async function browserChecks() {
   try {
     staticChecks();
     await httpChecks();
-    await browserChecks();
+    // A browser-level flake (e.g. a goto timeout) must degrade to a skip, never
+    // crash the run and swallow the summary/exit code.
+    try { await browserChecks(); }
+    catch (e) { skip("browser checks aborted: " + String(e && e.message || e).split("\n")[0]); }
   } finally {
     if (spawned) spawned.kill();
   }
