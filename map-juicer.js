@@ -22,7 +22,7 @@ window.__viewInit["map-juicer"]=function(){
     evalBtn: document.getElementById("evalBtn"),
     evalOut: document.getElementById("evalOut"),
   };
-  els.patchline.textContent = "Waystone & precursor-tablet stash regex · Patch " + D.patch + " · " + D.league;
+  els.patchline.textContent = "Waystone & tablet stash regex · Patch " + D.patch + " · " + D.league;
   if (els.footPatch) els.footPatch.textContent = D.patch;
   function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
 
@@ -127,7 +127,7 @@ window.__viewInit["map-juicer"]=function(){
     els.sheet.innerHTML = `<div class="rxcard rx-forge">
       <div class="rxcard-head"><span class="rxcard-title">Regex Forge</span><span class="rxcard-kind">live</span></div>
       <div class="rxcard-body">
-        <div class="forge-seg forge-target" role="group" aria-label="Target">${seg("target","waystones",target,"Waystones")}${seg("target","tablets",target,"Precursor Tablets")}</div>
+        <div class="forge-seg forge-target" role="group" aria-label="Target">${seg("target","waystones",target,"Waystones")}${seg("target","tablets",target,"Tablets")}</div>
         <div class="forge-qs">${target==="tablets" ? tabletQs() : waystoneQs()}</div>
         ${forgeOutput()}
         <div class="rxcard-note">${note}</div>
@@ -285,7 +285,7 @@ window.__viewInit["map-juicer"]=function(){
     if (!text.trim()){ els.evalOut.innerHTML=""; return; }
     const rarityM = text.match(/Rarity:\s*([A-Za-z]+)/i);
     const rarity = rarityM ? rarityM[1].toLowerCase() : "";
-    const isTablet = /precursor tablet|\btablet\b/i.test(text);
+    const isTablet = /\btablet\b/i.test(text);
     const isWaystone = /waystone/i.test(text);
     const dangers = DANGER.filter(r=>r[1].test(text)).map(r=>r[0]);
     const ms = marketScore(text);
@@ -294,7 +294,7 @@ window.__viewInit["map-juicer"]=function(){
     const fits = contentFit(rolls);
     if (isTablet){
       const c = detectContent(text);
-      const name = c ? c.label : "Generic / Precursor";
+      const name = c ? c.label : "Generic tablet";
       const n = ms.rows.length;
       const norm = ms.rows.map(r => r.ceiling ? Math.min(1, r.value / r.ceiling) : 0);
       const q = norm.length ? norm.reduce((a,b)=>a+b,0)/norm.length : 0;

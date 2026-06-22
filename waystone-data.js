@@ -8,7 +8,7 @@
  *
  * Model (0.5): Waystones carry only GENERIC reward/risk mods (rarity, quantity,
  * pack size, monster mods, waystone sustain). The CONTENT mechanics
- * (Breach/Abyss/Delirium/Expedition/Ritual) come from Precursor Tablets socketed
+ * (Breach/Abyss/Delirium/Expedition/Ritual) come from Tablets socketed
  * in Towers — so the per-content regex below is the TABLET regex, while the
  * waystone "run" / "blue" regex are content-agnostic.
  *
@@ -134,7 +134,7 @@ window.WAYSTONE_DATA = {
       ],
       scalesWith: { packSize: 1.0, monsterRarity: 0.85, itemRarity: 0.4 },
       blurb: "Breaches drop Splinters & Clasped Hands; scale hard with Pack Size, Rare Monsters and Rarity. Stack Breach atlas nodes + Breach tablets.",
-      juiceNote: "Pair with Breach Precursor Tablets (rolled Rarity/Quantity/Monsters). Pack size & rare-monster mods convert directly into Breach loot.",
+      juiceNote: "Pair with Breach Tablets (rolled Rarity/Quantity/Monsters). Pack size & rare-monster mods convert directly into Breach loot.",
       omenPicks: [
         { name: "Omen of Chaotic Quantity", why: "All Pack Size = far more monsters per Clasped Hand." },
         { name: "Omen of Chaotic Monsters", why: "More rares/magics in Breaches = more splinters & drops." },
@@ -152,7 +152,7 @@ window.WAYSTONE_DATA = {
       ],
       scalesWith: { packSize: 1.0, monsterEffectiveness: 0.7 },
       blurb: "Abyss pits lead to Abyssal Depths; reward scales with monster density / pack size. Atlas: From Below, Dark Depths, then Lord of the Pit.",
-      juiceNote: "Pair with Abyss Precursor Tablets + monster-effectiveness. Density and pack size matter more than raw quantity.",
+      juiceNote: "Pair with Abyss Tablets + monster-effectiveness. Density and pack size matter more than raw quantity.",
       omenPicks: [
         { name: "Omen of Chaotic Quantity", why: "Pack Size feeds the Abyss line with more monsters." },
         { name: "Omen of Chaotic Monsters", why: "Denser rares along the pit for better Depths." },
@@ -169,7 +169,7 @@ window.WAYSTONE_DATA = {
       ],
       scalesWith: { packSize: 1.0, monsterEffectiveness: 0.65 },
       blurb: "Delirium fog grants reward per % progress; scales with Pack Size and monster density. Delirium tablets add Mirrors of Delirium in range.",
-      juiceNote: "Pair with Delirium Precursor Tablets. Prioritise Pack Size + clear speed so you push deep into the fog before it ends.",
+      juiceNote: "Pair with Delirium Tablets. Prioritise Pack Size + clear speed so you push deep into the fog before it ends.",
       omenPicks: [
         { name: "Omen of Chaotic Quantity", why: "Pack Size is king for Delirium — more monsters before the fog ends." },
       ],
@@ -180,7 +180,7 @@ window.WAYSTONE_DATA = {
       tabletToken: "xpediti",
       scalesWith: { itemRarity: 1.0, packSize: 0.35 },
       blurb: "Expedition Remnants & Logbooks; among the strongest this league when stacked with the Runes of Aldur mechanic.",
-      juiceNote: "Pair with Expedition Precursor Tablets. Quantity/Rarity on the waystone plus Remnant-scaling on the tablet.",
+      juiceNote: "Pair with Expedition Tablets. Quantity/Rarity on the waystone plus Remnant-scaling on the tablet.",
       omenPicks: [
         { name: "Omen of Chaotic Rarity", why: "Expedition reward is loot-quality driven — stack Rarity." },
       ],
@@ -196,18 +196,18 @@ window.WAYSTONE_DATA = {
       ],
       scalesWith: { monsterRarity: 1.0, packSize: 0.6 },
       blurb: "Ritual altars give Tribute to spend; scales with rare-monster density. Ritual tablets add altars / increase Tribute & rerolls.",
-      juiceNote: "Pair with Ritual Precursor Tablets. Rare-monster and pack-size mods raise Tribute generated.",
+      juiceNote: "Pair with Ritual Tablets. Rare-monster and pack-size mods raise Tribute generated.",
       omenPicks: [
         { name: "Omen of Chaotic Monsters", why: "Rare monsters generate the most Tribute at altars." },
       ],
     },
     {
-      id: "general",
-      label: "General (Rarity farm)",
-      tabletToken: "recursor",
+      id: "irradiated",
+      label: "Irradiated (Rarity farm)",
+      tabletToken: "rradiat",
       scalesWith: { itemRarity: 1.0, packSize: 0.5 },
-      blurb: "Pure rarity/quantity farming with no specific mechanic — generic Precursor Tablets (Rarity/Quantity/Pack) on max-reward waystones.",
-      juiceNote: "Use generic Precursor Tablets. Stack Rarity first, then Quantity and Pack Size.",
+      blurb: "Pure rarity/quantity farming with no specific mechanic — Irradiated Tablets (Rarity/Quantity/Pack) on max-reward waystones.",
+      juiceNote: "Use Irradiated Tablets. Stack Rarity first, then Quantity and Pack Size.",
       omenPicks: [
         { name: "Omen of Chaotic Rarity", why: "Pure loot-quality farming — convert the whole map to Rarity." },
       ],
