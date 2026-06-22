@@ -339,17 +339,20 @@ async function browserChecks() {
       const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       await p.goto(BASE + "/index.html#map-juicer", { waitUntil: "networkidle" }); await p.waitForTimeout(900);
       const out = () => p.evaluate(() => document.querySelector(".toolroot-mj .forge-out .regexbox").textContent);
-      check(/\\\+\(\[6-9\]\.\|1\.\.\)%/.test(await out()), "regex forge default is the %-aware floor (Rarity ≥60% range)");
+      check(/item rarity: \\\+\(\[6-9\]\[0-9\]\|/.test(await out()), "regex forge default is the %-aware floor (Item Rarity ≥60% range)");
       // step Min Item Rarity down twice (60 -> 50 -> 40) -> range becomes [4-9]
       await p.click('.toolroot-mj [data-step="rarity"][data-dir="-1"]'); await p.waitForTimeout(120);
       await p.click('.toolroot-mj [data-step="rarity"][data-dir="-1"]'); await p.waitForTimeout(120);
-      check(/\\\+\(\[4-9\]\.\|1\.\.\)%/.test(await out()), "regex forge stepper rebuilds the regex (Rarity 40%)");
+      check(/item rarity: \\\+\(\[4-9\]\[0-9\]\|/.test(await out()), "regex forge stepper rebuilds the regex (Rarity 40%)");
       // toggle Waystone Drop ≥100% -> its 100+ token joins the OR floor
       await p.click('.toolroot-mj [data-tog="wdrop"]'); await p.waitForTimeout(120);
-      check(/w\.\+e: \\\+\(\[1-9\]\.\.\)%/.test(await out()), "regex forge adds waystone-drop ≥100% when toggled");
+      check(/drop chance: \\\+\[0-9\]\[0-9\]\[0-9\]%/.test(await out()), "regex forge adds waystone-drop ≥100% when toggled");
       // toggle "fully juiced" -> the 0-revives block appears in the live output
       await p.click('.toolroot-mj [data-tog="revives"]'); await p.waitForTimeout(120);
       check(/"revives available: 0"/.test(await out()), "regex forge emits the 0-revives block when toggled");
+      // toggle "Corrupted only" -> the corrupted block appears
+      await p.click('.toolroot-mj [data-tog="corrupt"]'); await p.waitForTimeout(120);
+      check(/"corrupted"/.test(await out()), "regex forge emits the corrupted block when toggled");
       // switch to tablets, pick Breach -> content keyword + its pre-picked desirable mods
       await p.click('.toolroot-mj [data-target="tablets"]'); await p.waitForTimeout(120);
       await p.click('.toolroot-mj [data-chip="breach"]'); await p.waitForTimeout(120);

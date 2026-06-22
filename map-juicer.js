@@ -29,8 +29,16 @@ window.__viewInit["map-juicer"]=function(){
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
   let rarityMin = 60, packMin = 30, wdropMin = 0;   // wdrop is 0 (off) or 100 (≥100%); midrange is useless
-  function tens(pct){ const d = Math.floor(pct / 10); return d >= 1 ? `[${d}-9].` : "\\d."; }
-  function atLeast(token, pct){ return pct >= 100 ? `${token} \\+([1-9]..)%` : `${token} \\+(${tens(pct)}|1..)%`; }
+  // Match a number ≥ pct (pct is a multiple of 10). Two-digit: first digit
+  // (pct/10)…9 + any second digit (so ≥ pct); OR any three-digit (100+). Uses
+  // [0-9] not "." so it can't swallow the trailing "%". The label token carries the
+  // stat name; we bridge the real in-stash format "Label: +X%" with ": \+…%".
+  function geNum(pct){
+    if (pct >= 100) return "[0-9][0-9][0-9]";                    // 100%+ only
+    const d = Math.max(1, Math.floor(pct / 10));
+    return `([${d}-9][0-9]|[0-9][0-9][0-9])`;
+  }
+  function atLeast(token, pct){ return `${token}: \\+${geNum(pct)}%`; }
   function noRevivesRegex(){ return `"${T.revivesZero}"`; }
 
   // ── Regex Forge — answer a few questions, the regex rebuilds on every change ──
@@ -38,6 +46,7 @@ window.__viewInit["map-juicer"]=function(){
   let wMatch = "floor";        // "floor" (rarity/pack ≥) | "blue" (any reward mod)
   let wRevives = false;        // require fully-juiced (0 revives)
   let wExclude = true;         // exclude risk suffixes
+  let wCorrupt = false;        // require Corrupted
   const tContent = new Set();  // selected tablet content-type ids
   const tMods = new Set();      // selected desirable-mod tokens to require
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -53,7 +62,7 @@ window.__viewInit["map-juicer"]=function(){
   function buildWaystone(){
     const blocks = [];
     if (wMatch === "blue") {
-      blocks.push(`"(${L.itemRarity}|${L.packSize}|${L.magicMonsters}|${L.rareMonsters}|${L.waystoneDrop})"`);
+      blocks.push(`"(${L.itemRarity}|${L.packSize}|${L.monsterRarity}|${L.monsterEffectiveness}|${L.waystoneDrop})"`);
     } else {
       const parts = [];
       if (rarityMin > 0) parts.push(atLeast(L.itemRarity, rarityMin));
@@ -62,6 +71,7 @@ window.__viewInit["map-juicer"]=function(){
       if (parts.length) blocks.push(parts.length === 1 ? `"${parts[0]}"` : `"(${parts.join("|")})"`);
     }
     if (wRevives) blocks.push(noRevivesRegex());
+    if (wCorrupt) blocks.push(`"${T.corrupted}"`);
     if (wExclude) blocks.push(`"!${T.danger}"`);
     return blocks.join(" ");
   }
@@ -95,6 +105,7 @@ window.__viewInit["map-juicer"]=function(){
         : `<p class="forge-hint">Matches any waystone carrying a reward mod — the blue stones worth upgrading.</p>`}
       ${wMatch==="floor" ? toggle("wdrop","Require Waystone Drop ≥100% (midrange isn't worth it)",wdropMin>=100) : ""}
       ${toggle("revives","Fully juiced only (0 revives = 6-mod map)",wRevives)}
+      ${toggle("corrupt","Corrupted only",wCorrupt)}
       ${toggle("exclude","Exclude risk suffixes (less recovery, −max res, …)",wExclude)}`;
   }
   function tabletQs(){
@@ -148,7 +159,7 @@ window.__viewInit["map-juicer"]=function(){
     }));
     root.querySelectorAll("[data-tog]").forEach(c => c.addEventListener("change", () => {
       const k = c.getAttribute("data-tog");
-      if (k === "revives") wRevives = c.checked; else if (k === "exclude") wExclude = c.checked; else if (k === "wdrop") wdropMin = c.checked ? 100 : 0;
+      if (k === "revives") wRevives = c.checked; else if (k === "exclude") wExclude = c.checked; else if (k === "corrupt") wCorrupt = c.checked; else if (k === "wdrop") wdropMin = c.checked ? 100 : 0;
       renderSheet();
     }));
     root.querySelectorAll("[data-chip]").forEach(b => b.addEventListener("click", () => {

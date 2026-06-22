@@ -33,14 +33,21 @@ window.WAYSTONE_DATA = {
   // wrong: they ignored the % and could match unrelated text.) Each quoted
   // block = one AND condition; `|` = OR inside a block; `"!…"` = exclude.
   tokens: {
-    // Per-label bridge tokens for the waystone "Label: +X%" reward block.
+    // Literal label substrings for the waystone "Label: +X%" reward block, read
+    // from a live Tier-15 stash tooltip (2026-06-22): Item Rarity / Pack Size /
+    // Monster Rarity / Monster Effectiveness / Waystone Drop Chance. The %-aware
+    // builder appends ": \+(range)%" (see map-juicer.js atLeast). Use the
+    // distinctive part of each label; "drop chance" handles the hidden word in
+    // "Waystone Drop *Chance*:". (The old `i.+ty:`-style bridges were broken — the
+    // greedy `.+` matched the WRONG stat and `m.+e:` matched no real label.)
     line: {
-      itemRarity:    "i.+ty:",   // Item Rarity: +X%
-      packSize:      "m.+e:",    // Monster Pack Size: +X%
-      magicMonsters: "ma.+s:",   // Magic Monsters: +X%
-      rareMonsters:  "r.+s:",    // Rare Monsters: +X%
-      waystoneDrop:  "w.+e:",    // Waystone Drop Chance: +X%
+      itemRarity:           "item rarity",            // Item Rarity: +X%
+      packSize:             "pack size",              // Pack Size: +X%
+      monsterRarity:        "monster rarity",         // Monster Rarity: +X%
+      monsterEffectiveness: "monster effectiveness",  // Monster Effectiveness: +X%
+      waystoneDrop:         "drop chance",            // Waystone Drop Chance: +X%
     },
+    corrupted: "corrupted",      // the red "Corrupted" line on a corrupted waystone
     // A fully-juiced 6-modifier waystone has 0 revives — shown as this line.
     // (Revives = 6 at 0 mods, down to 0 at 6+ mods; it is NOT a rolled mod.)
     revivesZero: "revives available: 0",
