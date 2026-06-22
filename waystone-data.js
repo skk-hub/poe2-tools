@@ -217,5 +217,17 @@ window.WAYSTONE_DATA = {
       ],
       blurb: "Temple Tablets add Vaal Beacons; extra Crystals around the beacons are the chase.",
     },
+    {
+      id: "overseer",
+      label: "Overseer (Map Boss)",
+      tabletToken: "verseer",   // base = "Overseer Tablet" (confirmed live); mods buff Map Bosses
+      desirable: [
+        { label: "Boss Item Quantity", token: "ropped by" },          // Quantity of Items/Waystones dropped by Map Bosses (confirmed)
+        { label: "Additional Boss Modifier", token: "dditional modifier|dditional .+modifier" }, // Map Bosses have an additional Modifier (confirmed)
+        { label: "Boss Experience", token: "rant.+xperience" },        // Map Bosses grant increased Experience (confirmed)
+      ],
+      scalesWith: { itemRarity: 0.8, monsterRarity: 0.4 },
+      blurb: "Overseer Tablets buff Map Bosses — boss item/waystone quantity + extra boss modifiers. Chase the drop-quantity and additional-modifier rolls; pair with high Item Rarity waystones.",
+    },
   ],
 };
