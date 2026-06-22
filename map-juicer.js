@@ -64,11 +64,13 @@ window.__viewInit["map-juicer"]=function(){
     if (wMatch === "blue") {
       blocks.push(`"(${L.itemRarity}|${L.packSize}|${L.monsterRarity}|${L.monsterEffectiveness}|${L.waystoneDrop})"`);
     } else {
-      const parts = [];
-      if (rarityMin > 0) parts.push(atLeast(L.itemRarity, rarityMin));
-      if (packMin > 0)   parts.push(atLeast(L.packSize, packMin));
-      if (wdropMin > 0)  parts.push(atLeast(L.waystoneDrop, wdropMin));
-      if (parts.length) blocks.push(parts.length === 1 ? `"${parts[0]}"` : `"(${parts.join("|")})"`);
+      // Each set floor is its OWN quoted block = AND in stash regex: a waystone must
+      // clear EVERY minimum you set (not just one). One block per stat, not a single
+      // `|`-joined block — that OR'd them, so a high Drop roll alone passed and the
+      // pack/rarity floor got "ignored".
+      if (rarityMin > 0) blocks.push(`"${atLeast(L.itemRarity, rarityMin)}"`);
+      if (packMin > 0)   blocks.push(`"${atLeast(L.packSize, packMin)}"`);
+      if (wdropMin > 0)  blocks.push(`"${atLeast(L.waystoneDrop, wdropMin)}"`);
     }
     if (wRevives) blocks.push(noRevivesRegex());
     if (wCorrupt) blocks.push(`"${T.corrupted}"`);
@@ -101,7 +103,7 @@ window.__viewInit["map-juicer"]=function(){
     return `
       <div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}</div>
       ${wMatch==="floor"
-        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,0,70)}${stepper("pack","Min Pack Size",packMin,0,40)}</div>`
+        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,0,70)}${stepper("pack","Min Pack Size",packMin,0,40)}</div><p class="forge-hint">Every minimum you set is <b>required</b> (AND) — a stone must clear all of them. Set a stat to 0 to drop it.</p>`
         : `<p class="forge-hint">Matches any waystone carrying a reward mod — the blue stones worth upgrading.</p>`}
       ${wMatch==="floor" ? toggle("wdrop","Require Waystone Drop ≥100% (midrange isn't worth it)",wdropMin>=100) : ""}
       ${toggle("revives","Fully juiced only (0 revives = 6-mod map)",wRevives)}
