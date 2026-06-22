@@ -67,10 +67,11 @@ window.__viewInit["tab-tracker"] = function () {
         data=await hit(account,league,false);
         render(data);
       }
+      const warn=data.truncated?" ⚠ You have 100+ listings — some 10-div items may be missing; keep tracked items under ~100 or clear old sale listings.":"";
       if(data.limited && (data.remaining||0)>0){
-        setStatus("Priced "+data.pricedCount+" of "+data.results.length+". Trade2 hit its limit — click Value tab again in a bit to finish the rest.","err");
+        setStatus("Priced "+data.pricedCount+" of "+data.results.length+". Trade2 hit its limit — click Value tab again in a bit to finish the rest."+warn,"err");
       }else{
-        setStatus("Valued all "+data.results.length+" items at live market prices.","ok");
+        setStatus("Valued all "+data.results.length+" items at live market prices."+warn,"ok");
       }
     }catch(err){
       setStatus("Failed: "+err.message,"err");

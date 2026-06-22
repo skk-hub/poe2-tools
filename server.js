@@ -1085,9 +1085,12 @@ async function readTrackedTabListings(account, league) {
   const allIds = search.result || [];
   if (!allIds.length) return { lines: [], empty: true };
 
+  // Scan all returned ids (trade2 caps result ids at ~100). Early-stop bounds the
+  // fetches: cheaper genuine sales sort below the 10-div block, so we stop right
+  // after it. The block can span multiple public tabs — it's an account-wide search.
   const lines = [];
   let done = false, hitLimit = false;
-  for (let i = 0; i < allIds.length && i < 60 && !done; i += 10) {
+  for (let i = 0; i < allIds.length && !done; i += 10) {
     const ids = allIds.slice(i, i + 10);
     const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id);
     let fetched;
@@ -1102,7 +1105,10 @@ async function readTrackedTabListings(account, league) {
       else if (lines.length) { done = true; break; }
     }
   }
-  return { lines, hitLimit };
+  // trade2 returns at most ~100 result ids; if the account has more total listings
+  // AND we never hit a cheaper sale (no early-stop), the 10-div block may be clipped.
+  const truncated = !done && (search.total || 0) > allIds.length;
+  return { lines, hitLimit, truncated };
 }
 
 function parseTabLine(l) {
@@ -1125,7 +1131,7 @@ async function fetchTrackedTab(account, league, refresh) {
     } else {
       const read = await readTrackedTabListings(account, league);
       if (read.lines.length) {
-        cache = { account, league, lines: read.lines, updated: new Date().toISOString() };
+        cache = { account, league, lines: read.lines, truncated: !!read.truncated, updated: new Date().toISOString() };
         try { fs.writeFileSync(TAB_CACHE_FILE, JSON.stringify(cache, null, 2)); } catch {}
       } else if (!cache) {
         if (read.hitLimit) return { limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil, results: [] };
@@ -1172,6 +1178,7 @@ async function fetchTrackedTab(account, league, refresh) {
     totalEx: Math.round(totalEx * 100) / 100,
     totalDiv: rates.divine ? Math.round((totalEx / rates.divine) * 100) / 100 : 0,
     limited: tradeStatus().limited,
+    truncated: !!(cache && cache.truncated),
     updated: (cache && cache.updated) || new Date().toISOString(),
   };
 }
