@@ -84,8 +84,9 @@ window.WAYSTONE_DATA = {
   // Oracle: live PoE2 Trade2 "Waystone (Tier 16)" price-floor sweep. For each
   // stat we read the cheapest EXALTED-priced Tier-16 listing at several % of
   // that stat → a price-vs-% CURVE. Key lesson: the same absolute % is NOT
-  // comparable across stats because their roll CEILINGS differ (Rarity rolls
-  // to ~84%, Pack Size only ~41%), so a flat per-stat weight is misleading —
+  // comparable across stats because their roll CEILINGS differ (live-probed
+  // Tier-16 maxes: Rarity ~87%, Pack ~51%, Effectiveness ~70%, Monster Rarity
+  // ~103%, Waystone Drop ~125%), so a flat per-stat weight is misleading —
   // price the rolled % against the stat's own curve. `weight` is the peak
   // value normalised to the best stat (ranking by ceiling). Floors are
   // whole-map and correlated, so a map's value ≈ its single best stat, not the
@@ -98,21 +99,21 @@ window.WAYSTONE_DATA = {
     note: "Value depends on the rolled %, not just which stat. High Item Rarity is the top chase; Pack Size / Monster Effectiveness win on value-per-% at mid rolls but peak lower.",
     // ranked by peak (ceiling) value; `curve` = [rolled %, floor ex]
     stats: [
-      { key: "itemRarity", label: "Item Rarity", weight: 1.0, ceiling: 84, peakEx: 325,
+      { key: "itemRarity", label: "Item Rarity", weight: 1.0, ceiling: 87, peakEx: 325,
         curve: [[30, 1], [50, 20], [70, 325]],
         tip: "Highest ceiling and the top chase — explodes past ~60% (70%+ ≈ 325ex). Mid rarity (≤50%) is cheap." },
-      { key: "packSize", label: "Pack Size", weight: 0.12, ceiling: 41, peakEx: 40,
+      { key: "packSize", label: "Pack Size", weight: 0.12, ceiling: 51, peakEx: 40,
         curve: [[20, 1], [30, 20], [40, 40]],
         tip: "Best value per % at mid rolls (~2ex/%). Caps ~40% → ~40ex; can't reach Rarity's top end." },
-      { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.11, ceiling: 44, peakEx: 37,
+      { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.11, ceiling: 70, peakEx: 37,
         curve: [[20, 1], [40, 37]],
         tip: "Tracks Pack Size — strong mid-roll value, peaks ~40% → ~37ex." },
-      { key: "waystoneDrop", label: "Waystone Drop Chance", weight: 0.07, ceiling: 100, peakEx: 22, est: true,
-        curve: [[40, 1], [70, 8], [100, 22]],
-        tip: "ESTIMATE (not yet swept) — now priced, not utility: sustain has market value for endless T16 farming. Re-sweep Trade2 to confirm; peaks ~100% → ~22ex." },
-      { key: "monsterRarity", label: "Monster Rarity", weight: 0.01, ceiling: 62, peakEx: 1,
+      { key: "waystoneDrop", label: "Waystone Drop Chance", weight: 0.07, ceiling: 125, peakEx: 22, est: true,
+        curve: [[40, 1], [70, 8], [125, 22]],
+        tip: "Rolls past 100% (live max ~125%, NOT capped). Price is an ESTIMATE (not yet swept) — sustain has market value for endless T16 farming. Re-sweep Trade2 to confirm." },
+      { key: "monsterRarity", label: "Monster Rarity", weight: 0.01, ceiling: 103, peakEx: 1,
         curve: [[40, 1]],
-        tip: "Worthless even at ≥40% (~1ex). Never pay for it." },
+        tip: "Worthless even at high rolls (~1ex). Never pay for it." },
     ],
   },
 
