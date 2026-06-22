@@ -6,6 +6,7 @@
 .rune-exchange-book.json
 .economy-history.json
 .filter-helper.json
+.tab-tracker.json
 .arbitrage-scan-cache.json
 .poe-oauth.json
 .poe-oauth-state.json
