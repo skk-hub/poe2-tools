@@ -16,3 +16,18 @@
   color:var(--gold, #c9a227);
 }
 .toolroot-tt .tt-total span{ color:var(--muted, #9a9a9a); }
+.toolroot-tt .tt-browser{
+  margin:10px 0;
+  border:1px solid var(--line, #2a2a2a);
+  border-radius:var(--radius, 10px);
+  background:var(--surface-2, #161616);
+  padding:10px 14px;
+}
+.toolroot-tt .tt-browser summary{ cursor:pointer; font-weight:600; }
+.toolroot-tt .tt-browser textarea{
+  width:100%;
+  min-height:90px;
+  margin:8px 0;
+  font-family:var(--font-mono, monospace);
+  font-size:.85rem;
+}

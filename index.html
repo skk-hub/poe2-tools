@@ -550,6 +550,17 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div id="ttStatus" class="status">Enter your account name and load your tracked tab.</div>
       </div>
     </div>
+    <details class="tt-browser">
+      <summary>Read in your browser (VPN) — avoids the shared rate limit</summary>
+      <p class="sub">If the server read keeps rate-limiting, read your tab from your own browser instead (on your VPN, fresh budget): set your account + markers above, click <b>Copy reader snippet</b>, then on <b>pathofexile.com</b> (VPN on) open the console (F12) and paste it. It copies your items — paste them below and value them here (no server read).</p>
+      <div class="controls">
+        <button id="ttCopySnippet" type="button">Copy reader snippet</button>
+      </div>
+      <textarea id="ttPaste" spellcheck="false" placeholder="Paste the items the snippet copied (one 'Name xQty' per line)…"></textarea>
+      <div class="controls">
+        <button id="ttValuePaste" type="button">Value pasted items</button>
+      </div>
+    </details>
     <div id="ttTotal" class="tt-total" hidden></div>
     <div id="ttTableWrap" class="tablewrap" hidden>
       <table>

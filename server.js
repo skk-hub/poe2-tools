@@ -1131,9 +1131,69 @@ function parseTabLine(l) {
   return m ? { name: m[1], qty: Number(m[2]) } : { name: l, qty: 1 };
 }
 
-async function fetchTrackedTab(account, league, refresh, markers) {
+// Shared valuation: price items off the exchange book (cap-fill ≤TAB_FILL_PER_VISIT
+// unbooked/visit so it can't burst), build rows + totals. `meta` carries read-state
+// fields (markers/unreadBands/truncated/pasted) onto the response.
+async function valueTabItems(account, league, items, meta) {
+  const nk = (n) => normalizeName(n);
+  let book = readRuneBook(league) || { prices: {} };
+  const booked = (n) => { const b = book.prices[nk(n)]; return b && b.ex > 0; };
+  const unbooked = items.filter((it) => !booked(it.name));
+  if (unbooked.length && !tradeStatus().limited) {
+    const batch = unbooked.slice(0, TAB_FILL_PER_VISIT).map((it) => nk(it.name));
+    await Promise.race([
+      refreshRuneBook(league, batch, true).catch(() => {}),
+      new Promise((r) => setTimeout(r, RUNE_FRESH_DEADLINE_MS)),
+    ]);
+    book = readRuneBook(league) || book;
+  }
+  const rates = await getExchangeRates(league);
+  const results = items.map((it) => {
+    const b = book.prices[nk(it.name)];
+    if (b && b.ex > 0) return { qty: it.qty, name: it.name, each: b.ex, total: roundPriceExalted(b.ex * it.qty), source: "trade2 exchange" };
+    // Base/curated currencies (Divine, Chaos, …) aren't in the rune book — price
+    // them off the exchange rates (keyed by normalized name).
+    const rx = rates[nk(it.name)];
+    if (rx > 0) return { qty: it.qty, name: it.name, each: rx, total: roundPriceExalted(rx * it.qty), source: "trade2 exchange" };
+    return { qty: it.qty, name: it.name, each: "", total: "", source: "pricing…" };
+  });
+  const totalEx = results.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
+  const pricedCount = results.filter((r) => r.total).length;
+  return Object.assign({
+    account, league, results,
+    count: results.length,
+    pricedCount,
+    remaining: results.length - pricedCount,
+    totalEx: Math.round(totalEx * 100) / 100,
+    totalDiv: rates.divine ? Math.round((totalEx / rates.divine) * 100) / 100 : 0,
+    limited: tradeStatus().limited,
+    updated: new Date().toISOString(),
+  }, meta || {});
+}
+
+async function fetchTrackedTab(account, league, refresh, markers, pastedItems, pasteMode) {
   account = String(account || "").trim();
   if (!account) return { error: "Missing account name.", results: [] };
+
+  // PASTE MODE — items came from the browser-side reader (run on pathofexile.com
+  // through your VPN), so we skip ALL trade2 reads and just value them. POST sends
+  // the items once; auto-poll GETs reuse the cached pasted set to fill prices.
+  if (pastedItems != null || pasteMode) {
+    let cache = readTabCache(account, league);
+    if (pastedItems != null) {
+      const lines = String(pastedItems).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+      if (!lines.length) return { account, league, results: [], note: "No items pasted.", pasted: true };
+      cache = { account, league, markerSig: "pasted", bands: { pasted: { lines, done: true } }, updated: new Date().toISOString() };
+      try { fs.writeFileSync(TAB_CACHE_FILE, JSON.stringify(cache, null, 2)); } catch {}
+    }
+    if (!cache || cache.markerSig !== "pasted" || !cache.bands || !cache.bands.pasted) {
+      return { account, league, results: [], note: "Paste your browser-read items first.", pasted: true };
+    }
+    const items = (cache.bands.pasted.lines || []).map(parseTabLine);
+    if (!items.length) return { account, league, results: [], note: "No pasted items.", pasted: true };
+    return await valueTabItems(account, league, items, { pasted: true, unreadBands: 0 });
+  }
+
   markers = (markers && markers.length) ? markers : TAB_MARKERS_DEFAULT.slice();
   const markerSig = markers.join(",");
 
@@ -1167,47 +1227,7 @@ async function fetchTrackedTab(account, league, refresh, markers) {
     return { account, league, results: [], limited: tradeStatus().limited, tradeLimitedUntil: tradeStatus().tradeLimitedUntil, unreadBands, markers };
   }
 
-  // 2. Price from the exchange book. Cap-fill the NEXT few unbooked items (≤2
-  //    exchange calls — can't trip); the rest stay "pricing…" and fill on the
-  //    next (cached, cheap) visit. Booked items are free/instant.
-  const nk = (n) => normalizeName(n);
-  let book = readRuneBook(league) || { prices: {} };
-  const booked = (n) => { const b = book.prices[nk(n)]; return b && b.ex > 0; };
-  const unbooked = items.filter((it) => !booked(it.name));
-  if (unbooked.length && !tradeStatus().limited) {
-    const batch = unbooked.slice(0, TAB_FILL_PER_VISIT).map((it) => nk(it.name));
-    await Promise.race([
-      refreshRuneBook(league, batch, true).catch(() => {}),
-      new Promise((r) => setTimeout(r, RUNE_FRESH_DEADLINE_MS)),
-    ]);
-    book = readRuneBook(league) || book;
-  }
-
-  // 3. Rows + totals.
-  const rates = await getExchangeRates(league);
-  const results = items.map((it) => {
-    const b = book.prices[nk(it.name)];
-    if (b && b.ex > 0) {
-      return { qty: it.qty, name: it.name, each: b.ex, total: roundPriceExalted(b.ex * it.qty), source: "trade2 exchange" };
-    }
-    return { qty: it.qty, name: it.name, each: "", total: "", source: "pricing…" };
-  });
-  const totalEx = results.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
-  const pricedCount = results.filter((r) => r.total).length;
-  return {
-    account, league, results,
-    count: results.length,
-    pricedCount,
-    remaining: results.length - pricedCount,
-    totalEx: Math.round(totalEx * 100) / 100,
-    totalDiv: rates.divine ? Math.round((totalEx / rates.divine) * 100) / 100 : 0,
-    limited: tradeStatus().limited,
-    truncated,
-    unreadBands,
-    partial: unreadBands > 0,
-    markers,
-    updated: (cache && cache.updated) || new Date().toISOString(),
-  };
+  return await valueTabItems(account, league, items, { markers, markerSig, unreadBands, truncated, partial: unreadBands > 0 });
 }
 
 async function getTradePrice(name, league, currencyRates, deadline = 0) {
@@ -4577,12 +4597,23 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url.pathname === "/api/tab-tracker" && req.method === "POST") {
+      // Paste-mode ingest: items read browser-side (on pathofexile.com via VPN).
+      const input = await readJson(req);
+      const account = String(input.account || "").trim();
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
+      const body = JSON.stringify(await fetchTrackedTab(account, league, false, null, String(input.items || ""), true));
+      send(res, 200, body, "application/json; charset=utf-8");
+      return;
+    }
+
     if (url.pathname === "/api/tab-tracker") {
       const account = (url.searchParams.get("account") || "").trim();
       const league = sanitizeLeague(url.searchParams.get("league") || "Runes of Aldur");
       const refresh = url.searchParams.get("refresh") === "1";
+      const pasteMode = url.searchParams.get("paste") === "1";
       const markers = parseTabMarkers(url.searchParams.get("markers"));
-      const body = JSON.stringify(await fetchTrackedTab(account, league, refresh, markers));
+      const body = JSON.stringify(await fetchTrackedTab(account, league, refresh, markers, null, pasteMode));
       send(res, 200, body, "application/json; charset=utf-8");
       return;
     }
