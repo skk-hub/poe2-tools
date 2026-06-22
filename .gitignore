@@ -15,3 +15,5 @@
 node_modules/
 
 .playwright-cli/
+_srv.log
+_srv.err
