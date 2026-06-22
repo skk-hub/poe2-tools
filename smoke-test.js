@@ -355,6 +355,13 @@ async function browserChecks() {
       await p.click('.toolroot-mj [data-chip="breach"]'); await p.waitForTimeout(120);
       const tab = await out();
       check(/reach/.test(tab) && /iveblood/.test(tab), "regex forge builds a tablet regex with the content's desirable mods");
+      // Tablet Mod Value table renders (baked) with tier badges + a high-tier chase mod
+      const tv = await p.evaluate(() => {
+        const items = [...document.querySelectorAll(".toolroot-mj #mjAsideT .tvlist .tv-item")];
+        const high = items.find(li => /Desecrated|Hiveblood|Unique Boss|Tribute/i.test(li.textContent) && /High/.test(li.textContent));
+        return { count: items.length, hasHigh: !!high };
+      });
+      check(tv.count >= 5 && tv.hasHigh, "tablet mod-value table ranks mods into tiers (a chase mod reads High)");
       await p.close();
     }
 

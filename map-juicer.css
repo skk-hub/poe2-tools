@@ -114,6 +114,14 @@
   .toolroot-mj .mw-refresh:hover{filter:brightness(1.1)}
   .toolroot-mj .mw-refresh:disabled{opacity:.5;cursor:default}
   .toolroot-mj .mw-status{margin-top:10px;color:var(--gd);font:11px var(--ff-mono);line-height:1.45}
+  .toolroot-mj #mjAsideT{margin-top:18px}
+  .toolroot-mj .tvlist{list-style:none;margin:0;padding:0}
+  .toolroot-mj .tv-item{padding:9px 0;border-top:1px solid var(--bd)}
+  .toolroot-mj .tv-item:first-child{border-top:0;padding-top:0}
+  .toolroot-mj .tv-line{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .toolroot-mj .tv-name{color:var(--tx);font:600 12.5px var(--ff)}
+  .toolroot-mj .tv-line .tag{margin-right:0}
+  .toolroot-mj .tv-sub{color:var(--mu);font:11px var(--ff-mono);margin-top:3px}
 
   .toolroot-mj .foot{color:var(--mu);font:12px var(--ff);margin-top:24px;padding-top:14px;border-top:1px solid var(--bd)}
   .toolroot-mj .foot code{font:11px var(--ff-mono);color:var(--gd);background:var(--gd-a);padding:1px 4px;border-radius:3px}

@@ -230,4 +230,46 @@ window.WAYSTONE_DATA = {
       blurb: "Overseer Tablets buff Map Bosses — boss item/waystone quantity + extra boss modifiers. Chase the drop-quantity and additional-modifier rolls; pair with high Item Rarity waystones.",
     },
   ],
+
+  // ── Tablet Mod Value (price-floor sample) ────────────────────────────────
+  // Tablets are MULTI-MOD, so a per-mod ex curve (waystone-style) misleads. We
+  // instead sample tablets at rising price FLOORS and tier each mod by the
+  // HIGHEST floor it shows up on (High ≥300ex · Mid ≥100ex · Low <100ex). Honest
+  // signal = "appears on expensive tablets", not "this mod alone is worth X".
+  // Baked from a live Trade2 sweep (2026-06-22, ≥1/≥20/≥100/≥300ex); the UI's
+  // "Refresh from market" re-runs it (server endpoint) when the shared IP is quiet.
+  tabletSamples: {
+    source: "PoE2 Trade2 — map.tablet price-floor sample",
+    analyzed: "2026-06-22",
+    baked: true,
+    samples: [
+      // baseline (~1ex floor) — filler mods live here
+      { floor: 1, texts: ["7% increased Pack Size in Map", "Map Bosses grant 64% increased Experience", "17% increased Experience gain in Map", "Map has 97% increased chance to contain Essences"] },
+      { floor: 1, texts: ["16% increased Pack Size for Monsters around Vaal Beacons in Map"] },
+      { floor: 1, texts: ["9% increased Rarity of Items found in Map", "37% increased Quantity of Waystones found in Map", "Map contains an additional Summoning Circle"] },
+      { floor: 1, texts: ["Delirium Fog in your Maps never dissipates"] },
+      { floor: 1, texts: ["Map Bosses are Hunted by Azmeri Spirits"] },
+      // ≥20ex — Overseer (Map Boss) tablets surface here
+      { floor: 20, texts: ["17% increased Quantity of Items dropped by Map Bosses", "Map Bosses grant 73% increased Experience", "Map has 37% increased Magic Monsters", "Map has 16% increased Monster Rarity"] },
+      { floor: 20, texts: ["7% increased Pack Size in Map", "26% increased Quantity of Waystones dropped by Map Bosses", "Map has 30% increased number of Rare Monsters", "Map contains an additional Azmeri Spirit"] },
+      { floor: 20, texts: ["Map Bosses have 1 additional Modifier"] },
+      { floor: 20, texts: ["Map contains an additional Summoning Circle"] },
+      { floor: 20, texts: ["Map contains 3 additional Rare Chests", "Map has 88% increased chance to contain Rogue Exiles", "Map has 73% increased chance to contain Strongboxes"] },
+      // ≥100ex
+      { floor: 100, texts: ["Favours at Ritual Altars in Area cost 15% increased Tribute", "Can Reroll Favours at Ritual Altars in your Maps twice as many times"] },
+      { floor: 100, texts: ["Map has 76% increased chance to contain Essences", "Monsters have 12% increased Effectiveness", "Map has 85% increased chance to contain Strongboxes"] },
+      { floor: 100, texts: ["40% increased Quantity of Hiveblood found in Map", "Map has 31% increased number of Rare Monsters", "Map contains an additional Shrine"] },
+      { floor: 100, texts: ["Unstable Breaches in Map have 30% increased chance to contain Vruun, Marshal of Xesht", "Unstable Breaches in Map spawn 2 additional Rare Monsters when Stabilised", "Map contains 2 additional Rare Chests"] },
+      { floor: 100, texts: ["Abyss Pits in Map are twice as likely to have Rewards", "30% increased chance for Desecrated Currency from Abysses in Map", "Map has 31% increased number of Rare Monsters"] },
+      { floor: 100, texts: ["Abyssal Monsters have 11% increased Effectiveness for each closed Pit, up to 100%", "Map contains 3 additional Rare Chests", "30% increased Quantity of Waystones found in Map"] },
+      { floor: 100, texts: ["Delirium Encounters in Map are 24% more likely to spawn Unique Bosses", "34% increased Gold found in Map", "Map has 89% increased chance to contain Essences"] },
+      // ≥300ex
+      { floor: 300, texts: ["11% increased Rarity of Items found in Map", "29% increased Gold found in Map", "Map has 80% increased chance to contain Strongboxes", "Map has 71% increased chance to contain a Summoning Circle"] },
+      { floor: 300, texts: ["22% increased chance for Desecrated Currency from Abysses in Map", "Map has 25% chance to contain four additional Abysses", "25% increased Gold found in Map"] },
+      { floor: 300, texts: ["Delirium Encounters in Map are 29% more likely to spawn Unique Bosses", "25% increased Stack size of Simulacrum Splinters found in Map", "5% increased Pack Size in Map"] },
+      { floor: 300, texts: ["Monsters Sacrificed at Ritual Altars in Map grant 28% increased Tribute", "Map contains 3 additional Rare Chests", "Map has 90% increased chance to contain Strongboxes"] },
+      { floor: 300, texts: ["5% chance to gain an additional Crystal from Vaal Beacons in Map", "12% increased Experience gain in Map"] },
+      { floor: 300, texts: ["56% increased Quantity of Hiveblood found in Map", "Monsters have 15% increased Effectiveness", "Map has 90% increased chance to contain Shrines"] },
+    ],
+  },
 };

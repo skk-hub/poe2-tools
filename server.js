@@ -1815,6 +1815,77 @@ async function runWaystoneSweep(league) {
   };
 }
 
+// ── Tablet mod-value sample (Map Juicer "Tablet Mod Value" table) ───────────
+// Tablets are MULTI-MOD, so a per-mod ex curve (like waystones) is misleading.
+// Instead we sample tablets at rising price FLOORS (≥1 / ≥50 / ≥300ex) and report
+// which mods appear at each tier — a mod that recurs on the expensive tier is a
+// chase mod, one only on the ≥1ex floor is filler. Honest signal = "appears on
+// expensive tablets", not "this mod alone is worth X". ~6 Trade2 calls; cached +
+// cooldown guarded like the waystone sweep.
+const TABLET_WEIGHTS_FILE = path.join(DATA_DIR, ".tablet-weights.json");
+const TABLET_SWEEP_COOLDOWN_MS = 2 * 60 * 1000;
+const TABLET_SWEEP_FLOORS = [null, 100, 300]; // exalted price-min buckets (null = baseline; tiers: High ≥300 / Mid ≥100 / Low)
+
+function readTabletWeights() {
+  try { return JSON.parse(fs.readFileSync(TABLET_WEIGHTS_FILE, "utf8")); }
+  catch { return null; }
+}
+
+async function tabletSampleAt(league, minEx) {
+  const price = minEx != null ? { option: "exalted", min: minEx } : { option: "exalted" };
+  const body = JSON.stringify({
+    query: {
+      status: { option: "any" },
+      filters: {
+        type_filters: { filters: { category: { option: "map.tablet" } } },
+        trade_filters: { filters: { price } },
+      },
+    },
+    sort: { price: "asc" }, // asc is only valid WITH a price filter; desc returns fake 99999999 walls
+  });
+  const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
+  const search = await fetchTrade(searchUrl, { method: "POST", body });
+  const all = search.result || [];
+  if (!all.length) return [];
+  // spread across depth → varied tablets at this tier; fetch caps at 10 ids/call
+  const ids = [];
+  const step = Math.max(1, Math.floor(all.length / 10));
+  for (let i = 0; i < all.length && ids.length < 10; i += step) ids.push(all[i]);
+  const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id);
+  const fetched = await fetchTrade(fetchUrl);
+  return (fetched.result || [])
+    .filter((e) => e && e.item && e.listing && e.listing.price && e.listing.price.currency === "exalted")
+    .map((e) => ({
+      ex: Number(e.listing.price.amount),
+      base: e.item.typeLine || e.item.baseType || "Tablet",
+      texts: (e.item.explicitMods || [])
+        .map((m) => (typeof m === "string" ? m : (m && m.description) || ""))
+        .filter(Boolean),
+    }))
+    .filter((r) => r.ex > 0 && r.ex < 5000); // drop fake walls
+}
+
+async function sampleTablets(league) {
+  const samples = [];
+  for (const f of TABLET_SWEEP_FLOORS) {
+    try {
+      const rows = await tabletSampleAt(league, f);
+      for (const r of rows) samples.push({ floor: f || 1, ...r });
+    } catch (err) {
+      if (/rate limited/i.test(String(err && err.message))) throw err;
+      // transient (abort/timeout) → skip this tier, others still fill the table
+    }
+  }
+  if (!samples.length) throw new Error("tablet sweep returned no data — market may be slow, try again");
+  return {
+    source: "PoE2 Trade2 — map.tablet price-floor sample (≥1 / ≥100 / ≥300ex)",
+    note: "Per-mod tier = the highest price bucket the mod appears on. Tablets are multi-mod, so this is 'appears on expensive tablets', NOT the mod priced in isolation.",
+    league,
+    samples,
+    updated: new Date().toISOString(),
+  };
+}
+
 // ── Official Currency Exchange rate (Map Juicer div↔ex readout) ────────────
 // Reads GGG's live bulk Currency Exchange (the in-game book), NOT poe.ninja.
 // Cached with a TTL so a page load triggers at most one trade call per window;
@@ -4309,6 +4380,35 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/waystone/market-weights") {
       send(res, 200, JSON.stringify({ weights: readWaystoneWeights(), tradeStatus: tradeStatus() }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/tablet/market-weights") {
+      send(res, 200, JSON.stringify({ weights: readTabletWeights(), tradeStatus: tradeStatus() }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/tablet/market-weights/refresh" && req.method === "POST") {
+      const input = await readJson(req);
+      const league = input.league || "Runes of Aldur";
+      const cached = readTabletWeights();
+      const status = tradeStatus();
+      if (status.limited) {
+        send(res, 200, JSON.stringify({ limited: true, weights: cached, tradeStatus: status, tradeLimitedUntil: status.tradeLimitedUntil }), "application/json; charset=utf-8");
+        return;
+      }
+      if (!input.force && cached && cached.updated && Date.now() - new Date(cached.updated).getTime() < TABLET_SWEEP_COOLDOWN_MS) {
+        send(res, 200, JSON.stringify({ cooldown: true, weights: cached, tradeStatus: status }), "application/json; charset=utf-8");
+        return;
+      }
+      try {
+        const weights = await sampleTablets(league);
+        try { fs.writeFileSync(TABLET_WEIGHTS_FILE, JSON.stringify(weights, null, 2)); } catch {}
+        send(res, 200, JSON.stringify({ refreshed: true, weights, tradeStatus: tradeStatus() }), "application/json; charset=utf-8");
+      } catch (err) {
+        const limited = /rate limited/i.test(String(err && err.message));
+        send(res, 200, JSON.stringify({ limited, error: limited ? undefined : String(err && err.message), weights: cached, tradeStatus: tradeStatus() }), "application/json; charset=utf-8");
+      }
       return;
     }
 
