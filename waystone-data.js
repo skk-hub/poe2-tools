@@ -52,25 +52,28 @@ window.WAYSTONE_DATA = {
     tabletDesirable: "ack s|onster|rar",
   },
 
-  // Desirable TABLET mods, surfaced as toggle chips in the Regex Forge. Tokens are
-  // case-insensitive substrings; `|` = OR (so one chip can cover spelling variants).
-  // Wording grounded in a live Trade2 sweep of tablets priced ≥20–300ex (2026-06-22):
-  // the mods below recur on the expensive tier. `tabletGeneral` applies to any tablet.
+  // TABLET mods — used both as Regex Forge chips AND the Tablet Mod Value table.
+  // Tokens are case-insensitive regex substrings (`|` = OR). VALUES are in DIVINE,
+  // ground-truthed from the user's market knowledge (2026-06-22): tablet value is
+  // COMBINATION-driven, so each mod carries `div` (solo), optional `comboDiv` (paired
+  // peak), a `note`, and flags `pairs` (low solo / high paired) or `priceCheck` (value
+  // only emerges stacked — "price-check if 2+"). `tabletGeneral` = generic "juicing"
+  // enablers: low value alone, they multiply the mechanic chase mods.
   tabletGeneral: [
-    { label: "Item Quantity", token: "uantity of item" },
-    { label: "Waystone Quantity", token: "uantity of waystone" },  // % increased Quantity of Waystones found
-    { label: "Item Rarity", token: "arity of item" },
-    { label: "Pack Size", token: "ack size" },
-    { label: "Magic Monsters", token: "agic monster" },
-    { label: "Rare Monsters", token: "are monster" },
-    { label: "Irradiated", token: "rradiat" },
-    { label: "Effectiveness", token: "ffectiveness" },
-    // High-value content mods seen across the 100–300ex tier (content-agnostic):
-    { label: "Strongbox chance", token: "trongbox" },           // chance to contain Strongboxes
-    { label: "Summoning Circle", token: "ummoning circle" },    // chance to contain a Summoning Circle
-    { label: "Essence chance", token: "ssence" },               // chance to contain Essences
-    { label: "Gold found", token: "old found" },                // increased Gold found in Map
-    { label: "Rare Chests", token: "are chest" },               // additional Rare Chests
+    { label: "2 Additional Map Modifiers", token: "dditional map modifier|dditional random modifier", div: 1, note: "≈1 div solo; much more stacked with juicing + mechanic mods" },
+    { label: "Item Quantity", token: "uantity of item", enabler: true },
+    { label: "Waystone Quantity", token: "uantity of waystone", enabler: true },
+    { label: "Item Rarity", token: "arity of item", enabler: true },
+    { label: "Pack Size", token: "ack size", enabler: true },
+    { label: "Magic Monsters", token: "agic monster", enabler: true },
+    { label: "Rare Monsters", token: "are monster", enabler: true },
+    { label: "Irradiated", token: "rradiat", enabler: true },
+    { label: "Effectiveness", token: "ffectiveness", enabler: true },
+    { label: "Strongbox chance", token: "trongbox", enabler: true },
+    { label: "Summoning Circle", token: "ummoning circle", enabler: true },
+    { label: "Essence chance", token: "ssence", enabler: true },
+    { label: "Gold found", token: "old found", enabler: true },
+    { label: "Rare Chests", token: "are chest", enabler: true },
   ],
 
   // The avoid-list shown in the UI (matches `tokens.danger`).
@@ -133,10 +136,9 @@ window.WAYSTONE_DATA = {
       label: "Breach",
       tabletToken: "reach",
       desirable: [
-        { label: "Hiveblood", token: "iveblood" },                  // Quantity of Hiveblood found (confirmed)
-        { label: "Unstable Breaches", token: "nstable" },           // Unstable Breaches spawn/contain extra (confirmed)
-        { label: "Additional Breach", token: "dditional breach" },
-        { label: "Extra Rare Monster", token: "dditional rare monster|extra rare monster" },
+        { label: "Unstable: +3 Rare Monsters", token: "tabilised|tabilized", div: 3, comboDiv: 30, note: "3 div solo · 10–30 div paired with other Breach mods" }, // spawn 3 additional Rare Monsters when Stabilised
+        { label: "Hiveblood Quantity", token: "iveblood", pairs: true, note: "low solo; good with generic juicing" },
+        { label: "Rare Breach Monster Effectiveness", token: "reach monster", pairs: true, note: "low solo; only worth it with other mods" },
       ],
       scalesWith: { packSize: 1.0, monsterRarity: 0.85, itemRarity: 0.4 },
       blurb: "Breaches drop Splinters & Clasped Hands; scale hard with Pack Size, Rare Monsters and Rarity. Stack Breach atlas nodes + Breach tablets.",
@@ -150,11 +152,12 @@ window.WAYSTONE_DATA = {
       id: "abyss",
       label: "Abyss",
       tabletToken: "byss",
+      valueNote: "Price-check if you have 2+ of these",
       desirable: [
-        { label: "Desecrated Currency", token: "esecrated" },       // chance for Desecrated Currency (confirmed, top chase)
-        { label: "Additional Abysses", token: "dditional abyss" },  // chance to contain additional Abysses (confirmed)
-        { label: "Pit Rewards", token: "wice as likely" },          // Pits twice as likely to have Rewards (confirmed)
-        { label: "Effectiveness per Pit", token: "closed pit" },    // Effectiveness for each closed Pit (confirmed)
+        { label: "Four Additional Abysses", token: "dditional abyss", priceCheck: true },        // chance to contain four additional Abysses
+        { label: "Effectiveness per Closed Pit", token: "closed pit", priceCheck: true },          // Effectiveness for each closed Pit, up to 100%
+        { label: "Abyssal Modifiers chance", token: "byssal modifier", priceCheck: true },         // chance for Abyssal monsters to have Abyssal Modifiers
+        { label: "Rare Monsters from Abysses", token: "pawned from abyss|are spawned from", priceCheck: true }, // additional Rare Monsters spawned from Abysses
       ],
       scalesWith: { packSize: 1.0, monsterEffectiveness: 0.7 },
       blurb: "Abyss pits lead to Abyssal Depths; reward scales with monster density / pack size. Atlas: From Below, Dark Depths, then Lord of the Pit.",
@@ -168,10 +171,12 @@ window.WAYSTONE_DATA = {
       id: "delirium",
       label: "Delirium",
       tabletToken: "eliri",
+      valueNote: "Price-check if you have 2+ of these",
       desirable: [
-        { label: "Unique Boss", token: "nique boss" },              // more likely to spawn Unique Bosses (confirmed)
-        { label: "Simulacrum Splinter", token: "imulacrum" },       // increased Stack size of Simulacrum Splinters (confirmed)
-        { label: "Fog never dissipates", token: "issipate" },       // Delirium Fog never dissipates (confirmed)
+        { label: "Simulacrum Splinter stack", token: "imulacrum", priceCheck: true },   // increased Stack size of Simulacrum Splinters
+        { label: "Fracturing Mirrors", token: "racturing mirror", priceCheck: true },   // fog spawns increased Fracturing Mirrors
+        { label: "Mirror Shards", token: "irror shard", priceCheck: true },              // fog spawns increased Mirror Shards
+        { label: "Unique Boss chance", token: "nique boss", priceCheck: true },          // more likely to spawn Unique Bosses
       ],
       scalesWith: { packSize: 1.0, monsterEffectiveness: 0.65 },
       blurb: "Delirium fog grants reward per % progress; scales with Pack Size and monster density. Delirium tablets add Mirrors of Delirium in range.",
@@ -185,9 +190,9 @@ window.WAYSTONE_DATA = {
       label: "Ritual",
       tabletToken: "itual",
       desirable: [
-        { label: "Tribute", token: "ribute" },                     // increased Tribute (confirmed, top chase)
-        { label: "Reroll Favours", token: "eroll favour|eroll" },   // Reroll Favours twice as many times (confirmed)
-        { label: "Omens", token: "men" },
+        { label: "Extra Reroll Favours", token: "olling favours|eroll favour|dditional time", div: 15, comboDiv: 60, note: "13–17 div solo · 20–60 div paired with other Ritual mods" }, // roll Favours 1–3 additional times
+        { label: "Reduced Reroll Tribute", token: "educed tribute|eferring", pairs: true, note: "high value paired with rerolls / omens" }, // deferring/rerolling costs reduced Tribute
+        { label: "Omen Chance", token: "be omen|men", pairs: true, note: "low solo; high paired with Ritual mods" }, // Favours have increased chance to be Omens
       ],
       scalesWith: { monsterRarity: 1.0, packSize: 0.6 },
       blurb: "Ritual altars give Tribute to spend; scales with rare-monster density. Ritual tablets add altars / increase Tribute & rerolls.",
@@ -212,10 +217,10 @@ window.WAYSTONE_DATA = {
       label: "Vaal / Temple",
       tabletToken: "emple",   // base is "Temple Tablet" (confirmed live); mods reference Vaal Beacons
       desirable: [
-        { label: "Extra Crystal", token: "dditional crystal|extra crystal" }, // chance to gain an additional Crystal from Vaal Beacons (confirmed)
-        { label: "Vaal Beacon scaling", token: "aal beacon" },               // packs / Pack Size around Vaal Beacons (confirmed)
+        { label: "Additional Unique Modifier", token: "nique modifier", div: 5, comboDiv: 45, note: "5–6 div solo · 40–50 div with Vaal Beacon unique-monster mods" }, // Unique Monsters have an additional Unique Modifier
+        { label: "Extra Crystal", token: "dditional crystal|extra crystal", div: 1, comboDiv: 3, note: "1–3 div depending on roll" }, // chance to gain an additional Crystal from Vaal Beacons
       ],
-      blurb: "Temple Tablets add Vaal Beacons; extra Crystals around the beacons are the chase.",
+      blurb: "Temple Tablets add Vaal Beacons; the Unique-Modifier roll (huge with Vaal Beacon unique monsters) + extra Crystals are the chase.",
     },
     {
       id: "overseer",
@@ -230,46 +235,4 @@ window.WAYSTONE_DATA = {
       blurb: "Overseer Tablets buff Map Bosses — boss item/waystone quantity + extra boss modifiers. Chase the drop-quantity and additional-modifier rolls; pair with high Item Rarity waystones.",
     },
   ],
-
-  // ── Tablet Mod Value (price-floor sample) ────────────────────────────────
-  // Tablets are MULTI-MOD, so a per-mod ex curve (waystone-style) misleads. We
-  // instead sample tablets at rising price FLOORS and tier each mod by the
-  // HIGHEST floor it shows up on (High ≥300ex · Mid ≥100ex · Low <100ex). Honest
-  // signal = "appears on expensive tablets", not "this mod alone is worth X".
-  // Baked from a live Trade2 sweep (2026-06-22, ≥1/≥20/≥100/≥300ex); the UI's
-  // "Refresh from market" re-runs it (server endpoint) when the shared IP is quiet.
-  tabletSamples: {
-    source: "PoE2 Trade2 — map.tablet price-floor sample",
-    analyzed: "2026-06-22",
-    baked: true,
-    samples: [
-      // baseline (~1ex floor) — filler mods live here
-      { floor: 1, texts: ["7% increased Pack Size in Map", "Map Bosses grant 64% increased Experience", "17% increased Experience gain in Map", "Map has 97% increased chance to contain Essences"] },
-      { floor: 1, texts: ["16% increased Pack Size for Monsters around Vaal Beacons in Map"] },
-      { floor: 1, texts: ["9% increased Rarity of Items found in Map", "37% increased Quantity of Waystones found in Map", "Map contains an additional Summoning Circle"] },
-      { floor: 1, texts: ["Delirium Fog in your Maps never dissipates"] },
-      { floor: 1, texts: ["Map Bosses are Hunted by Azmeri Spirits"] },
-      // ≥20ex — Overseer (Map Boss) tablets surface here
-      { floor: 20, texts: ["17% increased Quantity of Items dropped by Map Bosses", "Map Bosses grant 73% increased Experience", "Map has 37% increased Magic Monsters", "Map has 16% increased Monster Rarity"] },
-      { floor: 20, texts: ["7% increased Pack Size in Map", "26% increased Quantity of Waystones dropped by Map Bosses", "Map has 30% increased number of Rare Monsters", "Map contains an additional Azmeri Spirit"] },
-      { floor: 20, texts: ["Map Bosses have 1 additional Modifier"] },
-      { floor: 20, texts: ["Map contains an additional Summoning Circle"] },
-      { floor: 20, texts: ["Map contains 3 additional Rare Chests", "Map has 88% increased chance to contain Rogue Exiles", "Map has 73% increased chance to contain Strongboxes"] },
-      // ≥100ex
-      { floor: 100, texts: ["Favours at Ritual Altars in Area cost 15% increased Tribute", "Can Reroll Favours at Ritual Altars in your Maps twice as many times"] },
-      { floor: 100, texts: ["Map has 76% increased chance to contain Essences", "Monsters have 12% increased Effectiveness", "Map has 85% increased chance to contain Strongboxes"] },
-      { floor: 100, texts: ["40% increased Quantity of Hiveblood found in Map", "Map has 31% increased number of Rare Monsters", "Map contains an additional Shrine"] },
-      { floor: 100, texts: ["Unstable Breaches in Map have 30% increased chance to contain Vruun, Marshal of Xesht", "Unstable Breaches in Map spawn 2 additional Rare Monsters when Stabilised", "Map contains 2 additional Rare Chests"] },
-      { floor: 100, texts: ["Abyss Pits in Map are twice as likely to have Rewards", "30% increased chance for Desecrated Currency from Abysses in Map", "Map has 31% increased number of Rare Monsters"] },
-      { floor: 100, texts: ["Abyssal Monsters have 11% increased Effectiveness for each closed Pit, up to 100%", "Map contains 3 additional Rare Chests", "30% increased Quantity of Waystones found in Map"] },
-      { floor: 100, texts: ["Delirium Encounters in Map are 24% more likely to spawn Unique Bosses", "34% increased Gold found in Map", "Map has 89% increased chance to contain Essences"] },
-      // ≥300ex
-      { floor: 300, texts: ["11% increased Rarity of Items found in Map", "29% increased Gold found in Map", "Map has 80% increased chance to contain Strongboxes", "Map has 71% increased chance to contain a Summoning Circle"] },
-      { floor: 300, texts: ["22% increased chance for Desecrated Currency from Abysses in Map", "Map has 25% chance to contain four additional Abysses", "25% increased Gold found in Map"] },
-      { floor: 300, texts: ["Delirium Encounters in Map are 29% more likely to spawn Unique Bosses", "25% increased Stack size of Simulacrum Splinters found in Map", "5% increased Pack Size in Map"] },
-      { floor: 300, texts: ["Monsters Sacrificed at Ritual Altars in Map grant 28% increased Tribute", "Map contains 3 additional Rare Chests", "Map has 90% increased chance to contain Strongboxes"] },
-      { floor: 300, texts: ["5% chance to gain an additional Crystal from Vaal Beacons in Map", "12% increased Experience gain in Map"] },
-      { floor: 300, texts: ["56% increased Quantity of Hiveblood found in Map", "Monsters have 15% increased Effectiveness", "Map has 90% increased chance to contain Shrines"] },
-    ],
-  },
 };

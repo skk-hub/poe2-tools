@@ -230,72 +230,46 @@ window.__viewInit["map-juicer"]=function(){
     if (btn) btn.addEventListener("click", ()=>refreshWeights(false));
   }
 
-  // ── Tablet Mod Value (price-floor tiers) ──────────────────────────────────
-  // Tablets are multi-mod → no single-mod ex curve; tier each mod by the highest
-  // price floor it appears on across the sampled tablets.
-  let tabletData = D.tabletSamples, tabRefreshing = false, tabStatus = "";
-  const TIER_META = { 3: { label: "High", cls: "good" }, 2: { label: "Mid", cls: "mid" }, 1: { label: "Low", cls: "bad" } };
-  function tierOf(floor){ return floor >= 300 ? 3 : floor >= 100 ? 2 : 1; }
-  function tabletMods(){
-    const out = [];
-    (D.contentTypes || []).forEach(c => (c.desirable || []).forEach(m => out.push({ label: m.label, token: m.token, group: c.label })));
-    (D.tabletGeneral || []).forEach(m => out.push({ label: m.label, token: m.token, group: "Any tablet" }));
-    return out;
+  // ── Tablet Mod Value (curated divine values) ──────────────────────────────
+  // Tablets are MULTI-MOD so value is combination-driven — these are ground-truth
+  // divine values (see waystone-data.js): `div` solo, `comboDiv` paired peak,
+  // `pairs` = low-solo/high-paired, `priceCheck` = "price-check if 2+".
+  function modWorth(m){ return m.comboDiv || m.div || 0; }
+  function valBadge(m){
+    if (m.priceCheck) return `<span class="tag mid">stack</span>`;
+    if (m.div != null){ const txt = m.comboDiv && m.comboDiv > m.div ? `${m.div}–${m.comboDiv} div` : `${m.div} div`; const cls = modWorth(m) >= 10 ? "good" : modWorth(m) >= 2 ? "mid" : "bad"; return `<span class="tag ${cls}">${txt}</span>`; }
+    if (m.pairs) return `<span class="tag mid">pairs ↑</span>`;
+    if (m.enabler) return `<span class="tag bad">enabler</span>`;
+    return "";
+  }
+  function tabletGroups(){
+    // mechanic content first (only those with desirable mods), then the generic enablers
+    const groups = (D.contentTypes || [])
+      .filter(c => (c.desirable || []).length)
+      .map(c => ({ name: c.label, note: c.valueNote || "", mods: c.desirable.slice() }));
+    groups.push({ name: "Generic juicing (any tablet)", note: "", mods: (D.tabletGeneral || []).slice() });
+    return groups;
   }
   function renderTabletValue(){
     const slot = asideSlots().t;
-    const data = tabletData;
-    if (!data || !data.samples || !data.samples.length){ slot.innerHTML = ""; return; }
-    const live = !data.baked;
-    const ranked = tabletMods().map(m => {
-      let re; try { re = new RegExp(m.token, "i"); } catch { re = null; }
-      let tier = 0, count = 0;
-      if (re) for (const s of data.samples){ if ((s.texts || []).some(t => re.test(t))){ count++; tier = Math.max(tier, tierOf(s.floor)); } }
-      return Object.assign({}, m, { tier, count });
-    }).filter(m => m.tier > 0)
-      .sort((a, b) => b.tier - a.tier || b.count - a.count || a.label.localeCompare(b.label));
-    const rows = ranked.map(m => {
-      const tm = TIER_META[m.tier];
-      return `<li class="tv-item">
-        <div class="tv-line"><span class="tv-name">${esc(m.label)}</span><span class="tag ${tm.cls}">${tm.label}</span></div>
-        <div class="tv-sub">${esc(m.group)} · seen on ${m.count} sampled tablet${m.count === 1 ? "" : "s"}</div>
-      </li>`;
+    const groups = tabletGroups();
+    const sections = groups.map(g => {
+      const mods = g.mods.slice().sort((a, b) => (b.priceCheck - a.priceCheck) || (modWorth(b) - modWorth(a)) || a.label.localeCompare(b.label));
+      const items = mods.map(m => `<li class="tv-item">
+        <div class="tv-line"><span class="tv-name">${esc(m.label)}</span>${valBadge(m)}</div>
+        ${m.note ? `<div class="tv-sub">${esc(m.note)}</div>` : ""}
+      </li>`).join("");
+      return `<div class="tv-group"><div class="tv-grouphead">${esc(g.name)}${g.note ? `<span class="tv-pc">${esc(g.note)}</span>` : ""}</div><ul class="tvlist">${items}</ul></div>`;
     }).join("");
     slot.innerHTML = `
       <div class="rxcard mj-mod">
-        <div class="rxcard-head"><span class="rxcard-title">Tablet Mod Value</span><span class="rxcard-kind">${live ? "live" : "baked"}</span></div>
+        <div class="rxcard-head"><span class="rxcard-title">Tablet Mod Value</span><span class="rxcard-kind">divine</span></div>
         <div class="rxcard-body">
-          <div class="mw-legend">Tier = highest price floor a mod appears on (High ≥300ex · Mid ≥100ex · Low &lt;100ex)</div>
-          <ul class="tvlist">${rows}</ul>
-          ${tabStatus ? `<div class="mw-status">${esc(tabStatus)}</div>` : ""}
-          <button class="mw-refresh" id="tabletRefresh" type="button"${tabRefreshing ? " disabled" : ""}>${tabRefreshing ? "Sweeping…" : "Refresh from market"}</button>
-          <div class="rxcard-note">Multi-mod tablets — this is "appears on expensive tablets", not the mod priced alone${data.analyzed ? ` · ${esc(data.analyzed)}` : ""}.</div>
+          <div class="mw-legend">Values in divine · tablet value is COMBO-driven (a mod's worth jumps when paired)</div>
+          ${sections}
+          <div class="rxcard-note"><b>Combine for value:</b> a chase mod + good generic juicing (or 2+ mechanic mods) is worth far more than any single roll. <span style="color:var(--mu)">stack = price-check if you have 2+ · enabler = generic juicing, low alone.</span></div>
         </div>
       </div>`;
-    const btn = slot.querySelector("#tabletRefresh");
-    if (btn) btn.addEventListener("click", () => refreshTablets(false));
-  }
-  async function refreshTablets(force){
-    if (tabRefreshing) return;
-    tabRefreshing = true; tabStatus = "Sweeping live tablet market… (~1 min, shared rate limit)"; renderTabletValue();
-    try {
-      const r = await fetch("/api/tablet/market-weights/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force: !!force }) });
-      const d = await r.json();
-      if (d.weights && d.weights.samples && d.weights.samples.length) tabletData = d.weights;
-      if (d.limited) tabStatus = "Trade2 rate-limited — showing last result. Try again in a few minutes.";
-      else if (d.cooldown) tabStatus = "Refreshed recently — showing latest (cooldown ~2 min).";
-      else if (d.refreshed) tabStatus = "Updated from live market just now.";
-      else if (d.error) tabStatus = "Refresh failed: " + d.error;
-      else tabStatus = "No market data returned.";
-    } catch { tabStatus = "Refresh failed (is the local server running?)."; }
-    finally { tabRefreshing = false; renderTabletValue(); }
-  }
-  async function loadCachedTablets(){
-    try {
-      const r = await fetch("/api/tablet/market-weights");
-      const d = await r.json();
-      if (d && d.weights && d.weights.samples && d.weights.samples.length){ tabletData = d.weights; renderTabletValue(); }
-    } catch {}
   }
   async function refreshWeights(force){
     if (refreshing) return;
@@ -407,5 +381,4 @@ window.__viewInit["map-juicer"]=function(){
   renderMarket();
   renderTabletValue();
   loadCachedWeights();
-  loadCachedTablets();
 };
