@@ -1107,7 +1107,9 @@ async function readTrackedTabListings(account, league) {
   }
   // trade2 returns at most ~100 result ids; if the account has more total listings
   // AND we never hit a cheaper sale (no early-stop), the 10-div block may be clipped.
-  const truncated = !done && (search.total || 0) > allIds.length;
+  // (Only meaningful on a COMPLETE read — a rate-limited cut-short read also has
+  // done=false but isn't genuinely truncated.)
+  const truncated = !done && !hitLimit && (search.total || 0) > allIds.length;
   return { lines, hitLimit, truncated };
 }
 
@@ -1130,9 +1132,15 @@ async function fetchTrackedTab(account, league, refresh) {
       // else: fall through and price from the stale cached contents
     } else {
       const read = await readTrackedTabListings(account, league);
-      if (read.lines.length) {
+      if (read.lines.length && !read.hitLimit) {
+        // Complete read — persist as the authoritative tab contents.
         cache = { account, league, lines: read.lines, truncated: !!read.truncated, updated: new Date().toISOString() };
         try { fs.writeFileSync(TAB_CACHE_FILE, JSON.stringify(cache, null, 2)); } catch {}
+      } else if (read.lines.length && read.hitLimit) {
+        // Partial read (rate-limited mid-sweep). Use what we got for THIS response
+        // but do NOT persist it — caching a cut-short read as complete would hide
+        // the rest of the tab. Prefer a prior good cache if we have one.
+        if (!cache) cache = { account, league, lines: read.lines, partial: true, updated: new Date().toISOString() };
       } else if (!cache) {
         if (read.hitLimit) return { limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil, results: [] };
         if (read.empty) return { account, league, results: [], note: "No listings found under that account in " + league + "." };
@@ -1179,6 +1187,7 @@ async function fetchTrackedTab(account, league, refresh) {
     totalDiv: rates.divine ? Math.round((totalEx / rates.divine) * 100) / 100 : 0,
     limited: tradeStatus().limited,
     truncated: !!(cache && cache.truncated),
+    partial: !!(cache && cache.partial),
     updated: (cache && cache.updated) || new Date().toISOString(),
   };
 }
