@@ -354,7 +354,7 @@ async function browserChecks() {
       await p.click('.toolroot-mj [data-target="tablets"]'); await p.waitForTimeout(120);
       await p.click('.toolroot-mj [data-chip="breach"]'); await p.waitForTimeout(120);
       const tab = await out();
-      check(/reach/.test(tab) && /ombgift/.test(tab), "regex forge builds a tablet regex with the content's desirable mods");
+      check(/reach/.test(tab) && /iveblood/.test(tab), "regex forge builds a tablet regex with the content's desirable mods");
       await p.close();
     }
 

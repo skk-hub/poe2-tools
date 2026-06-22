@@ -54,8 +54,8 @@ window.WAYSTONE_DATA = {
 
   // Desirable TABLET mods, surfaced as toggle chips in the Regex Forge. Tokens are
   // case-insensitive substrings; `|` = OR (so one chip can cover spelling variants).
-  // VERIFY wording against your stash — the niche 0.5 mods (Wombgift, Hive Blood,
-  // Abyssal pits, Vaal crystals) are best-effort. `tabletGeneral` applies to any tablet.
+  // Wording grounded in a live Trade2 sweep of tablets priced ≥20–300ex (2026-06-22):
+  // the mods below recur on the expensive tier. `tabletGeneral` applies to any tablet.
   tabletGeneral: [
     { label: "Item Quantity", token: "uantity of item" },
     { label: "Waystone Quantity", token: "uantity of waystone" },  // % increased Quantity of Waystones found
@@ -65,6 +65,12 @@ window.WAYSTONE_DATA = {
     { label: "Rare Monsters", token: "are monster" },
     { label: "Irradiated", token: "rradiat" },
     { label: "Effectiveness", token: "ffectiveness" },
+    // High-value content mods seen across the 100–300ex tier (content-agnostic):
+    { label: "Strongbox chance", token: "trongbox" },           // chance to contain Strongboxes
+    { label: "Summoning Circle", token: "ummoning circle" },    // chance to contain a Summoning Circle
+    { label: "Essence chance", token: "ssence" },               // chance to contain Essences
+    { label: "Gold found", token: "old found" },                // increased Gold found in Map
+    { label: "Rare Chests", token: "are chest" },               // additional Rare Chests
   ],
 
   // The avoid-list shown in the UI (matches `tokens.danger`).
@@ -127,10 +133,10 @@ window.WAYSTONE_DATA = {
       label: "Breach",
       tabletToken: "reach",
       desirable: [
-        { label: "Extra Rare Monster", token: "dditional rare monster|extra rare monster" },
-        { label: "Wombgift", token: "ombgift|omb gift" },
-        { label: "Hive Blood", token: "iveblood|ive blood" },
+        { label: "Hiveblood", token: "iveblood" },                  // Quantity of Hiveblood found (confirmed)
+        { label: "Unstable Breaches", token: "nstable" },           // Unstable Breaches spawn/contain extra (confirmed)
         { label: "Additional Breach", token: "dditional breach" },
+        { label: "Extra Rare Monster", token: "dditional rare monster|extra rare monster" },
       ],
       scalesWith: { packSize: 1.0, monsterRarity: 0.85, itemRarity: 0.4 },
       blurb: "Breaches drop Splinters & Clasped Hands; scale hard with Pack Size, Rare Monsters and Rarity. Stack Breach atlas nodes + Breach tablets.",
@@ -145,10 +151,10 @@ window.WAYSTONE_DATA = {
       label: "Abyss",
       tabletToken: "byss",
       desirable: [
-        { label: "Extra Rare Monster", token: "dditional rare monster|extra rare monster" },
-        { label: "Additional Pit", token: "dditional pit|byssal pit" },
-        { label: "Additional Abyss", token: "dditional abyss" },
-        { label: "Abyssal Modifier", token: "byssal modifier" },
+        { label: "Desecrated Currency", token: "esecrated" },       // chance for Desecrated Currency (confirmed, top chase)
+        { label: "Additional Abysses", token: "dditional abyss" },  // chance to contain additional Abysses (confirmed)
+        { label: "Pit Rewards", token: "wice as likely" },          // Pits twice as likely to have Rewards (confirmed)
+        { label: "Effectiveness per Pit", token: "closed pit" },    // Effectiveness for each closed Pit (confirmed)
       ],
       scalesWith: { packSize: 1.0, monsterEffectiveness: 0.7 },
       blurb: "Abyss pits lead to Abyssal Depths; reward scales with monster density / pack size. Atlas: From Below, Dark Depths, then Lord of the Pit.",
@@ -163,9 +169,9 @@ window.WAYSTONE_DATA = {
       label: "Delirium",
       tabletToken: "eliri",
       desirable: [
-        { label: "Simulacrum Splinter", token: "imulacrum" },
-        { label: "Mirror Shard", token: "irror" },
-        { label: "Unique Boss", token: "nique boss" },
+        { label: "Unique Boss", token: "nique boss" },              // more likely to spawn Unique Bosses (confirmed)
+        { label: "Simulacrum Splinter", token: "imulacrum" },       // increased Stack size of Simulacrum Splinters (confirmed)
+        { label: "Fog never dissipates", token: "issipate" },       // Delirium Fog never dissipates (confirmed)
       ],
       scalesWith: { packSize: 1.0, monsterEffectiveness: 0.65 },
       blurb: "Delirium fog grants reward per % progress; scales with Pack Size and monster density. Delirium tablets add Mirrors of Delirium in range.",
@@ -175,24 +181,13 @@ window.WAYSTONE_DATA = {
       ],
     },
     {
-      id: "expedition",
-      label: "Expedition",
-      tabletToken: "xpediti",
-      scalesWith: { itemRarity: 1.0, packSize: 0.35 },
-      blurb: "Expedition Remnants & Logbooks; among the strongest this league when stacked with the Runes of Aldur mechanic.",
-      juiceNote: "Pair with Expedition Tablets. Quantity/Rarity on the waystone plus Remnant-scaling on the tablet.",
-      omenPicks: [
-        { name: "Omen of Chaotic Rarity", why: "Expedition reward is loot-quality driven — stack Rarity." },
-      ],
-    },
-    {
       id: "ritual",
       label: "Ritual",
       tabletToken: "itual",
       desirable: [
-        { label: "Rerolls", token: "eroll|additional time" },
+        { label: "Tribute", token: "ribute" },                     // increased Tribute (confirmed, top chase)
+        { label: "Reroll Favours", token: "eroll favour|eroll" },   // Reroll Favours twice as many times (confirmed)
         { label: "Omens", token: "men" },
-        { label: "Tribute", token: "ribute" },
       ],
       scalesWith: { monsterRarity: 1.0, packSize: 0.6 },
       blurb: "Ritual altars give Tribute to spend; scales with rare-monster density. Ritual tablets add altars / increase Tribute & rerolls.",
@@ -215,12 +210,12 @@ window.WAYSTONE_DATA = {
     {
       id: "temple",
       label: "Vaal / Temple",
-      tabletToken: "aal|emple",   // VERIFY: tablet keyword may be "Vaal" or "Temple" in-stash
+      tabletToken: "emple",   // base is "Temple Tablet" (confirmed live); mods reference Vaal Beacons
       desirable: [
-        { label: "Beacon Crystals", token: "rystal" },
-        { label: "Vaal Beacon", token: "eacon" },
+        { label: "Extra Crystal", token: "dditional crystal|extra crystal" }, // chance to gain an additional Crystal from Vaal Beacons (confirmed)
+        { label: "Vaal Beacon scaling", token: "aal beacon" },               // packs / Pack Size around Vaal Beacons (confirmed)
       ],
-      blurb: "Vaal/Temple tablets add Vaal Beacons; extra crystals around the beacons are the chase. Confirm the keyword + crystal wording in your stash.",
+      blurb: "Temple Tablets add Vaal Beacons; extra Crystals around the beacons are the chase.",
     },
   ],
 };
