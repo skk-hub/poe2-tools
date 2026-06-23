@@ -55,6 +55,11 @@
   /* ---- Radius ---- */
   --r-sm:6px; --r:8px; --r-md:10px; --r-lg:14px; --r-xl:20px; --r-pill:999px;
 
+  /* ---- Spacing scale (the missing primitive — use these for padding/gap/margin
+     instead of magic px). Migration is incremental: new/edited CSS should reach
+     for --space-* first; existing literals get swapped as files are touched. ---- */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:24px; --space-6:32px;
+
   /* ---- Elevation (soft, layered, dark) ---- */
   --shadow-sm:0 1px 2px oklch(0% 0 0 / .35);
   --shadow-md:0 2px 8px -2px oklch(0% 0 0 / .40), 0 6px 18px -6px oklch(0% 0 0 / .35);

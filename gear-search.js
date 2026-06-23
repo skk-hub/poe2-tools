@@ -328,7 +328,7 @@ window.__viewInit["gear-search"]=function(){
             </div>
             <textarea spellcheck="false" data-slot-text="${escapeHtml(slot.id)}" placeholder="Paste copied ${escapeHtml(slot.label)} item here">${escapeHtml(value)}</textarea>
             <div class="slot-actions">
-              <button type="button" data-paste-slot="${escapeHtml(slot.id)}">Paste Clipboard</button>
+              <button type="button" data-paste-slot="${escapeHtml(slot.id)}">Paste clipboard</button>
               <button type="button" data-clear-slot="${escapeHtml(slot.id)}">Clear</button>
             </div>
             <div class="hint">${escapeHtml(slot.label)} should come from an equipped ${slot.id === "chest" ? "body armour" : slotBase(slot.id)} item.</div>
@@ -870,7 +870,7 @@ window.__viewInit["gear-search"]=function(){
       state.result = result;
       renderSummary(result);
       if (result.limited) {
-        els.results.innerHTML = `<div class="empty">Trade2 is rate limited until ${escapeHtml(fmtEuTime(result.tradeStatus && result.tradeStatus.tradeLimitedUntil))}.</div>`;
+        els.results.innerHTML = `<div class="empty">Trade2 is rate-limited until ${escapeHtml(fmtEuTime(result.tradeStatus && result.tradeStatus.tradeLimitedUntil))}.</div>`;
         return;
       }
       if (!result.listings || !result.listings.length) {
@@ -932,7 +932,7 @@ window.__viewInit["gear-search"]=function(){
           const win = window.open("", "_blank");
           const original = button.textContent;
           button.disabled = true;
-          button.textContent = "Opening...";
+          button.textContent = "Opening…";
           try {
             const data = await api("/api/gear-search/listing-link", { spec: listing.tradeSpec, league: result.league });
             if (data.limited) {
@@ -986,7 +986,7 @@ window.__viewInit["gear-search"]=function(){
     }
 
     async function search() {
-      els.results.innerHTML = `<div class="empty">Searching Trade2 through the shared queue...</div>`;
+      els.results.innerHTML = `<div class="empty">Searching Trade2 through the shared queue…</div>`;
       const result = await api("/api/gear-search/search", requestPayload(false));
       const warnings = [];
       if ((result.compositeFilters || []).some((filter) => filter.postValue)) {
@@ -1003,8 +1003,8 @@ window.__viewInit["gear-search"]=function(){
     renderSlotImportGrid();
     setImportOpen(true);
     els.importToggle.addEventListener("click", () => setImportOpen(!state.importOpen));
-    document.getElementById("analyzeBtn").addEventListener("click", () => analyze().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
-    document.getElementById("importBtn").addEventListener("click", () => importExport().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
+    document.getElementById("analyzeBtn").addEventListener("click", () => analyze().catch((err) => els.results.innerHTML = `<div class="empty">Analyze failed: ${escapeHtml(err.message)}</div>`));
+    document.getElementById("importBtn").addEventListener("click", () => importExport().catch((err) => els.results.innerHTML = `<div class="empty">Import failed: ${escapeHtml(err.message)}</div>`));
     document.getElementById("syncSlotsBtn").addEventListener("click", () => hydrateSlotImports(els.gearText.value || ""));
     document.getElementById("copyConsoleBtn").addEventListener("click", async () => {
       const button = document.getElementById("copyConsoleBtn");
@@ -1012,14 +1012,14 @@ window.__viewInit["gear-search"]=function(){
         await navigator.clipboard.writeText(CONSOLE_EXPORT_SNIPPET);
         button.textContent = "Copied";
       } catch {
-        button.textContent = "Copy Failed";
+        button.textContent = "Copy failed";
       }
-      setTimeout(() => { button.textContent = "Copy Console Code"; }, 1400);
+      setTimeout(() => { button.textContent = "Copy console code"; }, 1400);
     });
-    document.getElementById("searchBtn").addEventListener("click", () => search().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
+    document.getElementById("searchBtn").addEventListener("click", () => search().catch((err) => els.results.innerHTML = `<div class="empty">Search failed: ${escapeHtml(err.message)}</div>`));
     document.getElementById("addFilterBtn").addEventListener("click", () => { addFilter(); updatePreview(); });
     document.getElementById("saveBtn").addEventListener("click", saveCurrentImportProfile);
-    document.getElementById("loadBtn").addEventListener("click", () => loadSelectedImportProfile().catch((err) => els.results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`));
+    document.getElementById("loadBtn").addEventListener("click", () => loadSelectedImportProfile().catch((err) => els.results.innerHTML = `<div class="empty">Load failed: ${escapeHtml(err.message)}</div>`));
     document.getElementById("deleteSaveBtn").addEventListener("click", deleteSelectedImportProfile);
     els.importProfileSelect.addEventListener("change", () => {
       els.importSaveName.value = selectedImportProfileName();

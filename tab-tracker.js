@@ -96,7 +96,7 @@ window.__viewInit["tab-tracker"] = function () {
       }
       if(!(data.results||[]).length){
         if(data.note){ wrap.hidden=true; totalEl.hidden=true; setStatus(data.note,""); return; }
-        if(data.limited){ setStatus("Trade2 is rate-limited right now — click Value tab again in a bit.","err"); return; }
+        if(data.limited){ setStatus("Trade2 is rate-limited — click Value tab again in a bit.","err"); return; }
       }
       // PRICE FILL: poll the cached path (no re-search) to fill values in batches.
       // (Pricing is capped/gentle and mostly from cache; if it trips we stop here —
@@ -119,7 +119,7 @@ window.__viewInit["tab-tracker"] = function () {
         setStatus("Valued all "+data.results.length+" items at live market prices."+w,"ok");
       }
     }catch(err){
-      setStatus("Failed: "+err.message,"err");
+      setStatus("Value failed: "+err.message,"err");
     }finally{
       polling=false; cancelRead=false; loadBtn.textContent="Value tab"; loadBtn.disabled=false;
     }
@@ -184,7 +184,7 @@ window.__viewInit["tab-tracker"] = function () {
       setStatus((data.limited&&(data.remaining||0)>0
         ? "Priced "+data.pricedCount+" of "+data.results.length+". Trade2 busy — click Value pasted items again to finish."
         : "Valued all "+data.results.length+" items at live market prices."),data.limited&&data.remaining>0?"err":"ok");
-    }catch(err){ setStatus("Failed: "+err.message,"err"); }
+    }catch(err){ setStatus("Value failed: "+err.message,"err"); }
     finally{ valuePasteBtn.disabled=false; polling=false; }
   }
 

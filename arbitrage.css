@@ -18,7 +18,7 @@
   .toolroot-arb .checks{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   .toolroot-arb .check{display:inline-flex;align-items:center;gap:6px;color:var(--tx);font:12px var(--ff)}
   .toolroot-arb .check input{width:15px;height:15px;margin:0}
-  .toolroot-arb button{height:38px;border:1px solid transparent;background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));color:oklch(22% 0.04 70);font:700 12px var(--mono);text-transform:uppercase;cursor:pointer;border-radius:var(--r);padding:0 16px;transition:filter var(--t),transform var(--t),box-shadow var(--t)}
+  .toolroot-arb button{height:38px;border:1px solid transparent;background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));color:oklch(22% 0.04 70);font:700 13px var(--ff-ui);letter-spacing:.01em;cursor:pointer;border-radius:var(--r);padding:0 16px;transition:filter var(--t),transform var(--t),box-shadow var(--t)}
   .toolroot-arb button:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:var(--shadow-gold)}
   .toolroot-arb button:disabled{opacity:.5;cursor:default;transform:none;filter:none}
   .toolroot-arb .hint{margin-top:12px;color:var(--mu);font:12px var(--ff);border-left:2px solid var(--bd);padding-left:12px}

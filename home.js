@@ -54,7 +54,7 @@ window.__viewInit["home"] = function () {
       // opened as a static file with no server — is caught in load() and hides it.)
       chips.innerHTML = '<span class="fxchip"><span class="fxname">No currency rates yet</span></span>';
       if (meta) {
-        meta.textContent = (d && d.limited) ? "Trade2 rate-limited — tap ↻ to retry" : "Rates unavailable — tap ↻ to retry";
+        meta.textContent = (d && d.limited) ? "Trade2 is rate-limited — tap ↻ to retry" : "Rates unavailable — tap ↻ to retry";
         meta.classList.add("stale");
       }
       strip.hidden = false;

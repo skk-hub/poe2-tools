@@ -85,7 +85,7 @@ window.__viewInit["rune-picker"] = function () {
     runeResultData=data.results||[];
     if(!data.results||!data.results.length){
       runeBest.className="bestbox empty";
-      runeBest.textContent="No priced picks found.";
+      runeBest.textContent="No priced picks yet.";
       runeRows.innerHTML='<tr><td colspan="8" class="muted">No results. Check the pasted text.</td></tr>';
       return;
     }
@@ -96,7 +96,7 @@ window.__viewInit["rune-picker"] = function () {
       runeBest.innerHTML='<b>Best pick: '+esc(best.qty)+'x '+esc(best.name)+'</b><span>'+fx(best.total)+' total / '+fx(best.each)+' each - '+esc(best.category)+' via '+esc(best.source)+'</span>'+(best.rawPrice?'<div class="muted">Raw listing: '+esc(best.rawPrice)+'</div>':'');
     }else{
       runeBest.className="bestbox empty";
-      runeBest.textContent="No priced pick was available.";
+      runeBest.textContent="No priced picks yet.";
     }
 
     runeRows.innerHTML=data.results.map((item,index)=>{

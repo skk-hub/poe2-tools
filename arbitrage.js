@@ -63,7 +63,7 @@ function render(data){
     const skipped = (data.errors || []).length;
     els.results.className = "empty";
     els.results.innerHTML = data.limited
-      ? "Trade2 is currently rate limited" + (until ? " until " + esc(until) : "") + " and no matching cached opportunities are available."
+      ? "Trade2 is currently rate-limited" + (until ? " until " + esc(until) : "") + " and no matching cached opportunities are available."
       : `Scanned ${scanned} pair${scanned === 1 ? "" : "s"} — none cleared your net-profit / ROI / stock filters. The Currency Exchange spread is usually negative for an instant round-trip, so profitable flips are brief mispricings; lower the thresholds or re-scan later.`
         + (skipped ? ` (${skipped} had no offer on one side.)` : "")
         + nearMissBlock(data);
@@ -86,16 +86,16 @@ function render(data){
           <td>${(row.flags || []).length ? row.flags.map(f => `<span class="flag">${esc(f)}</span>`).join("") : `<span class="flag">ok</span>`}</td>
         </tr>`).join("")}</tbody>
     </table></div>
-    ${data.errors && data.errors.length ? `<div class="errors"><b>Skipped:</b> ${esc(data.errors.slice(0,6).map(e => e.item + " (" + e.reason + ")").join(", "))}${data.errors.length > 6 ? " ..." : ""}</div>` : ""}`;
+    ${data.errors && data.errors.length ? `<div class="errors"><b>Skipped:</b> ${esc(data.errors.slice(0,6).map(e => e.item + " (" + e.reason + ")").join(", "))}${data.errors.length > 6 ? " …" : ""}</div>` : ""}`;
 }
 async function scan(){
   els.scanBtn.disabled = true;
-  setStatus("Scanning Currency Exchange through shared Trade2 queue...", "warn");
+  setStatus("Scanning Currency Exchange through shared Trade2 queue…", "warn");
   try {
     const res = await fetch("/api/arbitrage/scan", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload()) });
     const data = await res.json();
     render(data);
-    if (data.limited) { const until = fmtLimitUntil(data); setStatus("Trade2 limited" + (until ? " until " + until : "") + ". Showing cached data when available.", "err"); }
+    if (data.limited) { const until = fmtLimitUntil(data); setStatus("Trade2 is rate-limited" + (until ? " until " + until : "") + " — showing cached data when available.", "err"); }
     else if (data.cached) setStatus("Loaded cached scan from " + (data.updated || "recently") + ".", "ok");
     else setStatus("Scan complete: " + (data.opportunities || []).length + " opportunities.", "ok");
   } catch (err) {
