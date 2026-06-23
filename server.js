@@ -1202,9 +1202,14 @@ async function fetchTrackedTab(account, league, refresh, markers, pastedItems, p
   //    next click continues instead of restarting). Price-only polls (refresh=false)
   //    never touch the network — they just re-price the cached lines.
   let cache = readTabCache(account, league);
-  const reuse = cache && cache.markerSig === markerSig &&
-    (Date.now() - new Date(cache.updated).getTime() < TAB_CACHE_TTL_MS);
-  let bands = (reuse && cache.bands) ? cache.bands : {};
+  const sameSig = cache && cache.markerSig === markerSig && cache.bands;
+  const fresh = sameSig && (Date.now() - new Date(cache.updated).getTime() < TAB_CACHE_TTL_MS);
+  const complete = sameSig && markers.every((m) => cache.bands[String(m)] && cache.bands[String(m)].done);
+  // Reuse if same markers AND (still fresh OR mid-read). A rate-limit cooldown (~9 min)
+  // can outlast the freshness TTL; don't let that wipe partial progress and restart the
+  // scan — only a COMPLETE read goes stale and re-scans. Partial reads always resume.
+  const reuse = sameSig && (fresh || !complete);
+  let bands = reuse ? cache.bands : {};
   let truncated = reuse ? !!cache.truncated : false;
   const isDone = (m) => bands[String(m)] && bands[String(m)].done;
   const allDone = markers.every(isDone);
