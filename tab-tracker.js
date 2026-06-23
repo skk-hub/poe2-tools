@@ -30,17 +30,18 @@ window.__viewInit["tab-tracker"] = function () {
   function render(data){
     const results=data.results||[];
     totalEl.hidden=false;
-    const thinNote=(data.thinCount||0)>0?' · '+data.thinCount+' thin (no buyers)':'';
-    totalEl.innerHTML='<b>'+(data.totalDiv||0)+' div</b> <span>('+fxEx(data.totalEx||0)+') · '+(data.pricedCount||0)+'/'+results.length+' priced'+thinNote+'</span>';
+    const thinNote=(data.thinCount||0)>0?' · '+data.thinCount+' no buyers':'';
+    totalEl.innerHTML='<b>'+(data.totalDiv||0)+' div</b> <span>('+fxEx(data.totalEx||0)+' sellable) · '+(data.pricedCount||0)+'/'+results.length+' priced'+thinNote+'</span>';
     rows.innerHTML=results.map(item=>{
-      const thin=item.thin;
-      const missing=!item.total&&!thin;
-      const eachCell=thin?'<span class="muted">—</span>':missing?'<span class="muted">pricing…</span>':fxEx(item.each);
-      return '<tr>'+
+      let eachCell, valCell;
+      if(item.total){ eachCell=fxEx(item.each); valCell=fxEx(item.total); }
+      else if(item.thin){ eachCell='<span class="muted">—</span>'; valCell='<span class="muted">—</span>'; }
+      else { eachCell='<span class="muted">pricing…</span>'; valCell=''; }
+      return '<tr'+(item.total?'':' class="muted"')+'>'+
         '<td class="num">'+esc(item.qty)+'</td>'+
         '<td>'+esc(item.name)+'</td>'+
         '<td class="num">'+eachCell+'</td>'+
-        '<td class="num">'+(thin||missing?"":fxEx(item.total))+'</td>'+
+        '<td class="num">'+valCell+'</td>'+
         '<td>'+esc(item.source||"")+'</td>'+
       '</tr>';
     }).join("");

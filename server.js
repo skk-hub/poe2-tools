@@ -1139,17 +1139,35 @@ async function valueTabItems(account, league, items, meta) {
     // Sellers list it but no buyers stand on the exchange — can't value a sale, so
     // say so plainly instead of quoting the aspirational ask. `thin` = settled (not
     // still loading), so the poll completes and it isn't re-fetched.
-    if (b && b.thin) return { qty: it.qty, name: it.name, each: "", total: "", thin: true, source: "thin — no buyers" };
+    if (b && b.thin) {
+      // No live buyers, so no firm sell price — but show the cheapest LISTING (ask)
+      // as a rough indicative ceiling so the scan can still rank it for triage.
+      // Flagged `indicative` + "no live buyers" so it's never mistaken for a firm bid.
+      const ask = Number(b.ask) || 0;
+      return { qty: it.qty, name: it.name, each: "", total: "", thin: true,
+        askTotal: ask > 0 ? roundPriceExalted(ask * it.qty) : "",   // sub-sort hint only; not shown (ask is noisy)
+        source: "no live buyers" };
+    }
     // Base/curated currencies (Divine, Chaos, …) aren't in the rune book — price
     // them off the exchange rates (keyed by normalized name).
     const rx = rates[nk(it.name)];
     if (rx > 0) return { qty: it.qty, name: it.name, each: rx, total: roundPriceExalted(rx * it.qty), source: "trade2 exchange" };
     return { qty: it.qty, name: it.name, each: "", total: "", source: "pricing…" };
   });
+  // Rank so what's actually worth selling is on top. Two tiers: anything with a FIRM
+  // (bid) sell value ranks first, by value desc — that's the real "sell these" list.
+  // Thin/no-buyer items always sit BELOW the firm ones (their ask is noisy and must
+  // never outrank a real price); within that group, higher ask floats up as a weak
+  // hint of what might be worth a manual look.
+  results.sort((a, b) => {
+    const fa = Number(a.total) || 0, fb = Number(b.total) || 0;
+    if (fa > 0 || fb > 0) return fb - fa;
+    return (Number(b.askTotal) || 0) - (Number(a.askTotal) || 0);
+  });
   const totalEx = results.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
   const pricedCount = results.filter((r) => r.total).length;
-  // Thin items have no price but ARE resolved — exclude them from "remaining" so the
-  // valuation poll finishes instead of looping on unpriceable items.
+  // Thin items have no firm price but ARE resolved — exclude them from "remaining" so
+  // the valuation poll finishes instead of looping on unpriceable items.
   const resolvedCount = results.filter((r) => r.total || r.thin).length;
   return Object.assign({
     account, league, results,
