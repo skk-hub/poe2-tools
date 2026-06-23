@@ -1123,9 +1123,12 @@ async function valueTabItems(account, league, items, meta) {
   // "Booked" = we have a settled answer: a real bid price OR a thin/no-buyers verdict.
   // Both count so a thin item isn't re-fetched on every visit.
   const booked = (n) => { const b = book.prices[nk(n)]; return b && (b.ex > 0 || b.thin); };
-  const unbooked = items.filter((it) => !booked(it.name));
-  if (unbooked.length && !tradeStatus().limited) {
-    const batch = unbooked.slice(0, TAB_FILL_PER_VISIT).map((it) => nk(it.name));
+  // Fill by UNIQUE name — a 212-item tab is only ~40 distinct types, and the book is
+  // keyed by name, so pricing one name values every stack of it. Batching by item
+  // (dupes) wasted the per-visit budget and made big tabs take dozens of passes.
+  const unbookedNames = [...new Set(items.filter((it) => !booked(it.name)).map((it) => nk(it.name)))];
+  if (unbookedNames.length && !tradeStatus().limited) {
+    const batch = unbookedNames.slice(0, TAB_FILL_PER_VISIT);
     await Promise.race([
       refreshRuneBook(league, batch, true).catch(() => {}),
       new Promise((r) => setTimeout(r, RUNE_FRESH_DEADLINE_MS)),

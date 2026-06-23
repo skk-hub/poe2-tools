@@ -103,11 +103,17 @@ window.__viewInit["tab-tracker"] = function () {
         if(data.limited){ setStatus("Trade2 is rate-limited — click Value tab again in a bit.","err"); return; }
       }
       // PRICE FILL: poll the cached path (no re-search) to fill values in batches.
-      // (Pricing is capped/gentle and mostly from cache; if it trips we stop here —
-      // a re-click finishes it — rather than wait a full cooldown per 6 items.)
-      while((data.remaining||0)>0 && !data.limited && !cancelRead){
-        setStatus("Pricing "+(data.pricedCount||0)+" of "+data.results.length+" — filling live market values…","");
-        await sleep(6000);
+      // AUTO-RESUMES across rate-limit cooldowns, hands-off, just like the read — a big
+      // tab can't price in one window, so we wait out each cooldown and continue until
+      // every item is priced or marked no-buyers. One click, walk away. (Value tab
+      // doubles as Stop the whole time.)
+      while((data.remaining||0)>0 && !cancelRead){
+        if(data.limited){
+          if(!await waitForCooldown("Pricing "+(data.pricedCount||0)+"/"+data.results.length)) break;
+        }else{
+          setStatus("Pricing "+(data.pricedCount||0)+" of "+data.results.length+" — filling live market values…","");
+          await sleep(6000);
+        }
         data=await hit(account,league,markers,false);
         render(data);
       }
@@ -116,9 +122,9 @@ window.__viewInit["tab-tracker"] = function () {
       if((data.unreadBands||0)>0) warns.push("⚠ "+data.unreadBands+" band(s) still unread — click Value tab to resume.");
       const w=warns.length?" "+warns.join(" "):"";
       if(cancelRead){
-        setStatus("Stopped. Priced "+data.pricedCount+" of "+data.results.length+" read so far — click Value tab to continue."+w,"err");
-      }else if(data.limited && (data.remaining||0)>0){
-        setStatus("Read all bands. Priced "+data.pricedCount+" of "+data.results.length+" — click Value tab again to finish pricing."+w,"err");
+        setStatus("Stopped. Priced "+data.pricedCount+" of "+data.results.length+" so far — click Value tab to continue."+w,"err");
+      }else if((data.remaining||0)>0){
+        setStatus("Paused after a long cooldown. Priced "+data.pricedCount+" of "+data.results.length+" — click Value tab to continue."+w,"err");
       }else{
         const thinTail=(data.thinCount||0)>0?" "+data.thinCount+" had no live buyers (thin)."  :"";
         setStatus("Valued "+data.pricedCount+" of "+data.results.length+" items at live market prices."+thinTail+w,"ok");
@@ -179,10 +185,15 @@ window.__viewInit["tab-tracker"] = function () {
       let data=await r.json();
       if(data.note && !(data.results||[]).length){ setStatus(data.note,"err"); return; }
       render(data);
-      // fill prices in batches off the cached pasted set (no re-read)
-      while((data.remaining||0)>0 && !data.limited){
-        setStatus("Pricing "+(data.pricedCount||0)+" of "+data.results.length+" — filling live market values…","");
-        await sleep(6000);
+      // fill prices in batches off the cached pasted set (no re-read); auto-resume
+      // across rate-limit cooldowns so a big paste finishes hands-off.
+      while((data.remaining||0)>0 && !cancelRead){
+        if(data.limited){
+          if(!await waitForCooldown("Pricing "+(data.pricedCount||0)+"/"+data.results.length)) break;
+        }else{
+          setStatus("Pricing "+(data.pricedCount||0)+" of "+data.results.length+" — filling live market values…","");
+          await sleep(6000);
+        }
         const p=await fetch("/api/tab-tracker?account="+encodeURIComponent(account)+"&league="+encodeURIComponent(league)+"&paste=1");
         data=await p.json(); render(data);
       }
