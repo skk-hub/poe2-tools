@@ -145,6 +145,14 @@ window.__viewInit["home"] = function () {
   function shortName(name) {
     return name.replace(/^Orb of /, "").replace(/ Orb$/, "").replace(/ of Kalandra$/, "");
   }
+  // Percent change vs start. Small moves read clearest as a signed %; anything past
+  // ~10x reads as a runaway number ("+166567%"), so collapse big growth to a "×N"
+  // multiplier — same value, legible. (An early/seed baseline can make a thin-market
+  // currency look astronomically up; this keeps the label honest but readable.)
+  function fmtChg(pct) {
+    if (pct >= 1000) { const m = pct / 100 + 1; return "×" + (m >= 10 ? Math.round(m) : m.toFixed(1)); }
+    return (pct > 0 ? "+" : "") + pct + "%";
+  }
 
   // Series present in the data (skip currencies that had no offer that sample).
   function buildSeries(points, items) {
@@ -166,10 +174,14 @@ window.__viewInit["home"] = function () {
       s.norm = s.pts.map(p => ({ i: p.i, y: p.v / base * 100 }));
       s.norm.forEach(q => { minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y); });
     });
-    const span = Math.max(8, maxY - minY);
-    minY -= span * 0.12; maxY += span * 0.12;
+    // Log Y axis: relative value is multiplicative, so one fast-mover (a thin-market
+    // currency up 1000%+) would flatten every other line to the baseline on a linear
+    // scale. In log space a 1.8x and a 17x both render as readable slopes. (norm y is
+    // always > 0: price and base are both positive.)
+    const lo = Math.log(Math.max(minY, 1e-6)), hi = Math.log(Math.max(maxY, minY * 1.0001));
+    const lpad = (hi - lo) * 0.12 || 0.1, logMin = lo - lpad, logMax = hi + lpad;
     const X = i => n <= 1 ? pad + innerW / 2 : pad + (i / (n - 1)) * innerW;
-    const Y = y => pad + (1 - (y - minY) / (maxY - minY)) * innerH;
+    const Y = y => pad + (1 - (Math.log(y) - logMin) / (logMax - logMin)) * innerH;
     const base100 = Y(100).toFixed(1);
     const grid = '<line x1="' + pad + '" y1="' + base100 + '" x2="' + (W - pad) + '" y2="' + base100 + '" stroke="var(--bd)" stroke-dasharray="3 5"/>';
     const body = series.map(s => {
@@ -186,7 +198,7 @@ window.__viewInit["home"] = function () {
       const chg = Math.round(s.norm[s.norm.length - 1].y - 100);
       const cls = chg > 0 ? "up" : chg < 0 ? "down" : "";
       return '<span class="econ-leg"><i style="background:' + COLORS[s.idx % COLORS.length] + '"></i>' +
-        esc(shortName(s.it.name)) + ' <b class="' + cls + '">' + (chg > 0 ? "+" : "") + chg + "%</b></span>";
+        esc(shortName(s.it.name)) + ' <b class="' + cls + '">' + fmtChg(chg) + "</b></span>";
     }).join("");
   }
 
@@ -214,7 +226,7 @@ window.__viewInit["home"] = function () {
       const hist = points.map(p => p.ex && p.ex[it.id]).filter(x => x > 0);
       const chg = hist.length > 1 ? Math.round((v / hist[0] - 1) * 100) : null;
       const cls = chg > 0 ? "up" : chg < 0 ? "down" : "";
-      const chgHtml = chg === null ? "" : '<span class="econ-card-chg ' + cls + '">' + (chg > 0 ? "+" : "") + chg + '% <small>vs start</small></span>';
+      const chgHtml = chg === null ? "" : '<span class="econ-card-chg ' + cls + '">' + fmtChg(chg) + ' <small>vs start</small></span>';
       return '<div class="econ-card"><div class="econ-card-top"><i style="background:' + COLORS[idx % COLORS.length] + '"></i>' +
         '<span class="econ-card-name">' + esc(shortName(it.name)) + '</span></div>' +
         '<div class="econ-card-val">' + main + "</div>" + subEx +
