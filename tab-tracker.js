@@ -30,14 +30,17 @@ window.__viewInit["tab-tracker"] = function () {
   function render(data){
     const results=data.results||[];
     totalEl.hidden=false;
-    totalEl.innerHTML='<b>'+(data.totalDiv||0)+' div</b> <span>('+fxEx(data.totalEx||0)+') · '+(data.pricedCount||0)+'/'+results.length+' priced</span>';
+    const thinNote=(data.thinCount||0)>0?' · '+data.thinCount+' thin (no buyers)':'';
+    totalEl.innerHTML='<b>'+(data.totalDiv||0)+' div</b> <span>('+fxEx(data.totalEx||0)+') · '+(data.pricedCount||0)+'/'+results.length+' priced'+thinNote+'</span>';
     rows.innerHTML=results.map(item=>{
-      const missing=!item.total;
+      const thin=item.thin;
+      const missing=!item.total&&!thin;
+      const eachCell=thin?'<span class="muted">—</span>':missing?'<span class="muted">pricing…</span>':fxEx(item.each);
       return '<tr>'+
         '<td class="num">'+esc(item.qty)+'</td>'+
         '<td>'+esc(item.name)+'</td>'+
-        '<td class="num">'+(missing?'<span class="muted">pricing…</span>':fxEx(item.each))+'</td>'+
-        '<td class="num">'+(missing?"":fxEx(item.total))+'</td>'+
+        '<td class="num">'+eachCell+'</td>'+
+        '<td class="num">'+(thin||missing?"":fxEx(item.total))+'</td>'+
         '<td>'+esc(item.source||"")+'</td>'+
       '</tr>';
     }).join("");
@@ -116,7 +119,8 @@ window.__viewInit["tab-tracker"] = function () {
       }else if(data.limited && (data.remaining||0)>0){
         setStatus("Read all bands. Priced "+data.pricedCount+" of "+data.results.length+" — click Value tab again to finish pricing."+w,"err");
       }else{
-        setStatus("Valued all "+data.results.length+" items at live market prices."+w,"ok");
+        const thinTail=(data.thinCount||0)>0?" "+data.thinCount+" had no live buyers (thin)."  :"";
+        setStatus("Valued "+data.pricedCount+" of "+data.results.length+" items at live market prices."+thinTail+w,"ok");
       }
     }catch(err){
       setStatus("Value failed: "+err.message,"err");
@@ -181,9 +185,10 @@ window.__viewInit["tab-tracker"] = function () {
         const p=await fetch("/api/tab-tracker?account="+encodeURIComponent(account)+"&league="+encodeURIComponent(league)+"&paste=1");
         data=await p.json(); render(data);
       }
+      const thinTail=(data.thinCount||0)>0?" "+data.thinCount+" had no live buyers (thin).":"";
       setStatus((data.limited&&(data.remaining||0)>0
         ? "Priced "+data.pricedCount+" of "+data.results.length+". Trade2 busy — click Value pasted items again to finish."
-        : "Valued all "+data.results.length+" items at live market prices."),data.limited&&data.remaining>0?"err":"ok");
+        : "Valued "+data.pricedCount+" of "+data.results.length+" items at live market prices."+thinTail),data.limited&&data.remaining>0?"err":"ok");
     }catch(err){ setStatus("Value failed: "+err.message,"err"); }
     finally{ valuePasteBtn.disabled=false; polling=false; }
   }

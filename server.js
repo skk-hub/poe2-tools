@@ -1120,7 +1120,9 @@ function parseTabLine(l) {
 async function valueTabItems(account, league, items, meta) {
   const nk = (n) => normalizeName(n);
   let book = readRuneBook(league) || { prices: {} };
-  const booked = (n) => { const b = book.prices[nk(n)]; return b && b.ex > 0; };
+  // "Booked" = we have a settled answer: a real bid price OR a thin/no-buyers verdict.
+  // Both count so a thin item isn't re-fetched on every visit.
+  const booked = (n) => { const b = book.prices[nk(n)]; return b && (b.ex > 0 || b.thin); };
   const unbooked = items.filter((it) => !booked(it.name));
   if (unbooked.length && !tradeStatus().limited) {
     const batch = unbooked.slice(0, TAB_FILL_PER_VISIT).map((it) => nk(it.name));
@@ -1134,6 +1136,10 @@ async function valueTabItems(account, league, items, meta) {
   const results = items.map((it) => {
     const b = book.prices[nk(it.name)];
     if (b && b.ex > 0) return { qty: it.qty, name: it.name, each: b.ex, total: roundPriceExalted(b.ex * it.qty), source: "trade2 exchange" };
+    // Sellers list it but no buyers stand on the exchange — can't value a sale, so
+    // say so plainly instead of quoting the aspirational ask. `thin` = settled (not
+    // still loading), so the poll completes and it isn't re-fetched.
+    if (b && b.thin) return { qty: it.qty, name: it.name, each: "", total: "", thin: true, source: "thin — no buyers" };
     // Base/curated currencies (Divine, Chaos, …) aren't in the rune book — price
     // them off the exchange rates (keyed by normalized name).
     const rx = rates[nk(it.name)];
@@ -1142,11 +1148,15 @@ async function valueTabItems(account, league, items, meta) {
   });
   const totalEx = results.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
   const pricedCount = results.filter((r) => r.total).length;
+  // Thin items have no price but ARE resolved — exclude them from "remaining" so the
+  // valuation poll finishes instead of looping on unpriceable items.
+  const resolvedCount = results.filter((r) => r.total || r.thin).length;
   return Object.assign({
     account, league, results,
     count: results.length,
     pricedCount,
-    remaining: results.length - pricedCount,
+    thinCount: results.filter((r) => r.thin).length,
+    remaining: results.length - resolvedCount,
     totalEx: Math.round(totalEx * 100) / 100,
     totalDiv: rates.divine ? Math.round((totalEx / rates.divine) * 100) / 100 : 0,
     limited: tradeStatus().limited,
@@ -1328,6 +1338,20 @@ async function geoMidRate(league, id, askData) {
   } catch {}
   const ex = (askPx > 0 && bidPx > 0) ? Math.sqrt(askPx * bidPx) : (askPx || bidPx || 0);
   return { ex, stock: asks.length ? Math.floor(asks[0].stock) : 0 };
+}
+
+// Highest standing BID (exalt-per-item) for `id` from a pre-fetched item→exalted
+// exchange page — i.e. what a buyer will actually pay, the real liquidation value.
+// Same robust rule as geoMidRate's bid side: prefer real stock (>=5), drop highball
+// bids crossed above the ask. Returns 0 if NO buyer stands on the exchange — the
+// caller treats that as "thin / no buyers" rather than trusting the aspirational ask.
+function robustBidPx(bidData, id, askPx) {
+  const bids = collectExchangeOffers(bidData, id, EXALTED_ID)
+    .filter((o) => o.payAmount > 0 && o.receiveAmount > 0)
+    .map((o) => ({ px: o.receiveAmount / o.payAmount, stock: o.payStock || 0 }))   // exalt per item
+    .sort((a, b) => b.px - a.px);
+  const ok = (b) => !askPx || b.px <= askPx * 1.05;
+  return (bids.find((b) => b.stock >= 5 && ok(b)) || bids.find(ok) || bids[0] || {}).px || 0;
 }
 
 // One batched ex→currency exchange call; the best (cheapest) offer per currency
@@ -1640,15 +1664,29 @@ async function refreshRuneBook(league, normNames, force) {
         }
       }
       if (!targets.length) return;
-      const data = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id));
+      // Two batched legs (same pattern as the arbitrage scan): the ASK side (give
+      // exalted, get item) and the BID side (give item, get exalted). The cheapest
+      // ASK is aspirational for thin currency — a lone "1 essence : 5 ex" single —
+      // so we price off the BID (what buyers actually pay = the real liquidation
+      // value). When NO buyer stands on the exchange, we DON'T trust the ask: the
+      // item is marked `thin` so consumers show "no buyers" instead of a fake price.
+      const askData = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id));
+      const bidData = await fetchExchangeChunked(league, targets.map((t) => t.id), [EXALTED_ID]);
       const existing = readRuneBook(league);
       const prices = existing ? { ...existing.prices } : {};
       const now = new Date().toISOString();
       for (const t of targets) {
-        const best = bestExchangeOffer(data, EXALTED_ID, t.id, 5) || bestExchangeOffer(data, EXALTED_ID, t.id, 1);
-        if (best && best.payPerReceive > 0) {
-          prices[t.norm] = { ex: round4(best.payPerReceive), id: t.id, name: t.name, category: t.category, stock: Math.floor(best.receiveStock) || 0, updated: now };
+        const ask = bestExchangeOffer(askData, EXALTED_ID, t.id, 5) || bestExchangeOffer(askData, EXALTED_ID, t.id, 1);
+        const askPx = ask && ask.payPerReceive > 0 ? ask.payPerReceive : 0;
+        const bidPx = robustBidPx(bidData, t.id, askPx);
+        const common = { id: t.id, name: t.name, category: t.category, updated: now };
+        if (bidPx > 0) {
+          prices[t.norm] = { ...common, ex: round4(bidPx), stock: ask ? Math.floor(ask.receiveStock) || 0 : 0 };
+        } else if (askPx > 0) {
+          // Sellers list it but no buyers stand → unsellable at a real price right now.
+          prices[t.norm] = { ...common, ex: 0, thin: true, ask: round4(askPx), stock: 0 };
         }
+        // (no ask and no bid → leave unbooked; genuinely no exchange data)
       }
       try { fs.writeFileSync(RUNE_BOOK_FILE, JSON.stringify({ league, prices, updated: now }, null, 2)); } catch {}
     } catch {
