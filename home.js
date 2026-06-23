@@ -1,5 +1,5 @@
 /* Home — currency value strip under the hero. Reads the cached overview on open
-   (instant, no network wait); the ↻ button forces a poe.ninja refresh.
+   (instant, no network wait); the ↻ button forces a live Trade2 refresh.
    Inlined view, lazy-init on first open (registers in __viewInit). */
 window.__viewInit = window.__viewInit || {};
 window.__viewInit["home"] = function () {
