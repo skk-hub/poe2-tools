@@ -1,41 +1,89 @@
-// Offline test for Filter Helper's "what does this filter HIDE" decision — the
-// logic that stops it scanning items the filter already shows. Uses the REAL
-// server.js exports (no port, no network). Models a typical PoE2 filter: show
-// top currency by BaseType, show the rest of currency by Class, then a catch-all
-// Hide for everything else.
-const { buildFilterSpec, filterHelperHides } = require("./server.js");
+// Offline test for Filter Helper's cascade analysis — the order-aware "what currency
+// does this filter HIDE" logic. Uses the REAL filter-helper.js exports (no DOM, no
+// network). The key property the old set-based check lacked: a Hide block ABOVE a
+// Show is seen, and a catch-all Hide at the bottom hides everything not shown above.
+const { analyzeFilter, verdictFor, parseFilterBlocks } = require("./filter-helper.js");
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log("  ✓ " + m); } else { fail++; console.log("  ✗ " + m); } };
+const groupBy = (r, label) => r.groups.find((g) => g.label.includes(label));
 
-// Parsed-filter payload as the browser's parseFilter would emit it.
-const spec = buildFilterSpec({
-  shownBases: ["Divine Orb", "Mirror of Kalandra"],   // explicit top-currency Show
-  shownClasses: ["Currency", "Soul Core"],            // bulk currency + soul cores shown by Class
-  hiddenBases: [],
-  hiddenClasses: [],
-  catchAllHide: true,                                  // "Hide everything not shown above"
-});
+// A typical filter: show top currency by BaseType, show the rest by Class, catch-all Hide.
+const normal = `
+Show
+    BaseType "Divine Orb" "Mirror of Kalandra"
+    SetFontSize 45
+Show
+    Class "Stackable Currency"
+    SetFontSize 40
+Show
+    Class "Omen"
+Hide
+`;
+let r = analyzeFilter(normal);
+ok(!groupBy(r, "orbs").hidden, "currency shown (by Class) is not flagged hidden");
+ok(!groupBy(r, "Omens").hidden, "omens shown by Class are not hidden");
+ok(groupBy(r, "Tablets").hidden, "tablets (never shown) are hidden by the catch-all");
+ok(groupBy(r, "Breachstones").hidden, "breachstones (never shown) are hidden by the catch-all");
 
-const cand = (name, category) => ({ name, category });
+// The bug the rewrite fixes: a Hide block ABOVE the currency Show buries it. The old
+// order-blind check thought the later Show saved it; the cascade knows Hide wins first.
+const hideAbove = `
+Hide
+    Class "Stackable Currency"
+Show
+    Class "Stackable Currency"
+`;
+ok(groupBy(analyzeFilter(hideAbove), "orbs").hidden, "Hide above Show wins the cascade (currency IS hidden)");
 
-// Shown explicitly by BaseType -> NOT hidden.
-ok(!filterHelperHides(cand("Divine Orb", "Currency"), spec), "BaseType-shown currency is not hidden");
-// Shown by Class (its category maps to a shown Class) -> NOT hidden.
-ok(!filterHelperHides(cand("Chaos Orb", "Currency"), spec), "Class-shown currency is not hidden (the over-scan bug)");
-ok(!filterHelperHides(cand("Soul Core of Tacati", "Soul Cores"), spec), "Class match is plural-insensitive (Soul Cores ~ Soul Core)");
-// Not shown by base or class, catch-all hides the rest -> HIDDEN.
-ok(filterHelperHides(cand("Lesser Desert Rune", "Runes"), spec), "an item no Show block covers IS hidden under a catch-all");
-ok(filterHelperHides(cand("Distilled Isolation", "Liquid Emotions"), spec), "an unshown category is hidden under a catch-all");
+// Explicit Hide of one orb while the class is shown → that base flagged, class not.
+const oneHidden = `
+Hide
+    Class "Stackable Currency"
+    BaseType "Chance Shard"
+Show
+    Class "Stackable Currency"
+`;
+r = analyzeFilter(oneHidden);
+ok(!groupBy(r, "orbs").classHidden, "class-wide currency still shown when only one base is hidden");
+ok(groupBy(r, "orbs").hiddenBases.includes("Chance Shard"), "the explicitly-hidden base is named");
+ok(!groupBy(r, "orbs").hiddenBases.includes("Divine Orb"), "a non-hidden base is not falsely named");
 
-// No catch-all: only items explicitly in a Hide block count as hidden.
-const spec2 = buildFilterSpec({ shownClasses: ["Currency"], hiddenBases: ["Lesser Desert Rune"], catchAllHide: false });
-ok(!filterHelperHides(cand("Greater Desert Rune", "Runes"), spec2), "no catch-all: an unmentioned item is NOT reported hidden (no over-scan)");
-ok(filterHelperHides(cand("Lesser Desert Rune", "Runes"), spec2), "no catch-all: an explicitly-Hidden base IS hidden");
-ok(!filterHelperHides(cand("Exalted Orb", "Currency"), spec2), "no catch-all: a Class-shown item is not hidden");
+// AND within a block: `Class X + BaseType Y` must not hide all of class X.
+const andBlock = `
+Hide
+    Class "Stackable Currency"
+    BaseType "Chance Shard"
+`;
+ok(!verdictFor({ name: "Divine Orb", classes: ["Stackable Currency"] }, parseFilterBlocks(andBlock)).hidden,
+  "Class+BaseType Hide only hits the listed base, not the whole class");
 
-// buildFilterSpec returns null for no filter (-> server does the full scan, by design).
-ok(buildFilterSpec(null) === null && buildFilterSpec(undefined) === null, "no filter -> null spec (full scan)");
+// Leveling-only block (AreaLevel cap, no floor) is ignored.
+const leveling = `
+Show
+    Class "Stackable Currency"
+    AreaLevel <= 67
+Hide
+`;
+ok(groupBy(analyzeFilter(leveling), "orbs").hidden, "a leveling-only Show doesn't count as showing currency in maps");
+
+// No catch-all: an unshown class is NOT reported hidden (default is show).
+const noCatchAll = `
+Show
+    Class "Stackable Currency"
+`;
+ok(!groupBy(analyzeFilter(noCatchAll), "Tablets").hidden, "no catch-all: unmentioned class defaults to shown");
+
+// Continue: a styling Continue block doesn't end the cascade; a later Hide still wins.
+const withContinue = `
+Show
+    Class "Stackable Currency"
+    SetFontSize 40
+    Continue
+Hide
+    Class "Stackable Currency"
+`;
+ok(groupBy(analyzeFilter(withContinue), "orbs").hidden, "Continue keeps evaluating — a later Hide wins");
 
 console.log("\n  " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

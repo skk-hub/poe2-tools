@@ -503,25 +503,18 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     <div class="pagehead">
       <div>
         <h1>Filter Helper</h1>
-        <p class="sub">Finds Currency Exchange items worth keeping (liquid, ≥ your threshold) and builds a top-priority <b>Show</b> block to paste at the top of your loot filter so they're never hidden.</p>
+        <p class="sub">Paste your loot filter and it tells you which <b>currency</b> it hides — by simulating the real first-match-wins cascade, so it catches a Hide sitting above your currency Show. Stays in your browser; no prices, no rate limits.</p>
       </div>
-      <div class="controls fh-controls">
-        <input id="fhLeague" value="Runes of Aldur" aria-label="League">
-        <label>Min ex <input id="fhMinEx" type="number" min="0" step="0.5" value="1"></label>
-        <label>Min volume <input id="fhMinVol" type="number" min="0" step="5" value="10"></label>
-        <button id="fhGen" type="button">Generate</button>
-        <div id="fhStatus" class="status">Sets a price floor and a liquidity floor, then scans.</div>
+      <div class="controls">
+        <div id="fhStatus" class="status">Paste your .filter below to check it.</div>
       </div>
     </div>
-    <details class="fh-filterbox">
-      <summary>Paste your loot filter (optional) — only list what it actually <b>hides</b></summary>
-      <p class="sub">Stays in your browser. Prunes the list to items your filter hides (so you don't get a block full of stuff you already see), and rebuilds the Show block from just those.</p>
+    <div class="fh-filterbox">
       <textarea id="fhFilter" spellcheck="false" placeholder="Paste your .filter file here…"></textarea>
-    </details>
-    <p id="fhSub" class="sub"></p>
+    </div>
     <div id="fhTableWrap" class="tablewrap" hidden>
       <table>
-        <thead><tr><th>Item</th><th class="num">Price</th><th class="num">Volume</th></tr></thead>
+        <thead><tr><th>Currency</th><th>Status</th><th>Detail</th></tr></thead>
         <tbody id="fhRows"></tbody>
       </table>
     </div>
