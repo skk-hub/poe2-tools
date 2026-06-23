@@ -1187,21 +1187,26 @@ async function fetchTrackedTab(account, league, refresh, markers, pastedItems, p
   let cache = readTabCache(account, league);
   const sameSig = cache && cache.markerSig === markerSig && cache.bands;
   const fresh = sameSig && (Date.now() - new Date(cache.updated).getTime() < TAB_CACHE_TTL_MS);
-  const complete = sameSig && markers.every((m) => cache.bands[String(m)] && cache.bands[String(m)].done);
-  // Reuse if same markers AND (still fresh OR mid-read). A rate-limit cooldown (~9 min)
-  // can outlast the freshness TTL; don't let that wipe partial progress and restart the
-  // scan — only a COMPLETE read goes stale and re-scans. Partial reads always resume.
-  const reuse = sameSig && (fresh || !complete);
-  let bands = reuse ? cache.bands : {};
-  let truncated = reuse ? !!cache.truncated : false;
+  // ALWAYS serve the cached contents for this marker set, ANY age — so reopening the tab
+  // shows your last scan instantly with no Trade2 call. A network re-read happens ONLY on
+  // an explicit refresh that needs one: to RESUME unread bands, or to refresh a COMPLETE-
+  // but-stale read. (A cooldown can outlast the TTL; partial progress is never wiped.)
+  let bands = sameSig ? cache.bands : {};
+  let truncated = sameSig ? !!cache.truncated : false;
+  let scannedAt = sameSig ? cache.updated : null;
   const isDone = (m) => bands[String(m)] && bands[String(m)].done;
   const allDone = markers.every(isDone);
+  const needRead = refresh && !tradeStatus().limited && !(allDone && fresh);
 
-  if (refresh && !allDone && !tradeStatus().limited) {
-    const read = await readTrackedBands(account, league, markers, bands);
+  if (needRead) {
+    // Stale-complete → start over (else readTrackedBands skips every done band and re-reads
+    // nothing); partial → keep finished bands and resume.
+    const base = (allDone && !fresh) ? {} : bands;
+    const read = await readTrackedBands(account, league, markers, base);
     bands = read.bands;
     truncated = !!read.truncated;
-    cache = { account, league, markerSig, bands, truncated, updated: new Date().toISOString() };
+    scannedAt = new Date().toISOString();
+    cache = { account, league, markerSig, bands, truncated, updated: scannedAt };
     try { fs.writeFileSync(TAB_CACHE_FILE, JSON.stringify(cache, null, 2)); } catch {}
   }
 
@@ -1215,7 +1220,7 @@ async function fetchTrackedTab(account, league, refresh, markers, pastedItems, p
     return { account, league, results: [], limited: tradeStatus().limited, tradeLimitedUntil: tradeStatus().tradeLimitedUntil, unreadBands, markers };
   }
 
-  return await valueTabItems(account, league, items, { markers, markerSig, unreadBands, truncated, partial: unreadBands > 0 });
+  return await valueTabItems(account, league, items, { markers, markerSig, unreadBands, truncated, partial: unreadBands > 0, scannedAt });
 }
 
 async function getTradePrice(name, league, currencyRates, deadline = 0) {

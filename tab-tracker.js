@@ -73,6 +73,7 @@ window.__viewInit["tab-tracker"] = function () {
     const league=leagueInput.value.trim()||"Runes of Aldur";
     const markers=markersInput.value.trim()||"11,12,13,14";
     if(!account){ setStatus("Enter your PoE account name (e.g. Name#1234).","err"); return; }
+    saveInputs();
     const totalBands=markers.split(/[, ]+/).filter(Boolean).length;
     cancelRead=false; polling=true; loadBtn.textContent="Stop";
     setStatus("Reading your tracked tab…","");
@@ -187,7 +188,30 @@ window.__viewInit["tab-tracker"] = function () {
     finally{ valuePasteBtn.disabled=false; polling=false; }
   }
 
+  // Remember account/league/markers so reopening can show the last scan without retyping.
+  const LS_KEY="tt:last";
+  function saveInputs(){ try{ localStorage.setItem(LS_KEY, JSON.stringify({account:acctInput.value,league:leagueInput.value,markers:markersInput.value})); }catch{} }
+  function restoreInputs(){ try{ const s=JSON.parse(localStorage.getItem(LS_KEY)||"{}"); if(s.account&&!acctInput.value)acctInput.value=s.account; if(s.league)leagueInput.value=s.league; if(s.markers)markersInput.value=s.markers; }catch{} }
+  // On open, render the last scan straight from cache (refresh=false → ZERO Trade2 reads),
+  // so you don't rescan every time. Click Value tab when you actually want fresh values.
+  async function showCached(){
+    const account=acctInput.value.trim(); if(!account) return;
+    const league=leagueInput.value.trim()||"Runes of Aldur";
+    const markers=markersInput.value.trim()||"11,12,13,14";
+    try{
+      const data=await hit(account,league,markers,false);
+      if((data.results||[]).length){
+        render(data);
+        const when=data.scannedAt?new Date(data.scannedAt).toLocaleString():"";
+        setStatus("Showing your last scan"+(when?" from "+when:"")+". Click Value tab to refresh.","");
+      }
+    }catch{}
+  }
+
   loadBtn.addEventListener("click",load);
   copySnippetBtn.addEventListener("click",copySnippet);
   valuePasteBtn.addEventListener("click",valuePasted);
+  [acctInput,leagueInput,markersInput].forEach(el=>el.addEventListener("change",saveInputs));
+  restoreInputs();
+  showCached();
 };
