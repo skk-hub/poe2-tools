@@ -543,6 +543,10 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div id="ttStatus" class="status">Enter your account name and load your tracked tab.</div>
       </div>
     </div>
+    <div id="ttProgress" class="tt-progress" hidden>
+      <div class="tt-progress-bar" role="progressbar" aria-label="Valuation progress"><div class="tt-progress-fill" id="ttProgressFill"></div></div>
+      <div class="tt-progress-label" id="ttProgressLabel">Working…</div>
+    </div>
     <details class="tt-browser">
       <summary>Read in your browser (VPN) — avoids the shared rate limit</summary>
       <p class="sub">If the server read keeps rate-limiting, read your tab from your own browser instead (on your VPN, fresh budget): set your account + markers above, click <b>Copy reader snippet</b>, then on <b>pathofexile.com</b> (VPN on) open the console (F12) and paste it. It copies your items — paste them below and value them here (no server read).</p>

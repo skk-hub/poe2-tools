@@ -15,10 +15,24 @@ window.__viewInit["tab-tracker"] = function () {
   const copySnippetBtn = document.getElementById("ttCopySnippet");
   const pasteBox = document.getElementById("ttPaste");
   const valuePasteBtn = document.getElementById("ttValuePaste");
+  const progWrap = document.getElementById("ttProgress");
+  const progFill = document.getElementById("ttProgressFill");
+  const progLabel = document.getElementById("ttProgressLabel");
   let polling = false, cancelRead = false;
 
   function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]))}
   function setStatus(t,k){statusEl.textContent=t;statusEl.className="status "+(k||"")}
+  // Visible progress bar — the obvious "it's working" signal through the whole grind.
+  // frac 0..1 fills the bar; pass null to keep the current width (e.g. while waiting on
+  // a cooldown). state: "active" (pulsing), "wait" (striped cooldown), "done" (green).
+  function setProgress(label,frac,state){
+    if(!progWrap) return;
+    progWrap.hidden=false;
+    if(frac!=null) progFill.style.width=Math.max(3,Math.round(frac*100))+"%";
+    progFill.className="tt-progress-fill "+(state||"active");
+    progLabel.textContent=label;
+  }
+  function hideProgress(){ if(progWrap) progWrap.hidden=true; }
   function fxEx(v){
     if(typeof v!=="number"||!isFinite(v)) return "";
     if(v>=10) return Math.round(v)+" ex";
@@ -64,7 +78,8 @@ window.__viewInit["tab-tracker"] = function () {
       let secs=Math.max(1, st.secondsRemaining||30);
       while(secs>0){
         if(cancelRead) return false;
-        setStatus(label+" — Trade2 cooling down, auto-resuming in "+secs+"s… (Stop to halt)","");
+        const msg=label+" — rate-limited, auto-resuming in "+secs+"s… (Stop to halt)";
+        setStatus(msg,""); setProgress(msg,null,"wait");
         await sleep(1000); secs--;
       }
     }
@@ -81,26 +96,29 @@ window.__viewInit["tab-tracker"] = function () {
     const totalBands=markers.split(/[, ]+/).filter(Boolean).length;
     cancelRead=false; polling=true; loadBtn.textContent="Stop";
     setStatus("Reading your tracked tab…","");
+    setProgress("Reading your tracked tab…",0.02,"active");
     try{
       // READ/RESUME, hands-off: each pass reads price bands until it trips; finished
       // bands are cached. On a trip we wait out the cooldown (countdown) and continue
       // automatically until every band is read — one click, walk away.
       let data=await hit(account,league,markers,true);
-      if(data.error){ setStatus(data.error,"err"); return; }
+      if(data.error){ setStatus(data.error,"err"); hideProgress(); return; }
       if((data.results||[]).length) render(data);
       while((data.unreadBands||0)>0 && !cancelRead){
         if(data.limited){
           const cont=await waitForCooldown("Read "+(totalBands-(data.unreadBands||0))+"/"+totalBands+" bands");
           if(!cont) break;
         }
-        setStatus("Reading price bands… "+(totalBands-(data.unreadBands||0))+" of "+totalBands+" done","");
+        const readDone=totalBands-(data.unreadBands||0);
+        setStatus("Reading price bands… "+readDone+" of "+totalBands+" done","");
+        setProgress("Reading price bands — "+readDone+" of "+totalBands,(readDone/totalBands)*0.4,"active");
         data=await hit(account,league,markers,true);
-        if(data.error){ setStatus(data.error,"err"); return; }
+        if(data.error){ setStatus(data.error,"err"); hideProgress(); return; }
         if((data.results||[]).length) render(data);
       }
       if(!(data.results||[]).length){
-        if(data.note){ wrap.hidden=true; totalEl.hidden=true; setStatus(data.note,""); return; }
-        if(data.limited){ setStatus("Trade2 is rate-limited — click Value tab again in a bit.","err"); return; }
+        if(data.note){ wrap.hidden=true; totalEl.hidden=true; setStatus(data.note,""); hideProgress(); return; }
+        if(data.limited){ setStatus("Trade2 is rate-limited — click Value tab again in a bit.","err"); hideProgress(); return; }
       }
       // PRICE FILL: poll the cached path (no re-search) to fill values in batches.
       // AUTO-RESUMES across rate-limit cooldowns, hands-off, just like the read — a big
@@ -111,7 +129,9 @@ window.__viewInit["tab-tracker"] = function () {
         if(data.limited){
           if(!await waitForCooldown("Pricing "+(data.pricedCount||0)+"/"+data.results.length)) break;
         }else{
+          const tot=data.results.length||1, done=(data.pricedCount||0)+(data.thinCount||0);
           setStatus("Pricing "+(data.pricedCount||0)+" of "+data.results.length+" — filling live market values…","");
+          setProgress("Pricing "+done+" of "+tot+" items…",0.4+(done/tot)*0.6,"active");
           await sleep(6000);
         }
         data=await hit(account,league,markers,false);
@@ -123,14 +143,17 @@ window.__viewInit["tab-tracker"] = function () {
       const w=warns.length?" "+warns.join(" "):"";
       if(cancelRead){
         setStatus("Stopped. Priced "+data.pricedCount+" of "+data.results.length+" so far — click Value tab to continue."+w,"err");
+        setProgress("Stopped — "+data.pricedCount+" of "+data.results.length+" priced. Click Value tab to continue.",null,"");
       }else if((data.remaining||0)>0){
         setStatus("Paused after a long cooldown. Priced "+data.pricedCount+" of "+data.results.length+" — click Value tab to continue."+w,"err");
+        setProgress("Paused (long cooldown) — "+data.pricedCount+" of "+data.results.length+". Click Value tab to continue.",null,"");
       }else{
         const thinTail=(data.thinCount||0)>0?" "+data.thinCount+" had no live buyers (thin)."  :"";
         setStatus("Valued "+data.pricedCount+" of "+data.results.length+" items at live market prices."+thinTail+w,"ok");
+        setProgress("Done — valued "+data.pricedCount+" of "+data.results.length+" items."+thinTail,1,"done");
       }
     }catch(err){
-      setStatus("Value failed: "+err.message,"err");
+      setStatus("Value failed: "+err.message,"err"); hideProgress();
     }finally{
       polling=false; cancelRead=false; loadBtn.textContent="Value tab"; loadBtn.disabled=false;
     }
@@ -177,13 +200,14 @@ window.__viewInit["tab-tracker"] = function () {
     const league=leagueInput.value.trim()||"Runes of Aldur";
     const items=pasteBox.value.trim();
     if(!items){ setStatus("Paste the items the snippet copied first.","err"); return; }
-    valuePasteBtn.disabled=true; polling=true;
+    valuePasteBtn.disabled=true; polling=true; cancelRead=false;
     setStatus("Valuing pasted items…","");
+    setProgress("Valuing pasted items…",0.05,"active");
     try{
       const r=await fetch("/api/tab-tracker",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({account,league,items})});
       if(!r.ok) throw new Error("server returned HTTP "+r.status);
       let data=await r.json();
-      if(data.note && !(data.results||[]).length){ setStatus(data.note,"err"); return; }
+      if(data.note && !(data.results||[]).length){ setStatus(data.note,"err"); hideProgress(); return; }
       render(data);
       // fill prices in batches off the cached pasted set (no re-read); auto-resume
       // across rate-limit cooldowns so a big paste finishes hands-off.
@@ -191,18 +215,27 @@ window.__viewInit["tab-tracker"] = function () {
         if(data.limited){
           if(!await waitForCooldown("Pricing "+(data.pricedCount||0)+"/"+data.results.length)) break;
         }else{
+          const tot=data.results.length||1, done=(data.pricedCount||0)+(data.thinCount||0);
           setStatus("Pricing "+(data.pricedCount||0)+" of "+data.results.length+" — filling live market values…","");
+          setProgress("Pricing "+done+" of "+tot+" items…",done/tot,"active");
           await sleep(6000);
         }
         const p=await fetch("/api/tab-tracker?account="+encodeURIComponent(account)+"&league="+encodeURIComponent(league)+"&paste=1");
         data=await p.json(); render(data);
       }
       const thinTail=(data.thinCount||0)>0?" "+data.thinCount+" had no live buyers (thin).":"";
-      setStatus((data.limited&&(data.remaining||0)>0
-        ? "Priced "+data.pricedCount+" of "+data.results.length+". Trade2 busy — click Value pasted items again to finish."
-        : "Valued "+data.pricedCount+" of "+data.results.length+" items at live market prices."+thinTail),data.limited&&data.remaining>0?"err":"ok");
-    }catch(err){ setStatus("Value failed: "+err.message,"err"); }
-    finally{ valuePasteBtn.disabled=false; polling=false; }
+      if(cancelRead){
+        setStatus("Stopped. Priced "+data.pricedCount+" of "+data.results.length+" — click Value pasted items to continue.","err");
+        setProgress("Stopped — "+data.pricedCount+" of "+data.results.length+" priced.",null,"");
+      }else if((data.remaining||0)>0){
+        setStatus("Priced "+data.pricedCount+" of "+data.results.length+" — long cooldown, click Value pasted items to finish.","err");
+        setProgress("Paused — "+data.pricedCount+" of "+data.results.length+". Click Value pasted items to finish.",null,"");
+      }else{
+        setStatus("Valued "+data.pricedCount+" of "+data.results.length+" items at live market prices."+thinTail,"ok");
+        setProgress("Done — valued "+data.pricedCount+" of "+data.results.length+" items."+thinTail,1,"done");
+      }
+    }catch(err){ setStatus("Value failed: "+err.message,"err"); hideProgress(); }
+    finally{ valuePasteBtn.disabled=false; polling=false; cancelRead=false; }
   }
 
   // Remember account/league/markers so reopening can show the last scan without retyping.

@@ -23,6 +23,17 @@
   background:var(--surface-2, #161616);
   padding:10px 14px;
 }
+/* Live progress — obvious "it's working" bar for the read + price-fill grind. */
+.toolroot-tt .tt-progress{ margin:14px 0 6px; display:grid; gap:7px; }
+.toolroot-tt .tt-progress-bar{ height:10px; border-radius:var(--r-pill,999px); background:var(--surface-2); border:1px solid var(--border); overflow:hidden; }
+.toolroot-tt .tt-progress-fill{ height:100%; width:0; border-radius:var(--r-pill,999px); background:linear-gradient(90deg,var(--gold-deep),var(--gold-bright)); transition:width .45s var(--ease,ease); }
+.toolroot-tt .tt-progress-fill.active{ animation:ttPulse 1.3s ease-in-out infinite; }   /* alive between polls */
+.toolroot-tt .tt-progress-fill.wait{ background-image:repeating-linear-gradient(45deg,var(--gold-deep) 0 9px,var(--gold) 9px 18px); background-size:200% 100%; animation:ttStripe 1s linear infinite; }
+.toolroot-tt .tt-progress-fill.done{ background:var(--green); animation:none; }
+.toolroot-tt .tt-progress-label{ font:600 12.5px var(--font-mono); color:var(--text-muted); }
+@keyframes ttPulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.25); } }
+@keyframes ttStripe{ to{ background-position:36px 0; } }
+@media(prefers-reduced-motion:reduce){ .toolroot-tt .tt-progress-fill.active,.toolroot-tt .tt-progress-fill.wait{ animation:none; } }
 .toolroot-tt .tt-browser summary{ cursor:pointer; font-weight:600; }
 .toolroot-tt .tt-browser textarea{
   width:100%;
