@@ -12,6 +12,8 @@
 .poe-oauth-state.json
 .upgrade-trade-cache.json
 *.env
+.env
+!.env.example
 node_modules/
 
 .playwright-cli/

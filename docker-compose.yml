@@ -1,15 +1,44 @@
 services:
+  # NordVPN sidecar (gluetun). poe-tools routes ALL its traffic through this, so the
+  # app's GGG calls exit on a Nord IP — separate from your home IP, so your in-game
+  # trading no longer shares (and trips) the rate-limit budget with the app.
+  # Requires a .env next to this file with Nord SERVICE credentials (see .env.example):
+  #   NORD_USER / NORD_PASS  (NOT your email/password — the "manual setup" service creds)
+  # If gluetun can't connect, poe-tools has no network (killswitch) — set .env FIRST.
+  vpn:
+    image: qmcgaw/gluetun
+    container_name: poe-vpn
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - VPN_SERVICE_PROVIDER=nordvpn
+      - VPN_TYPE=openvpn
+      - OPENVPN_USER=${NORD_USER}
+      - OPENVPN_PASSWORD=${NORD_PASS}
+      - SERVER_COUNTRIES=${NORD_COUNTRY:-Netherlands}
+      # Let LAN + Tailscale reach the published port (replies bypass the tunnel).
+      - FIREWALL_OUTBOUND_SUBNETS=REDACTED-LAN-NET/24,REDACTED-CGNAT-RANGE/10
+    # The app's port is published HERE (poe-tools shares this container's network).
+    ports:
+      - "17777:17777"
+    restart: unless-stopped
+
   poe-tools:
     build: .
     container_name: poe-tools
     restart: unless-stopped
+    # Share the vpn container's network namespace → all outbound goes through Nord.
+    # (No `ports:` here — they're published on `vpn` above; can't have both.)
+    network_mode: "service:vpn"
+    depends_on:
+      - vpn
     environment:
       - POE2_NO_OPEN=1
       - HOST=0.0.0.0
       - POE_CONTACT=REDACTED-USER
       - DATA_DIR=/app/data
-    ports:
-      - "17777:17777"
     # CODE: no bind mounts on purpose. The image (Dockerfile `COPY . .`) is the
     # single source of truth, so `docker compose up -d --build` always serves a
     # fully consistent file set. The old partial mounts (only server.js +
