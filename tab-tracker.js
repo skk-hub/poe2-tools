@@ -15,7 +15,7 @@ window.__viewInit["tab-tracker"] = function () {
   const copySnippetBtn = document.getElementById("ttCopySnippet");
   const pasteBox = document.getElementById("ttPaste");
   const valuePasteBtn = document.getElementById("ttValuePaste");
-  let polling = false;
+  let polling = false, cancelRead = false;
 
   function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]))}
   function setStatus(t,k){statusEl.textContent=t;statusEl.className="status "+(k||"")}
@@ -50,32 +50,57 @@ window.__viewInit["tab-tracker"] = function () {
     return r.json();
   }
 
+  // Poll the (free, local) trade-status until the cooldown clears, counting down so a
+  // big read can auto-resume hands-off across rate-limit windows. Returns false if the
+  // user cancelled (clicked Stop) or it waited absurdly long.
+  async function waitForCooldown(label){
+    for(let cycles=0; cycles<15 && !cancelRead; cycles++){
+      let st; try{ st=await (await fetch("/api/trade-status")).json(); }catch{ return true; }
+      if(!st.limited) return true;
+      let secs=Math.max(1, st.secondsRemaining||30);
+      while(secs>0){
+        if(cancelRead) return false;
+        setStatus(label+" — Trade2 cooling down, auto-resuming in "+secs+"s… (Stop to halt)","");
+        await sleep(1000); secs--;
+      }
+    }
+    return !cancelRead;
+  }
+
   async function load(){
-    if(polling) return;
+    if(polling){ cancelRead=true; setStatus("Stopping after this step…",""); return; }  // button doubles as Stop
     const account=acctInput.value.trim();
     const league=leagueInput.value.trim()||"Runes of Aldur";
     const markers=markersInput.value.trim()||"11,12,13,14";
     if(!account){ setStatus("Enter your PoE account name (e.g. Name#1234).","err"); return; }
     const totalBands=markers.split(/[, ]+/).filter(Boolean).length;
-    loadBtn.disabled=true;
-    polling=true;
+    cancelRead=false; polling=true; loadBtn.textContent="Stop";
     setStatus("Reading your tracked tab…","");
     try{
-      // READ/RESUME: each refresh pass reads price bands until it trips; finished
-      // bands are cached, so passes continue where the last left off (no restart).
+      // READ/RESUME, hands-off: each pass reads price bands until it trips; finished
+      // bands are cached. On a trip we wait out the cooldown (countdown) and continue
+      // automatically until every band is read — one click, walk away.
       let data=await hit(account,league,markers,true);
       if(data.error){ setStatus(data.error,"err"); return; }
-      while((data.unreadBands||0)>0 && !data.limited){
-        if((data.results||[]).length) render(data);
+      if((data.results||[]).length) render(data);
+      while((data.unreadBands||0)>0 && !cancelRead){
+        if(data.limited){
+          const cont=await waitForCooldown("Read "+(totalBands-(data.unreadBands||0))+"/"+totalBands+" bands");
+          if(!cont) break;
+        }
         setStatus("Reading price bands… "+(totalBands-(data.unreadBands||0))+" of "+totalBands+" done","");
         data=await hit(account,league,markers,true);
         if(data.error){ setStatus(data.error,"err"); return; }
+        if((data.results||[]).length) render(data);
       }
-      if((data.results||[]).length) render(data);
-      else if(data.note){ wrap.hidden=true; totalEl.hidden=true; setStatus(data.note,""); return; }
-      else if(data.limited){ setStatus("Trade2 is rate-limited right now — click Value tab again in a bit.","err"); return; }
+      if(!(data.results||[]).length){
+        if(data.note){ wrap.hidden=true; totalEl.hidden=true; setStatus(data.note,""); return; }
+        if(data.limited){ setStatus("Trade2 is rate-limited right now — click Value tab again in a bit.","err"); return; }
+      }
       // PRICE FILL: poll the cached path (no re-search) to fill values in batches.
-      while((data.remaining||0)>0 && !data.limited){
+      // (Pricing is capped/gentle and mostly from cache; if it trips we stop here —
+      // a re-click finishes it — rather than wait a full cooldown per 6 items.)
+      while((data.remaining||0)>0 && !data.limited && !cancelRead){
         setStatus("Pricing "+(data.pricedCount||0)+" of "+data.results.length+" — filling live market values…","");
         await sleep(6000);
         data=await hit(account,league,markers,false);
@@ -83,18 +108,19 @@ window.__viewInit["tab-tracker"] = function () {
       }
       const warns=[];
       if(data.truncated) warns.push("⚠ One marker price has 100+ items — add more marker prices so none exceeds 100 (e.g. widen the list).");
-      if((data.unreadBands||0)>0) warns.push("⚠ "+data.unreadBands+" price band(s) still unread — click Value tab again to resume (it continues, doesn't restart).");
+      if((data.unreadBands||0)>0) warns.push("⚠ "+data.unreadBands+" band(s) still unread — click Value tab to resume.");
       const w=warns.length?" "+warns.join(" "):"";
-      if(data.limited && ((data.remaining||0)>0 || (data.unreadBands||0)>0)){
-        setStatus("Priced "+data.pricedCount+" of "+data.results.length+" read so far. Trade2 limit hit — click Value tab again to continue."+w,"err");
+      if(cancelRead){
+        setStatus("Stopped. Priced "+data.pricedCount+" of "+data.results.length+" read so far — click Value tab to continue."+w,"err");
+      }else if(data.limited && (data.remaining||0)>0){
+        setStatus("Read all bands. Priced "+data.pricedCount+" of "+data.results.length+" — click Value tab again to finish pricing."+w,"err");
       }else{
         setStatus("Valued all "+data.results.length+" items at live market prices."+w,"ok");
       }
     }catch(err){
       setStatus("Failed: "+err.message,"err");
     }finally{
-      loadBtn.disabled=false;
-      polling=false;
+      polling=false; cancelRead=false; loadBtn.textContent="Value tab"; loadBtn.disabled=false;
     }
   }
 
