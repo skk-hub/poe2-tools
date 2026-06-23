@@ -1632,6 +1632,11 @@ function maybeSampleEconomy(league = DEFAULT_LEAGUE) {
 // simply stay on the poe.ninja fallback. ───────────────────────────────────────
 const RUNE_BOOK_FILE = path.join(DATA_DIR, ".rune-exchange-book.json");
 const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
+// Bump when the PRICING LOGIC changes so cached entries written by old logic are
+// auto-discarded and re-fetched — otherwise a stale book on the prod volume (which
+// survives `--build` redeploys) keeps serving old prices and silently defeats the
+// fix. v2 = bid-side (sell value) + thin/no-buyers; v1 = old one-sided cheapest-ask.
+const RUNE_BOOK_VERSION = 2;
 // Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles
 // (its inter-call gap grows to several seconds under load), so a forced refresh of
 // a handful of items can take 20-40s. Give it real headroom so a SINGLE press
@@ -1643,7 +1648,9 @@ let runeBookRefreshInFlight = null; // Promise | null while a refresh is running
 function readRuneBook(league) {
   try {
     const b = JSON.parse(fs.readFileSync(RUNE_BOOK_FILE, "utf8"));
-    return b && b.league === league ? b : null;
+    // Ignore a book from an older pricing-logic version → it gets re-fetched fresh.
+    if (!b || b.league !== league || b.version !== RUNE_BOOK_VERSION) return null;
+    return b;
   } catch { return null; }
 }
 
@@ -1706,7 +1713,7 @@ async function refreshRuneBook(league, normNames, force) {
         }
         // (no ask and no bid → leave unbooked; genuinely no exchange data)
       }
-      try { fs.writeFileSync(RUNE_BOOK_FILE, JSON.stringify({ league, prices, updated: now }, null, 2)); } catch {}
+      try { fs.writeFileSync(RUNE_BOOK_FILE, JSON.stringify({ league, version: RUNE_BOOK_VERSION, prices, updated: now }, null, 2)); } catch {}
     } catch {
       // best-effort; the poe.ninja fallback already served the user
     } finally {
