@@ -50,6 +50,19 @@ function createTradeQueue(options = {}) {
       .filter((part) => part.length >= 3 && part.every((n) => Number.isFinite(n)));
   }
 
+  // Pace like a well-behaved in-game overlay: burst while a rule's budget is fresh,
+  // then settle to the steady rate that fits its window, so we APPROACH but never CROSS
+  // a limit — and so never eat the long (30-min) ban. The old logic only widened the
+  // gap reactively at ≥75% used AND capped it at 30s, which for the [30,300s] rule
+  // (needs ≥10s/call sustained) blew through the budget early and tripped the 30-min
+  // ban (a big tab read = "1h for 9 items"). For EACH GGG rule [limit, interval]:
+  //   • sustained (≥50% used): hold gap = interval/limit (+12% headroom) — the exact
+  //     rate that fills the window, the rate an overlay settles into.
+  //   • at the edge (≤2 left): brake harder, spreading what's left over the window.
+  // Take the max across rules. Bursts stay fast for small ops (a few calls never reach
+  // 50%), big runs auto-throttle to the sustainable pace. Cap a single wait at 120s so
+  // a worst case is a 2-min pause, never a hang; the UI's post-ban auto-wait is the
+  // backstop for the rare trip that still slips through.
   function tuneGap(limitParts, stateParts) {
     let nextGap = baseMinGapMs;
     for (let i = 0; i < Math.min(limitParts.length, stateParts.length); i++) {
@@ -57,14 +70,16 @@ function createTradeQueue(options = {}) {
       const [used, , activeTimeout] = stateParts[i];
       if (activeTimeout > 0) continue;
       if (!(limit > 0) || !(intervalSeconds > 0) || !(used >= 0)) continue;
-
-      const remaining = Math.max(1, limit - used);
-      const ratio = used / limit;
-      if (remaining <= 2 || ratio >= 0.75) {
-        nextGap = Math.max(nextGap, Math.ceil((intervalSeconds * 1000) / remaining));
+      const intervalMs = intervalSeconds * 1000;
+      if (used >= limit * 0.5) {
+        nextGap = Math.max(nextGap, Math.ceil((intervalMs / limit) * 1.12));
+      }
+      const remaining = limit - used;
+      if (remaining <= 2) {
+        nextGap = Math.max(nextGap, Math.ceil(intervalMs / Math.max(1, remaining)));
       }
     }
-    adaptiveMinGapMs = Math.max(baseMinGapMs, Math.min(nextGap, 30000));
+    adaptiveMinGapMs = Math.max(baseMinGapMs, Math.min(nextGap, 120000));
   }
 
   function updateLimitFromHeaders(responseHeaders) {
