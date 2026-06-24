@@ -187,7 +187,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <a class="navbtn" href="#rune-picker" data-view-link="rune-picker">Rune Picker</a>
       <a class="navbtn" href="#gear-search" data-view-link="gear-search">Gear Search</a>
       <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Regex Cheat Sheet</a>
-      <a class="navbtn" href="#arbitrage" data-view-link="arbitrage">Arbitrage</a>
+      <a class="navbtn" href="#arbitrage" data-view-link="arbitrage">Arbitrage Scanner</a>
       <a class="navbtn" href="#filter-helper" data-view-link="filter-helper">Filter Helper</a>
       <a class="navbtn" href="#tab-tracker" data-view-link="tab-tracker">Tab Tracker</a>
     </nav>
@@ -245,7 +245,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     </div>
     <div class="rebuild-note">
       <strong>Craft Pricer is being rebuilt from the ground up.</strong>
-      <span>A fresh take on craft cost planning is in the works — check back soon.</span>
+      <span>The old ledger is gone. Its replacement is being forged.</span>
     </div>
   </section>
 
@@ -257,7 +257,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <p class="sub">Paste reward lines or item choices. The server prices Trade2 matches and ranks the best pick.</p>
       </div>
       <div class="controls">
-        <input id="runeLeague" value="Runes of Aldur" aria-label="Rune picker league">
+        <label>League <input id="runeLeague" value="Runes of Aldur"></label>
         <button id="pasteRunes" type="button">Paste clipboard</button>
         <button id="checkRunes" type="button">Check picks</button>
         <button id="freshRunes" type="button" title="Force a live Trade2 exchange refresh for the pasted items, then re-price (slower, ~15s)">Fetch fresh prices</button>
@@ -293,7 +293,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
           <div class="tablewrap">
             <table>
               <thead><tr><th data-sort="qty">Qty</th><th data-sort="name">Name</th><th data-sort="category">Category</th><th data-sort="each">Each</th><th data-sort="total">Total</th><th data-sort="conf">Conf</th><th data-sort="source">Source</th><th data-sort="change7d">7d</th></tr></thead>
-              <tbody id="runeRows"><tr><td colspan="8" class="muted">Paste choices and run a check.</td></tr></tbody>
+              <tbody id="runeRows"><tr><td colspan="8" class="muted">Checked picks appear here.</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -535,8 +535,8 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <p class="sub">Values the currency parked in a stash tab at live market prices and <b>ranks it by what's worth selling</b> — items with live buyers sit on top with their real sell value; ones with no buyers drop to the bottom as <span class="muted">no live buyers</span>. Make tab(s) public and price every item at a <b>marker divine value</b> — this reads it via Trade2, no login needed. Trade2 caps each price at 100 results, so spread big sets across several marker prices (e.g. 11, 12, 13, 14).</p>
       </div>
       <div class="controls">
-        <input id="ttAccount" placeholder="Account name e.g. Name#1234" aria-label="Account name">
-        <input id="ttLeague" value="Runes of Aldur" aria-label="League">
+        <label>Account <input id="ttAccount" placeholder="e.g. Name#1234"></label>
+        <label>League <input id="ttLeague" value="Runes of Aldur"></label>
         <label>Markers (div) <input id="ttMarkers" value="11, 12, 13, 14" aria-label="Marker divine prices" style="width:8em"></label>
         <button id="ttLoad" type="button" class="btn btn-primary">Value tab</button>
         <div id="ttStatus" class="status">Enter your account name and load your tracked tab.</div>
