@@ -108,11 +108,11 @@ window.WAYSTONE_DATA = {
   // whole-map and correlated, so a map's value ≈ its single best stat, not the
   // sum. Re-run the sweep each patch.
   marketWeights: {
-    source: "PoE2 Trade2 — Waystone (Tier 16) price-vs-% curve sweep",
-    analyzed: "2026-06-13",
+    source: "PoE2 Trade2 — Waystone (Tier 16) price-vs-% BUY-side floor sweep (cheapest ask)",
+    analyzed: "2026-06-13 (Drop Chance + Monster Rarity re-probed buy-side 2026-06-24)",
     league: "Runes of Aldur",
     baselineEx: 1, // a junk Tier-16 waystone floors at ~1ex
-    note: "Value depends on the rolled %, not just which stat. High Item Rarity is the top chase; Pack Size / Monster Effectiveness win on value-per-% at mid rolls but peak lower.",
+    note: "Value depends on the rolled %, not just which stat. High Item Rarity is the top chase; Pack Size / Monster Effectiveness win on value-per-% at mid rolls but peak lower. Buy-side recheck (2026-06-24): Waystone Drop Chance is worthless to BUY (~1ex even at 105%), Monster Rarity is a mild ~5ex at ≥60%. The other waystone reward mods — Waystone Gold & Waystone Experience — have no liquid Tier-16 buy market (0 listings at modest rolls), so they're not priced here.",
     // ranked by peak (ceiling) value; `curve` = [rolled %, floor ex]
     stats: [
       { key: "itemRarity", label: "Item Rarity", weight: 1.0, ceiling: 87, peakEx: 325,
@@ -124,12 +124,12 @@ window.WAYSTONE_DATA = {
       { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.11, ceiling: 70, peakEx: 37,
         curve: [[20, 1], [40, 37]],
         tip: "Tracks Pack Size — strong mid-roll value, peaks ~40% → ~37ex." },
-      { key: "waystoneDrop", label: "Waystone Drop Chance", weight: 0.07, ceiling: 125, peakEx: 22, est: true,
-        curve: [[40, 1], [70, 8], [125, 22]],
-        tip: "Rolls past 100% (live max ~125%, NOT capped). Price is an ESTIMATE (not yet swept) — sustain has market value for endless T16 farming. Re-sweep Trade2 to confirm." },
-      { key: "monsterRarity", label: "Monster Rarity", weight: 0.01, ceiling: 103, peakEx: 1,
-        curve: [[40, 1]],
-        tip: "Worthless even at high rolls (~1ex). Never pay for it." },
+      { key: "waystoneDrop", label: "Waystone Drop Chance", weight: 0, ceiling: 105, peakEx: 1,
+        curve: [[40, 1], [105, 1]],
+        tip: "Worthless to BUY — even a ~105% roll floors at ~1ex (2026-06-24 Trade2 buy probe). Sustain only helps YOUR own endless-T16 farming; the market won't pay for it." },
+      { key: "monsterRarity", label: "Monster Rarity", weight: 0.02, ceiling: 103, peakEx: 5,
+        curve: [[40, 1], [60, 5]],
+        tip: "Mild value — maps with ≥60% floor ~5ex buy-side (2026-06-24 probe), up from ~1ex. Minor stat; the 5ex floor may partly reflect other mods on the same map." },
     ],
   },
 

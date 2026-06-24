@@ -29,17 +29,21 @@ window.__viewInit["map-juicer"]=function(){
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
   let rarityMin = 0, packMin = 0, wdropMin = 0;   // all start at 0 (off) — build up from nothing; wdrop is 0 or 100
-  const DUMP_CAP_EX = 40;   // "low value" cutoff for the dump filter (baked — see buildDump)
+  let dumpCap = 5;   // "low value" cutoff (ex) for the dump filter — adjustable via the stepper
   // Match a number ≥ pct (pct is a multiple of 10). Two-digit: first digit
   // (pct/10)…9 + any second digit (so ≥ pct); OR any three-digit (100+). Uses
   // [0-9] not "." so it can't swallow the trailing "%". The label token carries the
   // stat name; we bridge the real in-stash format "Label: +X%" with ": \+…%".
-  function geNum(pct){
+  function geNum(pct, ceiling){
     if (pct >= 100) return "[0-9][0-9][0-9]";                    // 100%+ only
     const d = Math.max(1, Math.floor(pct / 10));
-    return `([${d}-9][0-9]|[0-9][0-9][0-9])`;
+    const two = `[${d}-9][0-9]`;
+    // If the stat can't roll into three digits, omit the 100+ alternation — keeps the
+    // dump regex short enough to stack several exclusions under the 250-char limit.
+    if (ceiling && ceiling < 100) return two;
+    return `(${two}|[0-9][0-9][0-9])`;
   }
-  function atLeast(token, pct){ return `${token}: \\+${geNum(pct)}%`; }
+  function atLeast(token, pct, ceiling){ return `${token}: \\+${geNum(pct, ceiling)}%`; }
   function noRevivesRegex(){ return `"${T.revivesZero}"`; }
 
   // ── Regex Forge — answer a few questions, the regex rebuilds on every change ──
@@ -78,10 +82,10 @@ window.__viewInit["map-juicer"]=function(){
   function buildDump(){
     const blocks = [`"${T.corrupted}"`, `"${T.revivesZero}"`];
     for (const s of (MW().stats || [])){
-      if (!s.curve || !s.curve.length || (s.peakEx || 0) < DUMP_CAP_EX) continue;
+      if (!s.curve || !s.curve.length || (s.peakEx || 0) < dumpCap) continue;
       const tok = L[s.key]; if (!tok) continue;
-      const decade = dumpThreshold(s, DUMP_CAP_EX);
-      if (decade != null) blocks.push(`"!${atLeast(tok, decade)}"`);
+      const decade = dumpThreshold(s, dumpCap);
+      if (decade != null) blocks.push(`"!${atLeast(tok, decade, s.ceiling)}"`);
     }
     return blocks.join(" ");
   }
@@ -118,10 +122,11 @@ window.__viewInit["map-juicer"]=function(){
 
   // ── Controls ──
   function seg(attr, val, cur, label){ return `<button class="seg-btn${val===cur?" on":""}" type="button" data-${attr}="${val}">${esc(label)}</button>`; }
-  function stepper(id, label, val, lo, hi){
+  function stepper(id, label, val, lo, hi, unit){
+    unit = unit || "%";
     return `<div class="forge-step"><span class="forge-step-lbl">${esc(label)}</span>
       <button class="step" type="button" data-step="${id}" data-dir="-1"${val<=lo?" disabled":""} aria-label="decrease ${esc(label)}">−</button>
-      <span class="forge-step-val">${val}%</span>
+      <span class="forge-step-val">${val}${esc(unit)}</span>
       <button class="step" type="button" data-step="${id}" data-dir="1"${val>=hi?" disabled":""} aria-label="increase ${esc(label)}">+</button></div>`;
   }
   function toggle(id, label, on){
@@ -130,7 +135,7 @@ window.__viewInit["map-juicer"]=function(){
   function waystoneQs(){
     const segs = `<div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}${seg("wmatch","dump",wMatch,"Low-value dump")}</div>`;
     if (wMatch === "dump") {
-      return `${segs}<p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones worth roughly <b>under ${DUMP_CAP_EX} ex</b> — the cheap slammed maps safe to dump/vendor. Requires Corrupted + 0 revives and excludes any reward stat rolled high enough to be worth ~${DUMP_CAP_EX}ex+ (thresholds read off the baked Mod Value curves — no price refresh needed). Value ≈ best stat, so spot-check a map carrying several mid rolls.</p>`;
+      return `${segs}<div class="forge-steps">${stepper("dumpcap","Value cap",dumpCap,5,100," ex")}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones worth roughly <b>under ${dumpCap} ex</b> — the cheap slammed maps safe to dump/vendor. Requires Corrupted + 0 revives and excludes any reward stat rolled high enough to clear ~${dumpCap}ex (thresholds read off the baked Mod Value curves — no price refresh needed). Value ≈ best stat, so spot-check a map carrying several mid rolls.</p>`;
     }
     return `
       ${segs}
@@ -188,6 +193,7 @@ window.__viewInit["map-juicer"]=function(){
     root.querySelectorAll("[data-step]").forEach(b => b.addEventListener("click", () => {
       const dir = Number(b.getAttribute("data-dir")), id = b.getAttribute("data-step");
       if (id === "rarity") rarityMin = clamp(rarityMin + dir*10, 0, 70);
+      else if (id === "dumpcap") dumpCap = clamp(dumpCap + dir*5, 5, 100);
       else packMin = clamp(packMin + dir*10, 0, 40);
       renderSheet();
     }));
