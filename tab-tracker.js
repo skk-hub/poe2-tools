@@ -18,21 +18,46 @@ window.__viewInit["tab-tracker"] = function () {
   const progWrap = document.getElementById("ttProgress");
   const progFill = document.getElementById("ttProgressFill");
   const progLabel = document.getElementById("ttProgressLabel");
+  const miniBar = document.getElementById("ttMini");
+  const miniFill = document.getElementById("ttMiniFill");
+  const miniLabel = document.getElementById("ttMiniLabel");
   let polling = false, cancelRead = false;
+  // Sort state — null = server order (value-ranked); a click sorts and persists across
+  // the live re-renders, so you can sort while it's still pricing.
+  const TT_LABELS = { qty: "Qty", name: "Item", each: "Each", total: "Value", source: "Source" };
+  let sortKey = null, sortDir = -1, lastData = null;
 
   function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]))}
   function setStatus(t,k){statusEl.textContent=t;statusEl.className="status "+(k||"")}
   // Visible progress bar — the obvious "it's working" signal through the whole grind.
   // frac 0..1 fills the bar; pass null to keep the current width (e.g. while waiting on
   // a cooldown). state: "active" (pulsing), "wait" (striped cooldown), "done" (green).
+  let progActive=false, doneHideTimer=0;
   function setProgress(label,frac,state){
-    if(!progWrap) return;
-    progWrap.hidden=false;
-    if(frac!=null) progFill.style.width=Math.max(3,Math.round(frac*100))+"%";
-    progFill.className="tt-progress-fill "+(state||"active");
-    progLabel.textContent=label;
+    if(progWrap){
+      progWrap.hidden=false;
+      if(frac!=null) progFill.style.width=Math.max(3,Math.round(frac*100))+"%";
+      progFill.className="tt-progress-fill "+(state||"active");
+      progLabel.textContent=label;
+    }
+    // Mirror to the global mini bar so progress is visible after navigating away.
+    progActive=true;
+    if(miniBar) miniBar.className="tt-mini "+(state||"active");
+    if(miniFill && frac!=null) miniFill.style.setProperty("--p",Math.max(5,Math.round(frac*100))+"%");
+    if(miniLabel) miniLabel.textContent="Tab Tracker · "+label;
+    clearTimeout(doneHideTimer);
+    if(state==="done") doneHideTimer=setTimeout(()=>{ progActive=false; syncMini(); },6000);  // linger briefly, then clear
+    syncMini();
   }
-  function hideProgress(){ if(progWrap) progWrap.hidden=true; }
+  function hideProgress(){ if(progWrap) progWrap.hidden=true; progActive=false; clearTimeout(doneHideTimer); syncMini(); }
+  // The mini bar shows only when work is in flight AND you're not already on the
+  // Tab Tracker page (where the full bar is right there).
+  function syncMini(){
+    if(!miniBar) return;
+    const onTT=(location.hash||"#home").slice(1)==="tab-tracker";
+    miniBar.hidden=!(progActive && !onTT);
+  }
+  window.addEventListener("hashchange",syncMini);
   function fxEx(v){
     if(typeof v!=="number"||!isFinite(v)) return "";
     if(v>=10) return Math.round(v)+" ex";
@@ -41,15 +66,28 @@ window.__viewInit["tab-tracker"] = function () {
   }
   function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 
-  function render(data){
-    const results=data.results||[];
-    totalEl.hidden=false;
-    const thinNote=(data.thinCount||0)>0?' · '+data.thinCount+' no buyers':'';
-    const roughN=results.filter(r=>r.rough).length;
-    const roughNote=roughN>0?' · <span class="tt-rough">'+roughN+' rough*</span>':'';
-    totalEl.innerHTML='<b>'+(data.totalDiv||0)+' div</b> <span>('+fxEx(data.totalEx||0)+' sellable) · '+(data.pricedCount||0)+'/'+results.length+' priced'+thinNote+roughNote+'</span>'+
-      (roughN>0?'<div class="tt-legend">* rough estimate — thin/wall-y exchange book (idols, rare essences). Verify before trading.</div>':'');
-    rows.innerHTML=results.map(item=>{
+  function num(v){ const n=Number(v); return isFinite(n)?n:-1; }
+  function sortedResults(){
+    const arr=(lastData&&lastData.results)?lastData.results.slice():[];
+    if(!sortKey) return arr;   // no click yet → keep the server's value-ranked order
+    return arr.sort((a,b)=>{
+      let r;
+      if(sortKey==="qty") r=num(a.qty)-num(b.qty);
+      else if(sortKey==="each") r=num(a.each)-num(b.each);
+      else if(sortKey==="total") r=num(a.total)-num(b.total);
+      else r=String(a[sortKey]||"").toLowerCase().localeCompare(String(b[sortKey]||"").toLowerCase());   // name, source
+      return r*sortDir;
+    });
+  }
+  function updateSortIndicators(){
+    document.querySelectorAll(".toolroot-tt thead th[data-sort]").forEach(th=>{
+      const k=th.getAttribute("data-sort"), active=k===sortKey;
+      th.classList.toggle("sorted",active);
+      th.innerHTML=esc(TT_LABELS[k]||k)+(active?' <span class="sort-arrow">'+(sortDir<0?"▼":"▲")+"</span>":"");
+    });
+  }
+  function renderRows(){
+    rows.innerHTML=sortedResults().map(item=>{
       let eachCell, valCell;
       if(item.total){
         const star=item.rough?'<span class="tt-rough" title="Rough — thin exchange book, verify before trading">*</span>':'';
@@ -65,6 +103,18 @@ window.__viewInit["tab-tracker"] = function () {
         '<td>'+esc(item.source||"")+'</td>'+
       '</tr>';
     }).join("");
+    updateSortIndicators();
+  }
+  function render(data){
+    lastData=data;
+    const results=data.results||[];
+    totalEl.hidden=false;
+    const thinNote=(data.thinCount||0)>0?' · '+data.thinCount+' no buyers':'';
+    const roughN=results.filter(r=>r.rough).length;
+    const roughNote=roughN>0?' · <span class="tt-rough">'+roughN+' rough*</span>':'';
+    totalEl.innerHTML='<b>'+(data.totalDiv||0)+' div</b> <span>('+fxEx(data.totalEx||0)+' sellable) · '+(data.pricedCount||0)+'/'+results.length+' priced'+thinNote+roughNote+'</span>'+
+      (roughN>0?'<div class="tt-legend">* rough estimate — thin/wall-y exchange book (idols, rare essences). Verify before trading.</div>':'');
+    renderRows();
     wrap.hidden=false;
   }
 
@@ -265,6 +315,15 @@ window.__viewInit["tab-tracker"] = function () {
       }
     }catch{}
   }
+
+  document.querySelectorAll(".toolroot-tt thead th[data-sort]").forEach(th=>{
+    th.addEventListener("click",()=>{
+      const k=th.getAttribute("data-sort");
+      if(sortKey===k) sortDir=-sortDir;
+      else { sortKey=k; sortDir=(k==="name"||k==="source")?1:-1; }   // text A→Z, numbers high→low
+      renderRows();
+    });
+  });
 
   loadBtn.addEventListener("click",load);
   copySnippetBtn.addEventListener("click",copySnippet);

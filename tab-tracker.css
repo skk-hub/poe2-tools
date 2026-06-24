@@ -47,3 +47,25 @@ td .tt-rough{ margin-left:1px; }
   font-family:var(--font-mono, monospace);
   font-size:.85rem;
 }
+
+/* Sortable result headers — click to sort, works mid-pricing */
+.toolroot-tt thead th[data-sort]{ cursor:pointer; user-select:none; white-space:nowrap; transition:color var(--t,.15s); }
+.toolroot-tt thead th[data-sort]:hover{ color:var(--text); }
+.toolroot-tt thead th.sorted{ color:var(--gold,#c9a227); }
+.toolroot-tt .sort-arrow{ font-size:.78em; opacity:.85; margin-left:1px; }
+
+/* Global mini progress bar — shows on every page while the Tab Tracker is still
+   pricing in the background, so you can navigate away and watch it finish. */
+.tt-mini[hidden]{ display:none; }   /* the display:flex below would otherwise defeat the hidden attribute */
+.tt-mini{ position:sticky; top:0; z-index:99; display:flex; align-items:center; gap:10px;
+  padding:5px 16px; background:oklch(15% 0.006 270 / 0.92); border-bottom:1px solid var(--border-gold,var(--border));
+  font:600 11.5px var(--font-mono,monospace); color:var(--gold-bright,#e8c24a); text-decoration:none;
+  backdrop-filter:saturate(140%) blur(8px); -webkit-backdrop-filter:saturate(140%) blur(8px); }
+.tt-mini:hover{ background:oklch(18% 0.01 270 / 0.95); }
+.tt-mini-fill{ flex:none; width:120px; height:6px; border-radius:var(--r-pill,999px); background:var(--surface-2);
+  position:relative; overflow:hidden; }
+.tt-mini-fill::after{ content:""; position:absolute; inset:0 auto 0 0; width:var(--p,5%);
+  border-radius:var(--r-pill,999px); background:linear-gradient(90deg,var(--gold-deep),var(--gold-bright)); transition:width .45s var(--ease,ease); }
+.tt-mini.done .tt-mini-fill::after{ background:var(--green); }
+.tt-mini.wait .tt-mini-fill::after{ background-image:repeating-linear-gradient(45deg,var(--gold-deep) 0 9px,var(--gold) 9px 18px); }
+.tt-mini-label{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

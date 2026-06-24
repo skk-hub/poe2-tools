@@ -243,6 +243,36 @@ async function browserChecks() {
       await p.close();
     }
 
+    // Tab Tracker: click-to-sort columns + a global mini progress bar on other pages
+    {
+      const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      await p.route("**/api/trade-status**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ limited: false, secondsRemaining: 0, tradeLimitedUntil: "" }) }));
+      await p.route("**/api/tab-tracker**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+        results: [
+          { qty: 1, name: "Bravo", each: 5, total: 5, source: "x" },
+          { qty: 1, name: "Alpha", each: 50, total: 50, source: "x" },
+          { qty: 1, name: "Charlie", each: 1, total: 1, source: "x" },
+        ], totalDiv: 0, totalEx: 56, pricedCount: 3, thinCount: 0, remaining: 0,
+      }) }));
+      await p.goto(BASE + "/index.html#tab-tracker", { waitUntil: "networkidle" }); await p.waitForTimeout(400);
+      // the paste box lives in a collapsed <details> — open it, then value the pasted items
+      await p.evaluate(() => { const d = document.querySelector(".toolroot-tt .tt-browser"); if (d) d.open = true; document.getElementById("ttPaste").value = "Alpha x1\nBravo x1\nCharlie x1"; });
+      await p.click("#ttValuePaste"); await p.waitForTimeout(500);
+      const ttNames = () => p.evaluate(() => [...document.querySelectorAll("#ttRows tr")].map(r => r.children[1] && r.children[1].textContent));
+      check((await ttNames()).length === 3, "tab tracker renders pasted rows");
+      await p.click('.toolroot-tt thead th[data-sort="name"]'); await p.waitForTimeout(150);
+      const ttByName = await ttNames();
+      check(ttByName[0] === "Alpha" && ttByName[2] === "Charlie", "tab tracker sorts by Item name on header click");
+      await p.click('.toolroot-tt thead th[data-sort="total"]'); await p.waitForTimeout(150);
+      const ttByVal = await ttNames();
+      check(ttByVal[0] === "Alpha" && ttByVal[2] === "Charlie", "tab tracker sorts by Value desc on header click");
+      // navigating away while progress lingers surfaces the global mini bar
+      await p.evaluate(() => { location.hash = "#home"; }); await p.waitForTimeout(200);
+      const miniShown = await p.evaluate(() => { const m = document.getElementById("ttMini"); return !!(m && !m.hidden); });
+      check(miniShown, "tab tracker mini progress bar shows on other pages while active");
+      await p.close();
+    }
+
     // arbitrage RESULT TABLE styling, with mocked rows (the exchange has no real arbitrage)
     {
       const p = await browser.newPage({ viewport: { width: 1366, height: 900 } });

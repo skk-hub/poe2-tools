@@ -178,6 +178,10 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     </nav>
   </div>
 </header>
+<a id="ttMini" class="tt-mini" href="#tab-tracker" data-view-link="tab-tracker" hidden title="Tab Tracker is still working — click to view">
+  <span class="tt-mini-fill" id="ttMiniFill"></span>
+  <span class="tt-mini-label" id="ttMiniLabel">Tab Tracker…</span>
+</a>
 <main class="shell">
   <section id="home" class="view active" data-view="home">
     <div class="homebar">
@@ -541,7 +545,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     <div id="ttTotal" class="tt-total" hidden></div>
     <div id="ttTableWrap" class="tablewrap" hidden>
       <table>
-        <thead><tr><th class="num">Qty</th><th>Item</th><th class="num">Each</th><th class="num">Value</th><th>Source</th></tr></thead>
+        <thead><tr><th class="num" data-sort="qty">Qty</th><th data-sort="name">Item</th><th class="num" data-sort="each">Each</th><th class="num" data-sort="total">Value</th><th data-sort="source">Source</th></tr></thead>
         <tbody id="ttRows"></tbody>
       </table>
     </div>
