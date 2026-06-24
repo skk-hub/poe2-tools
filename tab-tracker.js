@@ -107,18 +107,23 @@ window.__viewInit["tab-tracker"] = function () {
   }
 
   // Poll the (free, local) trade-status until the cooldown clears, counting down so a
-  // big read can auto-resume hands-off across rate-limit windows. Returns false if the
-  // user cancelled (clicked Stop) or it waited absurdly long.
-  const MAX_AUTO_WAIT = 240;   // auto-wait short bans; a longer one (the 30-min ban) → stop, resume later
+  // big read can auto-resume hands-off across rate-limit windows. Returns false only if
+  // the user cancelled (Stop). A big tab (200+ items) WILL hit GGG's 30-min ban — the
+  // user is fine with it being slow as long as it FINISHES on its own, so we wait the
+  // long ban out too (the app exits via the gluetun VPN, a separate IP from the game,
+  // so an app-side ban doesn't touch in-game trading). Bounded by MAX_AUTO_WAIT so a
+  // pathological/forever block still eventually bails instead of hanging the page.
+  const MAX_AUTO_WAIT = 2400;   // wait out up to a 30-min ban (1800s) + headroom; leave the tab open
+  function fmtWait(s){ return s>=90 ? Math.floor(s/60)+"m "+(s%60)+"s" : s+"s"; }
   async function waitForCooldown(label){
-    for(let cycles=0; cycles<15 && !cancelRead; cycles++){
+    for(let cycles=0; cycles<40 && !cancelRead; cycles++){
       let st; try{ st=await (await fetch("/api/trade-status")).json(); }catch{ return true; }
       if(!st.limited) return true;
       let secs=Math.max(1, st.secondsRemaining||30);
-      if(secs > MAX_AUTO_WAIT) return false;   // long ban → bail out; cached progress resumes on next click
+      if(secs > MAX_AUTO_WAIT) return false;   // absurd block → bail; cached progress resumes on next click
       while(secs>0){
         if(cancelRead) return false;
-        const msg=label+" — rate-limited, auto-resuming in "+secs+"s… (Stop to halt)";
+        const msg=label+" — rate-limited, auto-resuming in "+fmtWait(secs)+"… (leave this open; Stop to halt)";
         setStatus(msg,""); setProgress(msg,null,"wait");
         await sleep(1000); secs--;
       }
@@ -185,8 +190,8 @@ window.__viewInit["tab-tracker"] = function () {
         setStatus("Stopped. Priced "+data.pricedCount+" of "+data.results.length+" so far — click Value tab to continue."+w,"err");
         setProgress("Stopped — "+data.pricedCount+" of "+data.results.length+" priced. Click Value tab to continue.",null,"");
       }else if((data.remaining||0)>0){
-        setStatus("Hit a long rate-limit ban — priced "+data.pricedCount+" of "+data.results.length+" so far (saved). Click Value tab again in a few minutes to continue where it left off."+w,"err");
-        setProgress("Rate-limit ban — "+data.pricedCount+" of "+data.results.length+" priced (saved). Click Value tab in a few min to continue.",null,"");
+        setStatus("Paused on an unusually long block — priced "+data.pricedCount+" of "+data.results.length+" so far (saved). Click Value tab to continue where it left off."+w,"err");
+        setProgress("Paused — "+data.pricedCount+" of "+data.results.length+" priced (saved). Click Value tab to continue.",null,"");
       }else{
         const thinTail=(data.thinCount||0)>0?" "+data.thinCount+" had no live buyers (thin)."  :"";
         setStatus("Valued "+data.pricedCount+" of "+data.results.length+" items at live market prices."+thinTail+w,"ok");
