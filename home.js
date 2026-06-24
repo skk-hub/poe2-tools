@@ -7,8 +7,6 @@ window.__viewInit["home"] = function () {
   const chips = document.getElementById("fxStripChips");
   const meta = document.getElementById("fxStripMeta");
   const btn = document.getElementById("fxStripRefresh");
-  const heroStat = document.getElementById("homePriceStatus");
-  const heroLabel = document.getElementById("homePriceLabel");
   if (!strip || !chips) return;
   const LEAGUE = "Runes of Aldur";
 
@@ -68,11 +66,6 @@ window.__viewInit["home"] = function () {
     const chaosEx = chaosItem && chaosItem.ex > 0 ? chaosItem.ex : 0;
     const toC = (ex) => chaosEx ? ex / chaosEx : ex;     // ponytail: falls back to ex if chaos rate missing
     const unit = chaosEx ? "c" : "ex";
-    // Surface the live Divine price in the hero stat (was a static "Ready").
-    if (heroStat && divineEx) {
-      heroStat.textContent = fmtEx(toC(divineEx)) + " " + unit;
-      if (heroLabel) heroLabel.textContent = "per Divine" + (d.stale ? " · stale" : "");
-    }
     chips.innerHTML = d.items.map((c) => {
       const base = c.id === "chaos";
       const val = base
@@ -112,6 +105,37 @@ window.__viewInit["home"] = function () {
 
   if (btn) btn.addEventListener("click", () => load(true));
   load(false);
+
+  // ── Trade2 availability pill — the one global go/no-go to check before opening
+  //    a call-heavy tool (Gear Search / Tab Tracker / Arbitrage). /api/trade-status
+  //    is local-only (no GGG call), so polling it is free. ─────────────────────
+  const ts = document.getElementById("tradeStatus");
+  if (ts) {
+    const tsText = ts.querySelector(".tstatus-text");
+    let tsTimer = null;
+    const fmtSecs = (s) => { s = Math.max(0, Math.round(s)); const m = Math.floor(s / 60), r = s % 60; return m ? m + "m" + (r ? " " + r + "s" : "") : s + "s"; };
+    function paintTrade(d) {
+      if (tsTimer) { clearInterval(tsTimer); tsTimer = null; }
+      if (!d) { ts.className = "tstatus"; if (tsText) tsText.textContent = "Trade2 status unavailable"; return; }
+      if (!d.limited) { ts.className = "tstatus ok"; if (tsText) tsText.textContent = "Trade2 ready"; return; }
+      ts.className = "tstatus limited";
+      const untilMs = d.tradeLimitedUntil ? new Date(d.tradeLimitedUntil).getTime()
+        : (d.secondsRemaining ? Date.now() + d.secondsRemaining * 1000 : 0);
+      const tick = () => {
+        const secs = untilMs ? (untilMs - Date.now()) / 1000 : 0;
+        if (untilMs && secs <= 0) { loadTrade(); return; }   // just cleared — recheck
+        if (tsText) tsText.textContent = untilMs ? "Trade2 rate-limited — clears in " + fmtSecs(secs) : "Trade2 rate-limited";
+      };
+      tick();
+      if (untilMs) tsTimer = setInterval(tick, 1000);
+    }
+    async function loadTrade() {
+      try { const r = await fetch("/api/trade-status"); paintTrade(await r.json()); }
+      catch { paintTrade(null); }
+    }
+    loadTrade();
+    setInterval(loadTrade, 30000);   // state can flip while sitting on home; cheap local poll
+  }
 
   // ── Economy dashboard (replaces the tool cards) ───────────────────────────
   const econ = document.getElementById("econ");

@@ -39,23 +39,16 @@ a:hover{text-decoration:underline}
 .navbtn.active{color:var(--gold-bright);background:var(--gold-soft)}
 .navbtn.active::after{content:"";position:absolute;left:13px;right:13px;bottom:-9px;height:2px;border-radius:2px;background:var(--gold)}
 
-/* Hero */
-.hero{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:32px;align-items:center;
-  background:linear-gradient(135deg,var(--surface-1),var(--bg-deep) 70%);border:1px solid var(--border);border-radius:var(--r-xl);
-  padding:40px;margin-bottom:34px;box-shadow:var(--shadow-md),var(--inset-hi)}
-.hero::after{content:"";position:absolute;width:480px;height:480px;right:-140px;top:-200px;border-radius:50%;
-  background:radial-gradient(circle,var(--gold-glow),transparent 68%);pointer-events:none}
-.hero>*{position:relative;z-index:1}
-.eyebrow{display:inline-flex;align-items:center;gap:8px;color:var(--gold);font:600 11px var(--font-mono);letter-spacing:.12em;text-transform:uppercase}
-.eyebrow::before{content:"";width:18px;height:1px;background:var(--gold);opacity:.6}
 h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;line-height:1.06;letter-spacing:-.02em;margin:14px 0 0;text-wrap:balance}
-.lead{color:var(--text-muted);font-size:15px;line-height:1.6;max-width:54ch;margin-top:14px}
-.heroactions{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
-.hero-stats{display:flex;flex-direction:column;gap:10px;min-width:200px}
-.stat{display:flex;flex-direction:column;gap:2px;padding:14px 18px;background:oklch(100% 0 0 / .025);border:1px solid var(--border);border-radius:var(--r-md)}
-.stat b{font-family:var(--font-mono);font-size:24px;font-weight:600;color:var(--text);letter-spacing:-.01em;line-height:1}
-.stat b.gold{color:var(--gold-bright)}
-.stat span{color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+
+/* Home top bar — global Trade2 availability before opening a call-heavy tool */
+.homebar{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+.tstatus{display:inline-flex;align-items:center;gap:9px;padding:7px 14px;border-radius:var(--r-pill);background:var(--surface-1);border:1px solid var(--border);font:600 12px var(--font-mono);color:var(--text-muted)}
+.tstatus-dot{width:8px;height:8px;border-radius:50%;background:var(--text-faint);flex:none}
+.tstatus.ok{color:var(--green)}
+.tstatus.ok .tstatus-dot{background:var(--green)}
+.tstatus.limited{color:var(--gold-bright);border-color:var(--border-gold);background:var(--gold-soft)}
+.tstatus.limited .tstatus-dot{background:var(--gold-bright)}
 
 /* Section label */
 .section-label{display:flex;align-items:center;gap:12px;margin:0 2px 16px;color:var(--text-faint);font:600 11px var(--font-mono);letter-spacing:.14em;text-transform:uppercase}
@@ -150,14 +143,11 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
 .muted{color:var(--text-faint)}
 
 @media(max-width:860px){
-  .hero{grid-template-columns:1fr;gap:24px;padding:30px 26px}
-  .hero-stats{flex-direction:row;flex-wrap:wrap}
-  .hero-stats .stat{flex:1;min-width:120px}
   .pagehead{display:block}.controls{justify-content:flex-start;margin-top:12px}.status{text-align:left}
 }
 @media(max-width:560px){
   .shell{padding:20px 14px 40px}.appbarin{padding:10px 14px}
-  .hero{padding:24px 20px}h1{font-size:30px}
+  h1{font-size:30px}
   .econ-headline{margin-left:0}
   input{width:100%}
 }
@@ -190,21 +180,11 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
 </header>
 <main class="shell">
   <section id="home" class="view active" data-view="home">
-    <div class="hero">
-      <div class="hero-main">
-        <span class="eyebrow">Runes of Aldur · Patch 0.5</span>
-        <h1>Your Path of Exile&nbsp;2 economy workbench.</h1>
-        <p class="lead">Live pricing from GGG's Trade2 API for crafting, runes, gear, maps, and currency flips — all in one place. Runs local: no login, no delay.</p>
-        <div class="heroactions">
-          <a class="btn btn-primary" href="#gear-search" data-view-link="gear-search">Open Gear Search</a>
-          <a class="btn" href="#rune-picker" data-view-link="rune-picker">Rune Picker</a>
-        </div>
-      </div>
-      <div class="hero-stats" aria-label="Status">
-        <div class="stat"><b id="homeToolCount">6</b><span>Live tools</span></div>
-        <div class="stat"><b>Local</b><span>No login</span></div>
-        <div class="stat"><b class="gold" id="homePriceStatus">Ready</b><span id="homePriceLabel">Economy data</span></div>
-      </div>
+    <div class="homebar">
+      <span class="tstatus" id="tradeStatus" role="status">
+        <span class="tstatus-dot" aria-hidden="true"></span>
+        <span class="tstatus-text">Checking Trade2…</span>
+      </span>
     </div>
 
     <div class="fxstrip" id="fxStrip" hidden aria-label="Currency values">

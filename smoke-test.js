@@ -287,11 +287,13 @@ async function browserChecks() {
         league: "Runes of Aldur", updated: new Date().toISOString(), cached: true,
         items: [{ id: "divine", name: "Divine Orb", ex: 320, icon: "https://web.poecdn.com/divine.png" }, { id: "exalted", name: "Exalted Orb", ex: 1, base: true, icon: "https://web.poecdn.com/ex.png" }, { id: "chaos", name: "Chaos Orb", ex: 2.4, icon: "https://web.poecdn.com/chaos.png" }],
       }) }); });
+      await p.route("**/api/trade-status**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ limited: false, secondsRemaining: 0, tradeLimitedUntil: "" }) }));
       await p.goto(BASE + "/index.html#home", { waitUntil: "networkidle" }); await p.waitForTimeout(600);
-      const strip = await p.evaluate(() => { const s = document.getElementById("fxStrip"); const c = document.getElementById("fxStripChips"); const h = document.getElementById("homePriceStatus"); return { shown: s && !s.hidden, chips: c ? c.children.length : 0, icons: c ? c.querySelectorAll("img.fxicon").length : 0, hero: h ? h.textContent : "" }; });
+      const strip = await p.evaluate(() => { const s = document.getElementById("fxStrip"); const c = document.getElementById("fxStripChips"); const t = document.getElementById("tradeStatus"); const base = [...(c ? c.children : [])].find(el => /\(base\)/.test(el.textContent)); return { shown: s && !s.hidden, chips: c ? c.children.length : 0, icons: c ? c.querySelectorAll("img.fxicon").length : 0, baseTxt: base ? base.textContent : "", tradeOk: t ? t.classList.contains("ok") : false, tradeTxt: t ? t.textContent : "" }; });
       check(strip.shown && strip.chips === 3, "home currency strip renders chips from cache");
       check(strip.icons === 3, "home currency chips render currency icons");
-      check(/^133\s*c/.test(strip.hero), "home hero stat shows live Divine price in chaos");
+      check(/Chaos/.test(strip.baseTxt) && /\(base\)/.test(strip.baseTxt), "home currency strip uses Chaos as the base unit");
+      check(strip.tradeOk && /ready/i.test(strip.tradeTxt), "home Trade2 status pill shows ready when not limited");
       await p.click("#fxStripRefresh"); await p.waitForTimeout(400);
       check(hits >= 2, "home currency refresh button re-fetches (force)");
       await p.close();
