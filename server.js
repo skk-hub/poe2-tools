@@ -593,11 +593,11 @@ async function getExchangeCatalog(league) {
 // offers across MANY currency pairs. The whole scan needs just 2 of these
 // (all buy legs, all sell legs) instead of 2 calls per item — the key fix for
 // repeatedly tripping the shared Trade2 rate limit.
-async function fetchExchangeRaw(league, haveIds, wantIds) {
+async function fetchExchangeRaw(league, haveIds, wantIds, status = "online") {
   const endpoint = "https://www.pathofexile.com/api/trade2/exchange/poe2/" + encodeURIComponent(league);
   const body = JSON.stringify({
     exchange: {
-      status: { option: "online" },
+      status: { option: status },
       have: Array.isArray(haveIds) ? haveIds : [haveIds],
       want: Array.isArray(wantIds) ? wantIds : [wantIds],
     },
@@ -625,7 +625,7 @@ const EXCHANGE_BACKFILL_CAP = 6;
 // book passes a bigger cap to cut total calls on big tabs (the rate limit is the
 // bottleneck). skipBackfill: don't re-fetch zero-offer items one-by-one — for the
 // book a starved item just means "thin/no buyers", not worth a call to confirm.
-async function fetchExchangeChunked(league, haveIds, wantIds, batchCap = EXCHANGE_BATCH_CAP, skipBackfill = false) {
+async function fetchExchangeChunked(league, haveIds, wantIds, batchCap = EXCHANGE_BATCH_CAP, skipBackfill = false, status = "online") {
   const haveArr = Array.isArray(haveIds) ? haveIds : [haveIds];
   const wantArr = Array.isArray(wantIds) ? wantIds : [wantIds];
   const multiOnHave = haveArr.length >= wantArr.length;
@@ -633,7 +633,7 @@ async function fetchExchangeChunked(league, haveIds, wantIds, batchCap = EXCHANG
   const fixed = multiOnHave ? wantArr : haveArr;
   const merged = {};
   const fetchChunk = async (chunk) => {
-    const data = await exchangeRawImpl(league, multiOnHave ? chunk : fixed, multiOnHave ? fixed : chunk);
+    const data = await exchangeRawImpl(league, multiOnHave ? chunk : fixed, multiOnHave ? fixed : chunk, status);
     if (data && data.result && typeof data.result === "object") Object.assign(merged, data.result);
   };
   for (let i = 0; i < list.length; i += batchCap) {
@@ -1396,25 +1396,26 @@ function robustBidPx(bidData, id, askPx) {
 // NOT the clustered "wall" — many books (e.g. idols) have a few cheap real sellers
 // under a big overpriced wall, and the cheap ones are what you'd actually undercut to.
 function cheapestAsk(askData, id) {
-  const asks = collectExchangeOffers(askData, EXALTED_ID, id)
+  let asks = collectExchangeOffers(askData, EXALTED_ID, id)
     .filter((o) => o.payAmount > 0 && o.receiveAmount > 0)
     .map((o) => ({ px: o.payAmount / o.receiveAmount, stock: o.receiveStock || 0 }))
     .sort((a, b) => a.px - b.px);
-  const chosen = asks.find((a) => a.stock >= 2) || asks[0];
-  if (!chosen) return { px: 0, stock: 0, support: 0, spread: 1, aboveParCount: 0 };
-  // support = sellers within ±15% of the quoted price. Few (<3) = a lone cheap offer.
-  const support = asks.reduce((n, a) => n + (a.px >= chosen.px * 0.85 && a.px <= chosen.px * 1.15 ? 1 : 0), 0);
-  // spread = median ask / quoted. A big gap = wall-y book (a few cheap sellers far under
-  // the bulk, e.g. exchange sits below the item-search price) → the quote is unreliable.
-  const mid = asks[Math.floor(asks.length / 2)].px;
-  const spread = chosen.px > 0 ? mid / chosen.px : 1;
-  // aboveParCount = sellers asking MORE than the 1ex/item floor. This is the
-  // discriminator between a real-value rune and 1ex-floor spam: cheap runes
-  // (Greater Storm/Iron Rune) are listed ONLY at par 1:1 (1 ex : 1 item) because
-  // that's the exchange's practical single-item floor — aboveParCount=0. A rune
-  // genuinely worth several ex (the "of Aldur" runes) has many sellers above par.
-  const aboveParCount = asks.reduce((n, a) => n + (a.px > 1 ? 1 : 0), 0);
-  return { px: chosen.px, stock: chosen.stock, support, spread, aboveParCount };
+  // Drop par/sub-par floor spam (px ≤ 1). The exchange's practical single-item floor is
+  // "1 ex : 1 item", so cheap runes get flooded with ≤1ex asks (especially with the
+  // status:"any" read, which pulls in offline spam) — that's NOT a real price for a
+  // valuable item, just the floor everyone defaults to. (And an item genuinely worth
+  // ≤1ex has no real two-sided exchange market anyway.) What remains is the real book.
+  // Without this, Ire/Passion/Breath of Aldur floored at 1ex and read "no buyers"; the
+  // old stock≥2 skip hid the spam but wrongly inflated thin chase items (stock-1 = real).
+  asks = asks.filter((a) => a.px > 1);
+  if (!asks.length) return { px: 0, stock: 0 };
+  // De-bait: skip a lone lowball far under the next real ask (Cadigan's Epiphany had a
+  // stray cheap ask sitting under a 4444ex one). An ask under HALF the next-cheapest is
+  // bait → skip it (chained baits drop one at a time).
+  let i = 0;
+  while (i < asks.length - 1 && asks[i].px < asks[i + 1].px * 0.5) i++;
+  const chosen = asks[i];
+  return { px: chosen.px, stock: chosen.stock };
 }
 
 // One batched ex→currency exchange call; the best (cheapest) offer per currency
@@ -1686,7 +1687,7 @@ const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
 // Storm Rune, real ~79/ex) with par/overpriced asks (1:1, 2:1) + zero bids, which the
 // ask-fallback mis-priced at a fake ~1-2ex. v6 = v5 + `rough` flag; v5 = bid-else-ask
 // (ignores the overpriced wall); v4 = clustered ask; v3 = deep-ask; v2 = bid-only.
-const RUNE_BOOK_VERSION = 8;
+const RUNE_BOOK_VERSION = 9;
 // Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles
 // (its inter-call gap grows to several seconds under load), so a forced refresh of
 // a handful of items can take 20-40s. Give it real headroom so a SINGLE press
@@ -1709,7 +1710,7 @@ function readRuneBook(league) {
 // satisfied by it (won't pile on); a forced on-demand caller (`force`, the "Fetch
 // fresh prices" button) waits it out then runs its own pass for its exact norms so
 // the response reflects fresh prices. Skips currency (priced elsewhere).
-async function refreshRuneBook(league, normNames, force) {
+async function refreshRuneBook(league, normNames, force, opts = {}) {
   if (tradeStatus().limited || !normNames.length) return;
   while (runeBookRefreshInFlight) {
     try { await runeBookRefreshInFlight; } catch {}
@@ -1748,8 +1749,22 @@ async function refreshRuneBook(league, normNames, force) {
       // Bigger batch (10, just under the API's ~11 cap) + no per-item backfill →
       // far fewer calls so a big tab doesn't trip GGG's 30-per-5-min ban. Illiquid
       // items that get no offers in a batch correctly fall through to thin/no-buyers.
-      const askData = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id), RUNE_BOOK_BATCH, true);
-      const bidData = await fetchExchangeChunked(league, targets.map((t) => t.id), [EXALTED_ID], RUNE_BOOK_BATCH, true);
+      // status:"any" (NOT online-only): high-value chase items (Cadigan's Epiphany,
+      // Astrid's Creativity) often have NO seller online at any given moment, so an
+      // online-only book read returned ZERO offers → priced them "no buyers" despite a
+      // real market. "any" includes offline listings (you still whisper/trade them).
+      // ASK leg. The exchange returns ONE capped page (~100 listings TOTAL across all
+      // want-items), so a single high-volume SPAM item (Greater Storm Rune: 99 of 100
+      // listings, all 1ex) starves every other item in a shared batch to ZERO asks →
+      // they wrongly read "no buyers". No batch size fixes this — one whale floods any
+      // batch. So the Rune Picker (`opts.perItemAsk`) fetches the ask leg PER ITEM
+      // (batchCap 1 → each item gets its own full page; reward-screen pastes are small,
+      // so the extra calls are fine and the queue self-paces). Tab Tracker keeps the
+      // batched read (triage over big tabs — protect its call budget) with starvation
+      // backfill (skipBackfill=false) to recover the fully-starved few it can.
+      const askBatch = opts.perItemAsk ? 1 : RUNE_BOOK_BATCH;
+      const askData = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id), askBatch, opts.perItemAsk ? true : false, "any");
+      const bidData = await fetchExchangeChunked(league, targets.map((t) => t.id), [EXALTED_ID], RUNE_BOOK_BATCH, true, "any");
       const existing = readRuneBook(league);
       const prices = existing ? { ...existing.prices } : {};
       const now = new Date().toISOString();
@@ -1765,19 +1780,18 @@ async function refreshRuneBook(league, normNames, force) {
         const common = { id: t.id, name: t.name, category: t.category, updated: now };
         if (bidPx > 0) {
           prices[t.norm] = { ...common, ex: round4(bidPx), stock: Math.floor(ask.stock) || 0, side: "bid" };
-        } else if (ask.px >= 2 && ask.aboveParCount >= 3) {
-          // No standing BID, but a real ask-side market. Price off the lowest ask: the
-          // sell-side floor (what you'd undercut to liquidate), the only honest number
-          // the exchange gives. Labelled `side:"ask"` so the UI shows "lowest ask", not
-          // a confirmed buyer. This is the "of Aldur" rune case: 14-35 real sellers,
-          // zero bids — bid-only mispriced ALL of them as "no buyers".
-          //   GATE — both must hold, to NOT reprice the cheap-rune spam the bid-only
-          //   rule was built for (Greater Storm/Iron Rune):
-          //   • cheapest robust ask ≥ 2 ex/item — sub-1ex runes all FLOOR at par 1ex on
-          //     the ask side, so a 1ex cheapest is ambiguous (worth 1ex, or worth 0.01
-          //     and floored?) → stay thin. ≥2ex is unambiguously deliberate pricing.
-          //     (aboveParCount alone failed: overpriced 2:1/3:1 spam clears it too.)
-          //   • ≥3 sellers above par — real depth, not one lone wall.
+        } else if (ask.px >= 2) {
+          // No standing BID, but a real ask-side market. Price off the lowest (de-baited)
+          // ask: the sell-side floor (what you'd undercut to liquidate), the only honest
+          // number the exchange gives. Labelled `side:"ask"` so the UI shows "lowest ask",
+          // not a confirmed buyer. Covers BOTH the liquid "of Aldur" runes (many sellers)
+          // AND thin chase items (Cadigan's Epiphany / Astrid's Creativity — 1-2 sellers,
+          // usually offline; the status:"any" read + de-baited cheapestAsk surface them).
+          //   GATE: cheapest de-baited ask ≥ 2 ex/item. This is the spam guard — sub-1ex
+          //   runes (Greater Storm/Iron Rune) all FLOOR at par 1ex on the ask side, so a
+          //   1ex cheapest stays thin → "no buyers". ≥2ex is unambiguously real pricing.
+          //   (The old `aboveParCount ≥ 3` extra gate was DROPPED: it wrongly killed thin
+          //   high-value items that have only 1-2 sellers — e.g. Astrid's at one 50ex ask.)
           prices[t.norm] = { ...common, ex: round4(ask.px), stock: Math.floor(ask.stock) || 0, side: "ask" };
         } else {
           // No bid AND no real ask market → not liquidatable on the exchange. Mark thin
@@ -2367,7 +2381,7 @@ async function fetchRunePrices(text, league, forceFresh) {
     const norms = runePastedNorms(limitedRawLines);
     if (norms.length) {
       await Promise.race([
-        refreshRuneBook(league, norms, true).catch(() => {}),
+        refreshRuneBook(league, norms, true, { perItemAsk: true }).catch(() => {}),
         new Promise((resolve) => setTimeout(resolve, RUNE_FRESH_DEADLINE_MS)),
       ]);
     }
@@ -2590,7 +2604,7 @@ async function fetchRunePrices(text, league, forceFresh) {
       const b = runeBookPrices[nn];
       return !b || !b.updated || (Date.now() - new Date(b.updated).getTime() > RUNE_BOOK_TTL_MS);
     });
-    if (stale.length) refreshRuneBook(league, stale).catch(() => {});
+    if (stale.length) refreshRuneBook(league, stale, false, { perItemAsk: true }).catch(() => {});
   }
 
   results.sort((a, b) => (Number(b.total) || -1) - (Number(a.total) || -1));
