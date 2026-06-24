@@ -60,21 +60,26 @@ window.__viewInit["home"] = function () {
       strip.hidden = false;
       return;
     }
-    // Anything worth more than a single Divine reads better in divine.
+    // Chaos is now the base unit; Divine stays the high-value anchor. Item .ex
+    // values are exalted-denominated, so divide by chaosEx to read in chaos.
     const divineItem = d.items.find((i) => i.id === "divine");
     const divineEx = divineItem && divineItem.ex > 0 ? divineItem.ex : 0;
+    const chaosItem = d.items.find((i) => i.id === "chaos");
+    const chaosEx = chaosItem && chaosItem.ex > 0 ? chaosItem.ex : 0;
+    const toC = (ex) => chaosEx ? ex / chaosEx : ex;     // ponytail: falls back to ex if chaos rate missing
+    const unit = chaosEx ? "c" : "ex";
     // Surface the live Divine price in the hero stat (was a static "Ready").
     if (heroStat && divineEx) {
-      heroStat.textContent = fmtEx(divineEx) + " ex";
+      heroStat.textContent = fmtEx(toC(divineEx)) + " " + unit;
       if (heroLabel) heroLabel.textContent = "per Divine" + (d.stale ? " · stale" : "");
     }
     chips.innerHTML = d.items.map((c) => {
-      const base = c.id === "exalted";
+      const base = c.id === "chaos";
       const val = base
-        ? '1 <small>ex (base)</small>'
+        ? '1 <small>' + unit + ' (base)</small>'
         : divineEx && c.ex > divineEx
           ? fmtEx(c.ex / divineEx) + ' <small>div</small>'
-          : fmtEx(c.ex) + ' <small>ex</small>';
+          : fmtEx(toC(c.ex)) + ' <small>' + unit + '</small>';
       const icon = c.icon ? '<img class="fxicon" src="' + c.icon + '" alt="" loading="lazy" decoding="async">' : '';
       return '<span class="fxchip' + (c.id === "divine" ? " gold" : "") + '">' + icon +
         '<span class="fxname">' + shortName(c.name) + '</span>' +
@@ -210,19 +215,21 @@ window.__viewInit["home"] = function () {
     return '<svg class="econ-spark" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none"><path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
   }
 
-  function cards(latest, exPerDiv, items, points) {
+  function cards(latest, exPerDiv, chaosEx, items, points) {
+    const toC = (ex) => chaosEx ? ex / chaosEx : ex;     // ponytail: falls back to ex if chaos rate missing
+    const unit = chaosEx ? "c" : "ex";
     return items.map((it, idx) => {
       const v = latest.ex && latest.ex[it.id];
       if (!(v > 0)) return "";
       const isDiv = it.id === "divine";
       const divVal = exPerDiv ? v / exPerDiv : 0;
-      // Worth less than a Divine reads better in ex (e.g. Greater Exalted ~12ex,
+      // Worth less than a Divine reads better in chaos (e.g. Greater Exalted,
       // not "0.07 div"). Lead with the natural unit; show the other as the sub.
       const underDiv = !isDiv && divVal > 0 && divVal < 1;
-      const main = (isDiv || underDiv) ? fmtEx(v) + ' <small>ex</small>' : fmtDiv(divVal) + ' <small>div</small>';
+      const main = (isDiv || underDiv) ? fmtEx(toC(v)) + ' <small>' + unit + '</small>' : fmtDiv(divVal) + ' <small>div</small>';
       const subEx = isDiv ? ""
         : underDiv ? '<span class="econ-card-ex">' + fmtDiv(divVal) + " div</span>"
-        : '<span class="econ-card-ex">' + fmtEx(v) + " ex</span>";
+        : '<span class="econ-card-ex">' + fmtEx(toC(v)) + " " + unit + "</span>";
       const hist = points.map(p => p.ex && p.ex[it.id]).filter(x => x > 0);
       const chg = hist.length > 1 ? Math.round((v / hist[0] - 1) * 100) : null;
       const cls = chg > 0 ? "up" : chg < 0 ? "down" : "";
@@ -282,7 +289,9 @@ window.__viewInit["home"] = function () {
     }
     if (limited) applyLimit(d, false);
     const exPerDiv = latest.exPerDiv || 0;
-    econHeadline.innerHTML = exPerDiv ? '<b>' + fmtEx(exPerDiv) + '</b> <span>ex / Divine</span>' : "";
+    const chaosEx = latest.chaosEx || 0;     // exalted-per-chaos; chaos is the base unit now
+    const unit = chaosEx ? "c" : "ex";
+    econHeadline.innerHTML = exPerDiv ? '<b>' + fmtEx(chaosEx ? exPerDiv / chaosEx : exPerDiv) + '</b> <span>' + unit + ' / Divine</span>' : "";
     if (points.length >= 2) {
       const series = buildSeries(points, items);
       econChart.innerHTML = lineChart(series, points.length);
@@ -292,7 +301,7 @@ window.__viewInit["home"] = function () {
       econChartWrap.hidden = true; econEmpty.hidden = false;
       econEmpty.textContent = "Live values below — the relative-value trend graph fills in as history accumulates (sampled twice a day).";
     }
-    econCards.innerHTML = cards(latest, exPerDiv, items, points);
+    econCards.innerHTML = cards(latest, exPerDiv, chaosEx, items, points);
     econSub.textContent = "Live · priced in Divine" + (points.length ? " · " + points.length + "-pt trend" : "") +
       (cur ? "" : (d.updated ? " · " + ago(d.updated) : ""));
     econRendered = true;

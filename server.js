@@ -1612,6 +1612,7 @@ async function economyCurrent(league) {
   const exData = await getExchangeData(league).catch(() => null);
   const exPerDiv = (exData && exData.rates && exData.rates.divine) || 0;
   if (!exPerDiv) return null;                              // no Divine anchor → nothing to show
+  const chaosEx = (exData.rates && exData.rates.chaos) || 0; // exalted-per-chaos, so the home page can show chaos as the base unit
   const ex = {};
   for (const it of ECONOMY_ITEMS) {
     if (it.div) continue;
@@ -1623,7 +1624,7 @@ async function economyCurrent(league) {
     if (perDiv > 0) ex[id] = Math.round(perDiv * exPerDiv * 100) / 100;
   }
   if (Object.keys(ex).length < 2) return null;
-  return { t: new Date().toISOString(), exPerDiv, ex };
+  return { t: new Date().toISOString(), exPerDiv, chaosEx, ex };
 }
 
 async function sampleEconomy(league) {

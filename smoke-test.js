@@ -291,7 +291,7 @@ async function browserChecks() {
       const strip = await p.evaluate(() => { const s = document.getElementById("fxStrip"); const c = document.getElementById("fxStripChips"); const h = document.getElementById("homePriceStatus"); return { shown: s && !s.hidden, chips: c ? c.children.length : 0, icons: c ? c.querySelectorAll("img.fxicon").length : 0, hero: h ? h.textContent : "" }; });
       check(strip.shown && strip.chips === 3, "home currency strip renders chips from cache");
       check(strip.icons === 3, "home currency chips render currency icons");
-      check(/^320\s*ex/.test(strip.hero), "home hero stat shows live Divine price");
+      check(/^133\s*c/.test(strip.hero), "home hero stat shows live Divine price in chaos");
       await p.click("#fxStripRefresh"); await p.waitForTimeout(400);
       check(hits >= 2, "home currency refresh button re-fetches (force)");
       await p.close();
