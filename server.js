@@ -974,6 +974,13 @@ function normalizeName(value) {
     .trim();
 }
 
+// Tier qualifiers make a DIFFERENT item — "Greater Orb of Transmutation" is not
+// "Orb of Transmutation". The loose substring matcher below would otherwise treat
+// the base name (a substring of the qualified one) as a match and strip the tier,
+// mispricing Greater/Perfect orbs as their base. Require the tier words to agree.
+const TIER_RE = /\b(?:greater|perfect|lesser|grand|advanced)\b/g;
+function tierKey(value) { return (String(value).match(TIER_RE) || []).sort().join(" "); }
+
 function roundPriceExalted(value) {
   if (value >= 1) return Math.round(value * 100) / 100;
   if (value >= 0.01) return Math.round(value * 10000) / 10000;
@@ -2433,7 +2440,7 @@ async function fetchRunePrices(text, league, forceFresh) {
     let match = all.find((item) => item.normalizedName === norm);
     if (!match && norm.length >= 6) {
       match = all
-        .filter((item) => item.normalizedName.includes(norm) || norm.includes(item.normalizedName))
+        .filter((item) => (item.normalizedName.includes(norm) || norm.includes(item.normalizedName)) && tierKey(item.normalizedName) === tierKey(norm))
         .sort((a, b) => a.normalizedName.length - b.normalizedName.length)[0];
     }
 
