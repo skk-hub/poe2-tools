@@ -621,7 +621,11 @@ const EXCHANGE_BATCH_CAP = 3;
 // alone, so it gets its own page. Bounded so a systemic failure can't turn into
 // a per-item burst.
 const EXCHANGE_BACKFILL_CAP = 6;
-async function fetchExchangeChunked(league, haveIds, wantIds) {
+// batchCap: items per exchange call (default 3 = precise, used by arbitrage). The
+// book passes a bigger cap to cut total calls on big tabs (the rate limit is the
+// bottleneck). skipBackfill: don't re-fetch zero-offer items one-by-one — for the
+// book a starved item just means "thin/no buyers", not worth a call to confirm.
+async function fetchExchangeChunked(league, haveIds, wantIds, batchCap = EXCHANGE_BATCH_CAP, skipBackfill = false) {
   const haveArr = Array.isArray(haveIds) ? haveIds : [haveIds];
   const wantArr = Array.isArray(wantIds) ? wantIds : [wantIds];
   const multiOnHave = haveArr.length >= wantArr.length;
@@ -632,12 +636,12 @@ async function fetchExchangeChunked(league, haveIds, wantIds) {
     const data = await exchangeRawImpl(league, multiOnHave ? chunk : fixed, multiOnHave ? fixed : chunk);
     if (data && data.result && typeof data.result === "object") Object.assign(merged, data.result);
   };
-  for (let i = 0; i < list.length; i += EXCHANGE_BATCH_CAP) {
-    await fetchChunk(list.slice(i, i + EXCHANGE_BATCH_CAP));
+  for (let i = 0; i < list.length; i += batchCap) {
+    await fetchChunk(list.slice(i, i + batchCap));
   }
   // Skip backfill on a total miss (empty merged = rate-limit / systemic failure,
   // not page starvation) so we don't hammer with N individual retries.
-  if (Object.keys(merged).length) {
+  if (!skipBackfill && Object.keys(merged).length) {
     const covered = (id) => fixed.some((f) => {
       const [h, w] = multiOnHave ? [id, f] : [f, id];
       return collectExchangeOffers(merged, h, w).length > 0;
@@ -1041,10 +1045,12 @@ async function fetchTrade(url, options = {}) {
 const TAB_MARKERS_DEFAULT = [11, 12, 13, 14];
 const TAB_CACHE_FILE = path.join(DATA_DIR, ".tab-tracker.json");
 const TAB_CACHE_TTL_MS = 10 * 60 * 1000;
-// Fill at most this many unbooked items per request. EXCHANGE_BATCH_CAP=3, so this
-// is ≤2 exchange calls/visit — small enough it can't burst the shared IP. The UI
-// auto-polls the CACHED path (no re-search) to fill the rest a batch at a time.
-const TAB_FILL_PER_VISIT = 6;
+// Unique names to price per request. With RUNE_BOOK_BATCH=10 + 2 legs that's ~4
+// exchange calls/visit, so a typical tab (~40 unique types) finishes in ~2 visits
+// without tripping GGG's 30-per-5-min ban. The UI auto-polls the CACHED path to
+// fill any remainder. (Was 6 with batch-3 → ~28 calls for a big tab = a 30-min ban.)
+const TAB_FILL_PER_VISIT = 20;
+const RUNE_BOOK_BATCH = 10;
 
 // Parse a "11,12,13,14" markers string → distinct positive numbers (≤8, to bound
 // the per-price search count). Falls back to the default set.
@@ -1698,8 +1704,11 @@ async function refreshRuneBook(league, normNames, force) {
       // so we price off the BID (what buyers actually pay = the real liquidation
       // value). When NO buyer stands on the exchange, we DON'T trust the ask: the
       // item is marked `thin` so consumers show "no buyers" instead of a fake price.
-      const askData = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id));
-      const bidData = await fetchExchangeChunked(league, targets.map((t) => t.id), [EXALTED_ID]);
+      // Bigger batch (10, just under the API's ~11 cap) + no per-item backfill →
+      // far fewer calls so a big tab doesn't trip GGG's 30-per-5-min ban. Illiquid
+      // items that get no offers in a batch correctly fall through to thin/no-buyers.
+      const askData = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id), RUNE_BOOK_BATCH, true);
+      const bidData = await fetchExchangeChunked(league, targets.map((t) => t.id), [EXALTED_ID], RUNE_BOOK_BATCH, true);
       const existing = readRuneBook(league);
       const prices = existing ? { ...existing.prices } : {};
       const now = new Date().toISOString();

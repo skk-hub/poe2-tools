@@ -71,11 +71,13 @@ window.__viewInit["tab-tracker"] = function () {
   // Poll the (free, local) trade-status until the cooldown clears, counting down so a
   // big read can auto-resume hands-off across rate-limit windows. Returns false if the
   // user cancelled (clicked Stop) or it waited absurdly long.
+  const MAX_AUTO_WAIT = 240;   // auto-wait short bans; a longer one (the 30-min ban) → stop, resume later
   async function waitForCooldown(label){
     for(let cycles=0; cycles<15 && !cancelRead; cycles++){
       let st; try{ st=await (await fetch("/api/trade-status")).json(); }catch{ return true; }
       if(!st.limited) return true;
       let secs=Math.max(1, st.secondsRemaining||30);
+      if(secs > MAX_AUTO_WAIT) return false;   // long ban → bail out; cached progress resumes on next click
       while(secs>0){
         if(cancelRead) return false;
         const msg=label+" — rate-limited, auto-resuming in "+secs+"s… (Stop to halt)";
@@ -145,8 +147,8 @@ window.__viewInit["tab-tracker"] = function () {
         setStatus("Stopped. Priced "+data.pricedCount+" of "+data.results.length+" so far — click Value tab to continue."+w,"err");
         setProgress("Stopped — "+data.pricedCount+" of "+data.results.length+" priced. Click Value tab to continue.",null,"");
       }else if((data.remaining||0)>0){
-        setStatus("Paused after a long cooldown. Priced "+data.pricedCount+" of "+data.results.length+" — click Value tab to continue."+w,"err");
-        setProgress("Paused (long cooldown) — "+data.pricedCount+" of "+data.results.length+". Click Value tab to continue.",null,"");
+        setStatus("Hit a long rate-limit ban — priced "+data.pricedCount+" of "+data.results.length+" so far (saved). Click Value tab again in a few minutes to continue where it left off."+w,"err");
+        setProgress("Rate-limit ban — "+data.pricedCount+" of "+data.results.length+" priced (saved). Click Value tab in a few min to continue.",null,"");
       }else{
         const thinTail=(data.thinCount||0)>0?" "+data.thinCount+" had no live buyers (thin)."  :"";
         setStatus("Valued "+data.pricedCount+" of "+data.results.length+" items at live market prices."+thinTail+w,"ok");
