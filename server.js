@@ -1401,14 +1401,20 @@ function cheapestAsk(askData, id) {
     .map((o) => ({ px: o.payAmount / o.receiveAmount, stock: o.receiveStock || 0 }))
     .sort((a, b) => a.px - b.px);
   const chosen = asks.find((a) => a.stock >= 2) || asks[0];
-  if (!chosen) return { px: 0, stock: 0, support: 0, spread: 1 };
+  if (!chosen) return { px: 0, stock: 0, support: 0, spread: 1, aboveParCount: 0 };
   // support = sellers within ±15% of the quoted price. Few (<3) = a lone cheap offer.
   const support = asks.reduce((n, a) => n + (a.px >= chosen.px * 0.85 && a.px <= chosen.px * 1.15 ? 1 : 0), 0);
   // spread = median ask / quoted. A big gap = wall-y book (a few cheap sellers far under
   // the bulk, e.g. exchange sits below the item-search price) → the quote is unreliable.
   const mid = asks[Math.floor(asks.length / 2)].px;
   const spread = chosen.px > 0 ? mid / chosen.px : 1;
-  return { px: chosen.px, stock: chosen.stock, support, spread };
+  // aboveParCount = sellers asking MORE than the 1ex/item floor. This is the
+  // discriminator between a real-value rune and 1ex-floor spam: cheap runes
+  // (Greater Storm/Iron Rune) are listed ONLY at par 1:1 (1 ex : 1 item) because
+  // that's the exchange's practical single-item floor — aboveParCount=0. A rune
+  // genuinely worth several ex (the "of Aldur" runes) has many sellers above par.
+  const aboveParCount = asks.reduce((n, a) => n + (a.px > 1 ? 1 : 0), 0);
+  return { px: chosen.px, stock: chosen.stock, support, spread, aboveParCount };
 }
 
 // One batched ex→currency exchange call; the best (cheapest) offer per currency
@@ -1680,7 +1686,7 @@ const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
 // Storm Rune, real ~79/ex) with par/overpriced asks (1:1, 2:1) + zero bids, which the
 // ask-fallback mis-priced at a fake ~1-2ex. v6 = v5 + `rough` flag; v5 = bid-else-ask
 // (ignores the overpriced wall); v4 = clustered ask; v3 = deep-ask; v2 = bid-only.
-const RUNE_BOOK_VERSION = 7;
+const RUNE_BOOK_VERSION = 8;
 // Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles
 // (its inter-call gap grows to several seconds under load), so a forced refresh of
 // a handful of items can take 20-40s. Give it real headroom so a SINGLE press
@@ -1758,10 +1764,24 @@ async function refreshRuneBook(league, normNames, force) {
         const bidPx = robustBidPx(bidData, t.id, ask.px || 0);   // real, non-crossed bid only
         const common = { id: t.id, name: t.name, category: t.category, updated: now };
         if (bidPx > 0) {
-          prices[t.norm] = { ...common, ex: round4(bidPx), stock: Math.floor(ask.stock) || 0 };
+          prices[t.norm] = { ...common, ex: round4(bidPx), stock: Math.floor(ask.stock) || 0, side: "bid" };
+        } else if (ask.px >= 2 && ask.aboveParCount >= 3) {
+          // No standing BID, but a real ask-side market. Price off the lowest ask: the
+          // sell-side floor (what you'd undercut to liquidate), the only honest number
+          // the exchange gives. Labelled `side:"ask"` so the UI shows "lowest ask", not
+          // a confirmed buyer. This is the "of Aldur" rune case: 14-35 real sellers,
+          // zero bids — bid-only mispriced ALL of them as "no buyers".
+          //   GATE — both must hold, to NOT reprice the cheap-rune spam the bid-only
+          //   rule was built for (Greater Storm/Iron Rune):
+          //   • cheapest robust ask ≥ 2 ex/item — sub-1ex runes all FLOOR at par 1ex on
+          //     the ask side, so a 1ex cheapest is ambiguous (worth 1ex, or worth 0.01
+          //     and floored?) → stay thin. ≥2ex is unambiguously deliberate pricing.
+          //     (aboveParCount alone failed: overpriced 2:1/3:1 spam clears it too.)
+          //   • ≥3 sellers above par — real depth, not one lone wall.
+          prices[t.norm] = { ...common, ex: round4(ask.px), stock: Math.floor(ask.stock) || 0, side: "ask" };
         } else {
-          // No standing buyer → not really liquidatable on the exchange. Mark thin so it
-          // shows "no buyers" instead of a fabricated ask price (or looping on "pricing…").
+          // No bid AND no real ask market → not liquidatable on the exchange. Mark thin
+          // so it shows "no buyers" instead of a fabricated price (or looping "pricing…").
           prices[t.norm] = { ...common, ex: 0, thin: true, stock: 0 };
         }
       }
@@ -2393,12 +2413,16 @@ async function fetchRunePrices(text, league, forceFresh) {
   const bookResultFor = (nn, qty, fallbackName) => {
     const b = runeBookPrices[nn];
     if (!b || !(b.ex > 0)) return null;
+    const askSide = b.side === "ask";
     return {
       qty, name: b.name || fallbackName, category: (b.category || "Exchange") + " (trade2)",
       each: b.ex, total: roundPriceExalted(b.ex * qty), currency: "exalted",
-      source: "trade2 exchange", rawPrice: "",
+      source: askSide ? "trade2 exchange (ask)" : "trade2 exchange",
+      rawPrice: askSide ? "lowest ask — no standing buyers, sell-side floor" : "",
       divineValue: currencyRates.divine ? roundPriceExalted(b.ex / currencyRates.divine) : 0,
-      change7d: "", confidence: b.stock >= 10 ? "high" : "medium",
+      // Ask-side is a sell floor, not a confirmed trade → cap confidence at "low" so it
+      // never outranks a real bid-priced or volume-backed pick in the default sort.
+      change7d: "", confidence: askSide ? "low" : (b.stock >= 10 ? "high" : "medium"),
       units: Number.isFinite(b.stock) ? b.stock : null,
     };
   };
