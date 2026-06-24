@@ -15,7 +15,12 @@
   font-size:1.5rem;
   color:var(--gold, #c9a227);
 }
+.toolroot-tt .tt-total{ flex-wrap:wrap; }
 .toolroot-tt .tt-total span{ color:var(--muted, #9a9a9a); }
+/* Low-confidence price flag — thin/wall-y exchange books (idols, rare essences). */
+.toolroot-tt .tt-rough{ color:var(--gold, #c9a227); font-weight:700; cursor:help; }
+.toolroot-tt .tt-legend{ flex-basis:100%; margin-top:4px; color:var(--text-faint, #888); font:500 11px var(--font-mono, monospace); }
+td .tt-rough{ margin-left:1px; }
 .toolroot-tt .tt-browser{
   margin:10px 0;
   border:1px solid var(--line, #2a2a2a);

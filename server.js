@@ -1144,7 +1144,7 @@ async function valueTabItems(account, league, items, meta) {
   const rates = await getExchangeRates(league);
   const results = items.map((it) => {
     const b = book.prices[nk(it.name)];
-    if (b && b.ex > 0) return { qty: it.qty, name: it.name, each: b.ex, total: roundPriceExalted(b.ex * it.qty), source: "trade2 exchange" };
+    if (b && b.ex > 0) return { qty: it.qty, name: it.name, each: b.ex, total: roundPriceExalted(b.ex * it.qty), source: b.rough ? "exchange · rough" : "trade2 exchange", rough: !!b.rough };
     // Sellers list it but no buyers stand on the exchange — can't value a sale, so
     // say so plainly instead of quoting the aspirational ask. `thin` = settled (not
     // still loading), so the poll completes and it isn't re-fetched.
@@ -1393,7 +1393,15 @@ function cheapestAsk(askData, id) {
     .filter((o) => o.payAmount > 0 && o.receiveAmount > 0)
     .map((o) => ({ px: o.payAmount / o.receiveAmount, stock: o.receiveStock || 0 }))
     .sort((a, b) => a.px - b.px);
-  return asks.find((a) => a.stock >= 2) || asks[0] || { px: 0, stock: 0 };
+  const chosen = asks.find((a) => a.stock >= 2) || asks[0];
+  if (!chosen) return { px: 0, stock: 0, support: 0, spread: 1 };
+  // support = sellers within ±15% of the quoted price. Few (<3) = a lone cheap offer.
+  const support = asks.reduce((n, a) => n + (a.px >= chosen.px * 0.85 && a.px <= chosen.px * 1.15 ? 1 : 0), 0);
+  // spread = median ask / quoted. A big gap = wall-y book (a few cheap sellers far under
+  // the bulk, e.g. exchange sits below the item-search price) → the quote is unreliable.
+  const mid = asks[Math.floor(asks.length / 2)].px;
+  const spread = chosen.px > 0 ? mid / chosen.px : 1;
+  return { px: chosen.px, stock: chosen.stock, support, spread };
 }
 
 // One batched ex→currency exchange call; the best (cheapest) offer per currency
@@ -1659,9 +1667,9 @@ const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
 // Bump when the PRICING LOGIC changes so cached entries written by old logic are
 // auto-discarded and re-fetched — otherwise a stale book on the prod volume (which
 // survives `--build` redeploys) keeps serving old prices and silently defeats the
-// fix. v5 = bid-else-cheapest-real-ask (ignores the overpriced wall); v4 = robust/
-// clustered ask; v3 = deep-ask; v2 = bid-only; v1 = one-sided cheapest-ask.
-const RUNE_BOOK_VERSION = 5;
+// fix. v6 = v5 + `rough` low-confidence flag; v5 = bid-else-cheapest-real-ask
+// (ignores the overpriced wall); v4 = clustered ask; v3 = deep-ask; v2 = bid-only.
+const RUNE_BOOK_VERSION = 6;
 // Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles
 // (its inter-call gap grows to several seconds under load), so a forced refresh of
 // a handful of items can take 20-40s. Give it real headroom so a SINGLE press
@@ -1735,9 +1743,13 @@ async function refreshRuneBook(league, normNames, force) {
         const askPx = ask.px || 0;
         const bidPx = robustBidPx(bidData, t.id, askPx);   // real, non-crossed bid only
         const ex = bidPx > 0 ? bidPx : askPx;
+        // Low confidence: a lone-ish price (few sellers near it) OR a wall-y book (cheapest
+        // far below the median — exchange likely under the real/item-search price). A real
+        // standing bid is firmer, so it's never flagged.
+        const rough = bidPx > 0 ? false : ((ask.support || 0) < 3 || (ask.spread || 1) > 2.5);
         const common = { id: t.id, name: t.name, category: t.category, updated: now };
         if (ex > 0) {
-          prices[t.norm] = { ...common, ex: round4(ex), stock: Math.floor(ask.stock) || 0 };
+          prices[t.norm] = { ...common, ex: round4(ex), stock: Math.floor(ask.stock) || 0, ...(rough ? { rough: true } : {}) };
         } else {
           // No bid and no ask = not really traded on the exchange → mark thin so it isn't
           // re-fetched every visit (shows "no market" rather than looping on "pricing…").

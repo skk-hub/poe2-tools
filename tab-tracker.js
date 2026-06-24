@@ -45,10 +45,16 @@ window.__viewInit["tab-tracker"] = function () {
     const results=data.results||[];
     totalEl.hidden=false;
     const thinNote=(data.thinCount||0)>0?' · '+data.thinCount+' no buyers':'';
-    totalEl.innerHTML='<b>'+(data.totalDiv||0)+' div</b> <span>('+fxEx(data.totalEx||0)+' sellable) · '+(data.pricedCount||0)+'/'+results.length+' priced'+thinNote+'</span>';
+    const roughN=results.filter(r=>r.rough).length;
+    const roughNote=roughN>0?' · <span class="tt-rough">'+roughN+' rough*</span>':'';
+    totalEl.innerHTML='<b>'+(data.totalDiv||0)+' div</b> <span>('+fxEx(data.totalEx||0)+' sellable) · '+(data.pricedCount||0)+'/'+results.length+' priced'+thinNote+roughNote+'</span>'+
+      (roughN>0?'<div class="tt-legend">* rough estimate — thin/wall-y exchange book (idols, rare essences). Verify before trading.</div>':'');
     rows.innerHTML=results.map(item=>{
       let eachCell, valCell;
-      if(item.total){ eachCell=fxEx(item.each); valCell=fxEx(item.total); }
+      if(item.total){
+        const star=item.rough?'<span class="tt-rough" title="Rough — thin exchange book, verify before trading">*</span>':'';
+        eachCell=fxEx(item.each)+star; valCell=fxEx(item.total)+star;
+      }
       else if(item.thin){ eachCell='<span class="muted">—</span>'; valCell='<span class="muted">—</span>'; }
       else { eachCell='<span class="muted">pricing…</span>'; valCell=''; }
       return '<tr'+(item.total?'':' class="muted"')+'>'+
