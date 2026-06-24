@@ -47,6 +47,12 @@ function loadPlaywright() {
 function chromiumExe() {
   const base = path.join(os.homedir(), "AppData/Local/ms-playwright");
   try {
+    // Prefer chrome-headless-shell: it's TRULY windowless. Full chrome.exe — even
+    // launched headless — briefly opens a window on Windows that steals focus from the
+    // foreground app (the user's game). The headless shell never creates a window, so
+    // browser checks stay silent/background. Fall back to full chrome only if absent.
+    const shellDirs = fs.readdirSync(base).filter(d => /^chromium_headless_shell-\d/.test(d)).sort().reverse();
+    for (const d of shellDirs) for (const sub of ["chrome-headless-shell-win64/chrome-headless-shell.exe", "chrome-headless-shell-win/chrome-headless-shell.exe"]) { const e = path.join(base, d, sub); if (fs.existsSync(e)) return e; }
     const dirs = fs.readdirSync(base).filter(d => /^chromium-\d/.test(d)).sort().reverse();
     for (const d of dirs) for (const sub of ["chrome-win64/chrome.exe", "chrome-win/chrome.exe"]) { const e = path.join(base, d, sub); if (fs.existsSync(e)) return e; }
   } catch {}
