@@ -1675,9 +1675,12 @@ const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
 // Bump when the PRICING LOGIC changes so cached entries written by old logic are
 // auto-discarded and re-fetched — otherwise a stale book on the prod volume (which
 // survives `--build` redeploys) keeps serving old prices and silently defeats the
-// fix. v6 = v5 + `rough` low-confidence flag; v5 = bid-else-cheapest-real-ask
+// fix. v7 = BID-ONLY (dropped the v5 ask fallback): no standing buyer → thin/no-buyers
+// instead of an aspirational ask. The bulk exchange floods cheap items (e.g. Greater
+// Storm Rune, real ~79/ex) with par/overpriced asks (1:1, 2:1) + zero bids, which the
+// ask-fallback mis-priced at a fake ~1-2ex. v6 = v5 + `rough` flag; v5 = bid-else-ask
 // (ignores the overpriced wall); v4 = clustered ask; v3 = deep-ask; v2 = bid-only.
-const RUNE_BOOK_VERSION = 6;
+const RUNE_BOOK_VERSION = 7;
 // Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles
 // (its inter-call gap grows to several seconds under load), so a forced refresh of
 // a handful of items can take 20-40s. Give it real headroom so a SINGLE press
@@ -1745,22 +1748,20 @@ async function refreshRuneBook(league, normNames, force) {
       const prices = existing ? { ...existing.prices } : {};
       const now = new Date().toISOString();
       for (const t of targets) {
-        // Cheapest real ask = the sell floor; use a REAL (non-crossed) bid if one stands,
-        // else the ask. Only when there are NO offers at all is it thin/unpriceable.
+        // Price off the BID (what buyers actually pay = real liquidation value). The ASK
+        // side is NOT a price for thin items: GGG's bulk exchange floods cheap items
+        // (e.g. Greater Storm Rune, real ~79/ex) with aspirational/par asks (1:1, 2:1 …)
+        // and no buyers — an ask-fallback mis-priced those at a fake ~1-2ex. So: a real
+        // standing bid IS the price; NO bid → thin / "no buyers" (don't fabricate from
+        // the ask). Same handling as essences. (ask kept only for stock + crossed-bid ref.)
         const ask = cheapestAsk(askData, t.id);
-        const askPx = ask.px || 0;
-        const bidPx = robustBidPx(bidData, t.id, askPx);   // real, non-crossed bid only
-        const ex = bidPx > 0 ? bidPx : askPx;
-        // Low confidence: a lone-ish price (few sellers near it) OR a wall-y book (cheapest
-        // far below the median — exchange likely under the real/item-search price). A real
-        // standing bid is firmer, so it's never flagged.
-        const rough = bidPx > 0 ? false : ((ask.support || 0) < 3 || (ask.spread || 1) > 2.5);
+        const bidPx = robustBidPx(bidData, t.id, ask.px || 0);   // real, non-crossed bid only
         const common = { id: t.id, name: t.name, category: t.category, updated: now };
-        if (ex > 0) {
-          prices[t.norm] = { ...common, ex: round4(ex), stock: Math.floor(ask.stock) || 0, ...(rough ? { rough: true } : {}) };
+        if (bidPx > 0) {
+          prices[t.norm] = { ...common, ex: round4(bidPx), stock: Math.floor(ask.stock) || 0 };
         } else {
-          // No bid and no ask = not really traded on the exchange → mark thin so it isn't
-          // re-fetched every visit (shows "no market" rather than looping on "pricing…").
+          // No standing buyer → not really liquidatable on the exchange. Mark thin so it
+          // shows "no buyers" instead of a fabricated ask price (or looping on "pricing…").
           prices[t.norm] = { ...common, ex: 0, thin: true, stock: 0 };
         }
       }
