@@ -28,7 +28,7 @@ window.__viewInit["map-juicer"]=function(){
 
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
-  let rarityMin = 60, packMin = 30, wdropMin = 0;   // wdrop is 0 (off) or 100 (≥100%); midrange is useless
+  let rarityMin = 0, packMin = 0, wdropMin = 0;   // all start at 0 (off) — build up from nothing; wdrop is 0 or 100
   // Match a number ≥ pct (pct is a multiple of 10). Two-digit: first digit
   // (pct/10)…9 + any second digit (so ≥ pct); OR any three-digit (100+). Uses
   // [0-9] not "." so it can't swallow the trailing "%". The label token carries the
@@ -45,7 +45,7 @@ window.__viewInit["map-juicer"]=function(){
   let target = "waystones";    // "waystones" | "tablets"
   let wMatch = "floor";        // "floor" (rarity/pack ≥) | "blue" (any reward mod)
   let wRevives = false;        // require fully-juiced (0 revives)
-  let wExclude = true;         // exclude risk suffixes
+  let wExclude = false;        // exclude risk suffixes — off by default; tick it when you want it
   let wCorrupt = false;        // require Corrupted
   const tContent = new Set();  // selected tablet content-type ids
   const tMods = new Set();      // selected desirable-mod tokens to require
@@ -115,7 +115,7 @@ window.__viewInit["map-juicer"]=function(){
     let mods = "";
     if (tContent.size){
       const modChips = gatherDesirables().map(m => `<button class="chip${tMods.has(m.token)?" on":""}" type="button" data-mod="${esc(m.token)}">${esc(m.label)}</button>`).join("");
-      mods = `<p class="forge-hint">Require any of these mods (the content's best are pre-picked — deselect to widen):</p><div class="forge-chips">${modChips}</div>`;
+      mods = `<p class="forge-hint">Optionally require some of these mods (tick to add — none required by default):</p><div class="forge-chips">${modChips}</div>`;
     }
     return `
       <p class="forge-hint">Pick the content you're farming — socket the tablet in a Tower covering those maps.</p>
@@ -167,7 +167,7 @@ window.__viewInit["map-juicer"]=function(){
     root.querySelectorAll("[data-chip]").forEach(b => b.addEventListener("click", () => {
       const id = b.getAttribute("data-chip"), c = D.contentTypes.find(x => x.id === id);
       if (tContent.has(id)) tContent.delete(id);
-      else { tContent.add(id); (c && c.desirable || []).forEach(m => tMods.add(m.token)); }  // pre-pick the content's best mods
+      else tContent.add(id);   // no mods pre-picked — tick the ones you want
       renderSheet();
     }));
     root.querySelectorAll("[data-mod]").forEach(b => b.addEventListener("click", () => {
