@@ -113,6 +113,51 @@ window.__viewInit["map-juicer"]=function(){
   }
   function currentRegex(){ return target === "tablets" ? buildTablet() : buildWaystone(); }
 
+  // ── Pinned regexes (localStorage, persist across sessions) ──
+  // Built expressions are throwaway by default — rebuild them through the forge each
+  // time. Pin one to keep it: it lands in the "Pinned" card below with its own Copy,
+  // so you grab a saved filter without re-deriving it. A short auto-label (target +
+  // mode/content at pin time) makes the list readable since raw regex is cryptic.
+  const PIN_KEY = "poe2.regexForge.pins";
+  function loadPins(){ try { return JSON.parse(localStorage.getItem(PIN_KEY)) || []; } catch { return []; } }
+  function savePins(p){ try { localStorage.setItem(PIN_KEY, JSON.stringify(p)); } catch {} }
+  function currentLabel(){
+    if (target === "tablets"){
+      const names = D.contentTypes.filter(c => tContent.has(c.id)).map(c => c.label);
+      return "Tablets" + (names.length ? " · " + names.join("/") : "");
+    }
+    const m = wMatch === "dump" ? "low-value dump" : wMatch === "blue" ? "any reward mod" : "rarity/pack floor";
+    return "Waystones · " + m;
+  }
+  function pinCurrent(){
+    const rx = currentRegex();
+    if (!rx) return;
+    const pins = loadPins();
+    if (pins.some(p => p.rx === rx)) return;   // already pinned — no dupes
+    pins.unshift({ rx, label: currentLabel(), ts: Date.now() });
+    savePins(pins);
+    renderSheet();
+  }
+  function unpin(rx){ savePins(loadPins().filter(p => p.rx !== rx)); renderSheet(); }
+  function pinsHtml(){
+    const pins = loadPins();
+    if (!pins.length) return "";
+    const items = pins.map(p => `<li class="pin-item">
+      <div class="pin-row">
+        <span class="pin-label">${esc(p.label)}</span>
+        <span class="pin-actions">
+          <button class="copy" type="button" data-copy="${esc(p.rx)}">Copy</button>
+          <button class="pin-del" type="button" data-unpin="${esc(p.rx)}" aria-label="Remove pin" title="Remove pin">✕</button>
+        </span>
+      </div>
+      <code class="pin-rx">${esc(p.rx)}</code>
+    </li>`).join("");
+    return `<div class="rxcard rx-pins">
+      <div class="rxcard-head"><span class="rxcard-title">Pinned</span><span class="rxcard-kind">saved</span></div>
+      <div class="rxcard-body"><ul class="pinlist">${items}</ul></div>
+    </div>`;
+  }
+
   // ── Controls ──
   function seg(attr, val, cur, label){ return `<button class="seg-btn${val===cur?" on":""}" type="button" data-${attr}="${val}">${esc(label)}</button>`; }
   function stepper(id, label, val, lo, hi, unit){
@@ -155,11 +200,15 @@ window.__viewInit["map-juicer"]=function(){
   function forgeOutput(){
     const rx = currentRegex(), len = rx.length, over = len > D.regexLimit, empty = !rx;
     const ph = target === "tablets" ? "Pick at least one content type…" : "Set a minimum on at least one stat…";
+    const pinned = !empty && loadPins().some(p => p.rx === rx);
     return `<div class="forge-out${empty?" empty":""}">
       <code class="regexbox">${empty ? ph : esc(rx)}</code>
       <div class="forge-meta">
         <span class="rx-len ${over?"over":""}">${len}/${D.regexLimit}</span>
-        <button class="copy" type="button" data-copy="${esc(rx)}"${empty?" disabled":""}>Copy</button>
+        <span class="forge-acts">
+          <button class="pin-btn${pinned?" on":""}" type="button" data-pin="1"${empty||pinned?" disabled":""}>${pinned?"Pinned ✓":"Pin"}</button>
+          <button class="copy" type="button" data-copy="${esc(rx)}"${empty?" disabled":""}>Copy</button>
+        </span>
       </div>
     </div>`;
   }
@@ -175,9 +224,15 @@ window.__viewInit["map-juicer"]=function(){
         ${forgeOutput()}
         <div class="rxcard-note">${note}</div>
       </div>
-    </div>`;
+    </div>` + pinsHtml();
     bindForge();
     bindCopy();
+    bindPins();
+  }
+  function bindPins(){
+    const pinBtn = els.sheet.querySelector("[data-pin]");
+    if (pinBtn) pinBtn.addEventListener("click", pinCurrent);
+    els.sheet.querySelectorAll("[data-unpin]").forEach(b => b.addEventListener("click", () => unpin(b.getAttribute("data-unpin"))));
   }
   function bindForge(){
     const root = els.sheet;

@@ -69,6 +69,22 @@
   .toolroot-mj .forge-out .regexbox{margin:0;border:0;padding:0;background:transparent}
   .toolroot-mj .forge-out.empty .regexbox{color:var(--mu)}
   .toolroot-mj .forge-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px dashed var(--bd);padding-top:9px}
+  .toolroot-mj .forge-acts{display:flex;align-items:center;gap:8px}
+  .toolroot-mj .pin-btn{padding:5px 12px;border:1px solid var(--bd);background:transparent;color:var(--mu);font:700 11px var(--ff-mono);text-transform:uppercase;white-space:nowrap;cursor:pointer;border-radius:var(--r-sm)}
+  .toolroot-mj .pin-btn:hover:not(:disabled){color:var(--gd);border-color:var(--border-gold)}
+  .toolroot-mj .pin-btn.on{color:var(--gd);border-color:var(--border-gold);opacity:.7;cursor:default}
+  .toolroot-mj .pin-btn:disabled{cursor:default}
+
+  /* Pinned regexes */
+  .toolroot-mj .rx-pins{margin-top:14px}
+  .toolroot-mj .pinlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+  .toolroot-mj .pin-item{border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--surface-1);padding:9px 10px}
+  .toolroot-mj .pin-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+  .toolroot-mj .pin-label{color:var(--tx);font:700 12px var(--ff)}
+  .toolroot-mj .pin-actions{display:flex;align-items:center;gap:6px}
+  .toolroot-mj .pin-del{padding:4px 9px;border:1px solid var(--bd);background:transparent;color:var(--mu);font:11px var(--ff-mono);cursor:pointer;border-radius:var(--r-sm);line-height:1}
+  .toolroot-mj .pin-del:hover{color:#e66;border-color:#e66}
+  .toolroot-mj .pin-rx{display:block;font:11px var(--ff-mono);color:var(--gd);word-break:break-all;white-space:pre-wrap}
 
   /* Collapsible evaluator */
   .toolroot-mj .mj-d{border:1px solid var(--bd);border-radius:var(--r-md);background:var(--surface-1);margin-top:18px;overflow:hidden}
