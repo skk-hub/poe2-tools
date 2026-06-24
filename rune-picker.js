@@ -202,7 +202,37 @@ window.__viewInit["rune-picker"] = function () {
     }
   }
 
+  // Auto-fill: exchange items show "pricing…" while the background book fill runs.
+  // Re-poll the (cheap, cached) endpoint so prices appear WITHOUT re-clicking, and
+  // surface progress in the shared top bar. Bounded so it can't hammer the queue.
+  const AUTO_POLL_MS=7000, AUTO_POLL_MAX=10;
+  let autoPollTimer=0, autoPolls=0;
+  function pendingCount(){ return (runeResultData||[]).filter(r=>/pricing/i.test(r.category||"")).length; }
+  function stopAutoPoll(){ if(autoPollTimer){clearTimeout(autoPollTimer);autoPollTimer=0;} autoPolls=0; if(window.__bg) window.__bg.clear("rune-picker"); }
+  function scheduleAutoPoll(text,league){
+    const pending=pendingCount(), total=(runeResultData||[]).length||1, done=total-pending;
+    if(!pending){
+      if(window.__bg && autoPolls>0) window.__bg.set("rune-picker","Rune Picker · priced "+total,1,"done");
+      autoPollTimer=0; autoPolls=0; return;
+    }
+    if(autoPolls>=AUTO_POLL_MAX){
+      setRuneStatus(pending+" still pricing — Trade2 is slow; click Check picks to keep filling.","");
+      if(window.__bg) window.__bg.clear("rune-picker"); autoPollTimer=0; autoPolls=0; return;
+    }
+    setRuneStatus("Pricing "+pending+" item"+(pending>1?"s":"")+" from Trade2 — auto-updating… ("+done+"/"+total+" priced)","");
+    if(window.__bg) window.__bg.set("rune-picker","Rune Picker · pricing "+pending+" left",done/total,"active");
+    autoPollTimer=setTimeout(async()=>{
+      autoPolls++;
+      try{
+        const data=await fetch("/api/rune-prices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,league,forceFresh:false})}).then(r=>r.json());
+        if(data && (data.results||[]).length) renderRuneResults(data);
+        scheduleAutoPoll(text,league);
+      }catch{ stopAutoPoll(); }
+    },AUTO_POLL_MS);
+  }
+
   async function checkRunes(forceFresh){
+    stopAutoPoll();
     await refreshTradeStatus();
     if(tradeQueueRunning){
       setRuneStatus("Trade queue is already running. Wait for it to finish or refresh to start over.", "err");
@@ -234,6 +264,7 @@ window.__viewInit["rune-picker"] = function () {
       setRuneStatus("Checked "+data.count+" picks"+freshNote+(queued?"; "+queued+" trade rows queued":"")+(data.truncated?" (first 30 lines only)":"")+"."+limited, data.tradeLimitedUntil?"err":"ok");
       if(data.tradeLimitedUntil) setTradeLimit(data.tradeLimitedUntil);
       if(queued) processTradeQueue(data.results,league);
+      scheduleAutoPoll(text,league);   // keep filling "pricing…" items hands-free
     }catch(err){
       setRuneStatus("Rune check failed: "+err.message, "err");
     }finally{

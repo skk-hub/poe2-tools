@@ -2502,6 +2502,14 @@ async function fetchRunePrices(text, league, forceFresh) {
     if (!isSkillOrSupport) {
       const bk = bookResultFor(norm, parsed.qty, cleanName);
       if (bk) { results.push(bk); continue; }
+      // The fill already ran and found NO standing buyer → resolve to "no buyers"
+      // (NOT a perpetual "pricing…"). Without this, thin items like Greater Storm Rune
+      // loop on "pricing…" forever because bookResultFor returns null for ex:0/thin.
+      const booked = runeBookPrices[norm];
+      if (booked && booked.thin) {
+        results.push({ qty: parsed.qty, name: cleanName, category: "no buyers", each: "", total: "", currency: "", source: "trade2 exchange", rawPrice: "no live buyers on the exchange", change7d: "", confidence: "none", units: null });
+        continue;
+      }
       // Not booked yet. On the DEFAULT check, NEVER burst the queue with a per-item
       // trade search (that + the fill is what tripped the rate limit). Show "pricing…"
       // and let the gentle background fill below book it for the next check. The fill

@@ -18,9 +18,6 @@ window.__viewInit["tab-tracker"] = function () {
   const progWrap = document.getElementById("ttProgress");
   const progFill = document.getElementById("ttProgressFill");
   const progLabel = document.getElementById("ttProgressLabel");
-  const miniBar = document.getElementById("ttMini");
-  const miniFill = document.getElementById("ttMiniFill");
-  const miniLabel = document.getElementById("ttMiniLabel");
   let polling = false, cancelRead = false;
   // Sort state — null = server order (value-ranked); a click sorts and persists across
   // the live re-renders, so you can sort while it's still pricing.
@@ -32,7 +29,6 @@ window.__viewInit["tab-tracker"] = function () {
   // Visible progress bar — the obvious "it's working" signal through the whole grind.
   // frac 0..1 fills the bar; pass null to keep the current width (e.g. while waiting on
   // a cooldown). state: "active" (pulsing), "wait" (striped cooldown), "done" (green).
-  let progActive=false, doneHideTimer=0;
   function setProgress(label,frac,state){
     if(progWrap){
       progWrap.hidden=false;
@@ -40,24 +36,10 @@ window.__viewInit["tab-tracker"] = function () {
       progFill.className="tt-progress-fill "+(state||"active");
       progLabel.textContent=label;
     }
-    // Mirror to the global mini bar so progress is visible after navigating away.
-    progActive=true;
-    if(miniBar) miniBar.className="tt-mini "+(state||"active");
-    if(miniFill && frac!=null) miniFill.style.setProperty("--p",Math.max(5,Math.round(frac*100))+"%");
-    if(miniLabel) miniLabel.textContent="Tab Tracker · "+label;
-    clearTimeout(doneHideTimer);
-    if(state==="done") doneHideTimer=setTimeout(()=>{ progActive=false; syncMini(); },6000);  // linger briefly, then clear
-    syncMini();
+    // Mirror to the shared background-scan bar so it shows after navigating away.
+    if(window.__bg) window.__bg.set("tab-tracker","Tab Tracker · "+label,frac,state);
   }
-  function hideProgress(){ if(progWrap) progWrap.hidden=true; progActive=false; clearTimeout(doneHideTimer); syncMini(); }
-  // The mini bar shows only when work is in flight AND you're not already on the
-  // Tab Tracker page (where the full bar is right there).
-  function syncMini(){
-    if(!miniBar) return;
-    const onTT=(location.hash||"#home").slice(1)==="tab-tracker";
-    miniBar.hidden=!(progActive && !onTT);
-  }
-  window.addEventListener("hashchange",syncMini);
+  function hideProgress(){ if(progWrap) progWrap.hidden=true; if(window.__bg) window.__bg.clear("tab-tracker"); }
   function fxEx(v){
     if(typeof v!=="number"||!isFinite(v)) return "";
     if(v>=10) return Math.round(v)+" ex";

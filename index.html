@@ -41,6 +41,21 @@ a:hover{text-decoration:underline}
 
 h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;line-height:1.06;letter-spacing:-.02em;margin:14px 0 0;text-wrap:balance}
 
+/* Shared background-scan bar — shows on every page while any tool is scanning in
+   the background (Tab Tracker pricing, Rune Picker fill), so you can navigate away. */
+.bg-bar[hidden]{display:none}
+.bg-bar{position:sticky;top:0;z-index:99;display:flex;align-items:center;gap:10px;padding:5px 16px;
+  background:oklch(15% 0.006 270 / 0.92);border-bottom:1px solid var(--border-gold,var(--border));
+  font:600 11.5px var(--font-mono);color:var(--gold-bright);text-decoration:none;
+  backdrop-filter:saturate(140%) blur(8px);-webkit-backdrop-filter:saturate(140%) blur(8px)}
+.bg-bar:hover{background:oklch(18% 0.01 270 / 0.95)}
+.bg-bar-fill{flex:none;width:120px;height:6px;border-radius:var(--r-pill);background:var(--surface-2);position:relative;overflow:hidden}
+.bg-bar-fill::after{content:"";position:absolute;inset:0 auto 0 0;width:var(--p,5%);border-radius:var(--r-pill);
+  background:linear-gradient(90deg,var(--gold-deep,var(--gold)),var(--gold-bright));transition:width .45s var(--ease)}
+.bg-bar.done .bg-bar-fill::after{background:var(--green)}
+.bg-bar.wait .bg-bar-fill::after{background-image:repeating-linear-gradient(45deg,var(--gold-deep,var(--gold)) 0 9px,var(--gold) 9px 18px)}
+.bg-bar-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
 /* Home top bar — global Trade2 availability before opening a call-heavy tool */
 .homebar{display:flex;align-items:center;gap:10px;margin-bottom:22px}
 .tstatus{display:inline-flex;align-items:center;gap:9px;padding:7px 14px;border-radius:var(--r-pill);background:var(--surface-1);border:1px solid var(--border);font:600 12px var(--font-mono);color:var(--text-muted)}
@@ -178,9 +193,9 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     </nav>
   </div>
 </header>
-<a id="ttMini" class="tt-mini" href="#tab-tracker" data-view-link="tab-tracker" hidden title="Tab Tracker is still working — click to view">
-  <span class="tt-mini-fill" id="ttMiniFill"></span>
-  <span class="tt-mini-label" id="ttMiniLabel">Tab Tracker…</span>
+<a id="bgBar" class="bg-bar" href="#home" hidden title="A background scan is running — click to view">
+  <span class="bg-bar-fill" id="bgBarFill"></span>
+  <span class="bg-bar-label" id="bgBarLabel"></span>
 </a>
 <main class="shell">
   <section id="home" class="view active" data-view="home">
@@ -560,6 +575,30 @@ const views=[...document.querySelectorAll("[data-view]")];
 const viewLinks=[...document.querySelectorAll("[data-view-link]")];
 window.__viewInit=window.__viewInit||{};
 function runViewInit(key){ const f=window.__viewInit[key]; if(typeof f==="function"){ window.__viewInit[key]=true; try{ f(); }catch(e){ console.error("view init failed",key,e); } } }
+
+// Shared background-scan bar: any tool reports progress by its view key; the bar
+// surfaces active scans on every OTHER page (hidden on the tool's own page, where
+// its full progress already shows). Lazy "queue" for everything that scans.
+window.__bg=(function(){
+  const bar=document.getElementById("bgBar"); if(!bar) return {set(){},clear(){}};
+  const fill=document.getElementById("bgBarFill"), label=document.getElementById("bgBarLabel");
+  const jobs=new Map(), timers=new Map();
+  function paint(){
+    const onView=(location.hash||"#home").slice(1);
+    const show=[...jobs.entries()].filter(([k])=>k!==onView);
+    if(!show.length){ bar.hidden=true; return; }
+    const [key,j]=show[show.length-1];
+    bar.hidden=false; bar.className="bg-bar "+(j.state||"active"); bar.setAttribute("href","#"+key);
+    if(j.frac!=null) fill.style.setProperty("--p",Math.max(5,Math.round(j.frac*100))+"%");
+    label.textContent=j.label+(show.length>1?" · +"+(show.length-1)+" more":"");
+  }
+  window.addEventListener("hashchange",paint);
+  return {
+    set(key,lab,frac,state){ jobs.set(key,{label:lab,frac,state}); const t=timers.get(key); if(t)clearTimeout(t);
+      if(state==="done"){ timers.set(key,setTimeout(()=>{jobs.delete(key);paint();},6000)); } paint(); },
+    clear(key){ jobs.delete(key); const t=timers.get(key); if(t){clearTimeout(t);timers.delete(key);} paint(); },
+  };
+})();
 function currentView(){ const key=(location.hash||"#home").slice(1); return views.some(v=>v.dataset.view===key)?key:"home"; }
 function showView(userNav){
   const key=currentView();

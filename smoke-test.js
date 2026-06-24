@@ -266,10 +266,28 @@ async function browserChecks() {
       await p.click('.toolroot-tt thead th[data-sort="total"]'); await p.waitForTimeout(150);
       const ttByVal = await ttNames();
       check(ttByVal[0] === "Alpha" && ttByVal[2] === "Charlie", "tab tracker sorts by Value desc on header click");
-      // navigating away while progress lingers surfaces the global mini bar
+      // navigating away while progress lingers surfaces the shared background bar
       await p.evaluate(() => { location.hash = "#home"; }); await p.waitForTimeout(200);
-      const miniShown = await p.evaluate(() => { const m = document.getElementById("ttMini"); return !!(m && !m.hidden); });
-      check(miniShown, "tab tracker mini progress bar shows on other pages while active");
+      const miniShown = await p.evaluate(() => { const m = document.getElementById("bgBar"); return !!(m && !m.hidden && /tab tracker/i.test(m.textContent)); });
+      check(miniShown, "tab tracker progress shows in the shared top bar on other pages");
+      await p.close();
+    }
+
+    // Rune Picker: "pricing…" items get an auto-updating status + show in the shared bar
+    {
+      const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      await p.route("**/api/trade-status**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ limited: false }) }));
+      await p.route("**/api/rune-prices", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+        count: 1, results: [{ qty: 1, name: "Desert Rune", category: "pricing…", each: "", total: "", source: "trade2 exchange", confidence: "none" }],
+      }) }));
+      await p.goto(BASE + "/index.html#rune-picker", { waitUntil: "networkidle" }); await p.waitForTimeout(400);
+      await p.evaluate(() => { document.getElementById("runeInput").value = "Desert Rune"; });
+      await p.click("#checkRunes"); await p.waitForTimeout(500);
+      const st = await p.evaluate(() => (document.getElementById("runeStatus") || {}).textContent || "");
+      check(/auto-updat/i.test(st), "rune picker shows an auto-updating status for pricing… items");
+      await p.evaluate(() => { location.hash = "#home"; }); await p.waitForTimeout(200);
+      const barShown = await p.evaluate(() => { const b = document.getElementById("bgBar"); return !!(b && !b.hidden && /rune picker/i.test(b.textContent)); });
+      check(barShown, "rune picker background scan shows in the shared top bar");
       await p.close();
     }
 
