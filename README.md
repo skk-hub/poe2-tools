@@ -1,6 +1,8 @@
 # PoE Tools
 
-Path of Exile 2 pricing utility. Fetches live poe.ninja economy data for crafting material costs across six defined routes, plus a rune/reward picker. Also includes a standalone craft optimizer page for quiver market scans and Monte Carlo route estimates. Runs as a local HTTP server with no external dependencies.
+Path of Exile 2 local pricing & utility suite — a single-page hub (`index.html`) with: live currency/economy prices (Home), a **Rune Picker** (paste reward choices → ranked sell value), **Gear Search** (import gear → Trade2 candidate search/compare), a **Regex Cheat Sheet** (waystone/tablet stash-regex builder + a low-value "dump" filter), an **Arbitrage** scanner (Currency Exchange ex-spread flips), a **Filter Helper** (client-side loot-filter "what does my filter hide" linter), and a **Tab Tracker** (value a public stash tab). Runs as a local HTTP server with zero npm dependencies.
+
+**All market data is GGG Trade2 only.** poe.ninja is not used anywhere (removed; do not reintroduce). Every Trade2 call goes through one shared, rate-limit-aware queue (`trade-queue.js`).
 
 ## No npm dependencies
 
@@ -18,19 +20,7 @@ Opens `http://localhost:17777` in your browser automatically. To suppress the au
 POE2_NO_OPEN=1 node server.js
 ```
 
-Standalone optimizer page:
-
-```
-http://127.0.0.1:17777/craft-optimizer.html
-```
-
-Standalone character upgrade page:
-
-```
-http://127.0.0.1:17777/character-upgrades.html
-```
-
-The existing `index.html` multi-tool hub is not changed by the optimizer page.
+Everything is in the `index.html` hub, hash-routed (e.g. `#rune-picker`, `#tab-tracker`). The old standalone pages (`arbitrage-scanner.html`, `waystone-juicer.html`, `character-upgrades.html`) are thin redirects into the hub. `craft-optimizer.html` is a separate experimental page, not surfaced in the hub nav.
 
 ## Run in Docker
 
@@ -66,9 +56,7 @@ Edit `docker-compose.yml` to set `POE_CONTACT` before deploying.
 
 ## Trade rate limits
 
-The server makes live trade2 lookups (`pathofexile.com/api/trade2`) for the Rune Picker, craft optimizer, and character upgrade finder. These calls share a single rate-limit bucket across all users hitting the container. The server parses the official `X-Rate-Limit-*` headers on every trade response and honors `Retry-After` on `429`. While a cooldown is active, trade endpoints return the timer instead of probing again.
-
-The character upgrade finder searches one slot at a time and caches slot search results for 20 minutes to avoid spending trade requests on UI refreshes.
+The server makes live trade2 lookups (`pathofexile.com/api/trade2`) for the Rune Picker, Gear Search, Tab Tracker, Arbitrage, and the Regex Cheat Sheet's mod-value sweep. **Every call routes through one shared adaptive queue (`trade-queue.js`)** — it spaces calls (3s+ gap, adapts under load), parses the official `X-Rate-Limit-*` headers, and honors `Retry-After` on `429`. While a cooldown is active, endpoints return the timer instead of probing again. The public IP is **shared** with prod + real users, so the queue budgets conservatively — see `RATE-LIMITS.md` before any Trade2 work.
 
 ## Character OAuth import
 
