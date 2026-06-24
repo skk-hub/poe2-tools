@@ -14,6 +14,13 @@ window.__viewInit["rune-picker"] = function () {
   let runeResultData = [];
   let tradeQueueRunning = false;
 
+  // Sort state. Default = confidence tier first, then value (total), descending —
+  // so the most reliable high-value picks float to the top. Headers are clickable
+  // to re-sort by any column (click again to flip direction).
+  const CONF_RANK = { base: 3, high: 3, medium: 2, low: 1, none: 0, unknown: 0 };
+  const TH_LABELS = { qty: "Qty", name: "Name", category: "Category", each: "Each", total: "Total", conf: "Conf", source: "Source", change7d: "7d" };
+  let sortKey = "conf", sortDir = -1;   // -1 = descending, 1 = ascending
+
   function fx(v){
     if(typeof v!=="number"||!isFinite(v)) return esc(v||"");
     if(v>=10) return Math.round(v)+" ex";
@@ -36,6 +43,28 @@ window.__viewInit["rune-picker"] = function () {
     return '<span class="conf '+m[0]+'" title="'+esc(tip)+'">'+m[1]+suffix+'</span>';
   }
   function setRuneStatus(text,kind){runeStatus.textContent=text;runeStatus.className="status "+(kind||"")}
+
+  function confRank(it){ return CONF_RANK[it.confidence] != null ? CONF_RANK[it.confidence] : 0; }
+  function numv(v){ const n=Number(v); return isFinite(n)?n:-1; }
+  function sortedRows(){
+    return runeResultData.slice().sort((a,b)=>{
+      let r;
+      if(sortKey==="conf") r=(confRank(a)-confRank(b))||(numv(a.total)-numv(b.total));
+      else if(sortKey==="qty") r=numv(a.qty)-numv(b.qty);
+      else if(sortKey==="each") r=numv(a.each)-numv(b.each);
+      else if(sortKey==="total") r=numv(a.total)-numv(b.total);
+      else if(sortKey==="change7d") r=(parseFloat(a.change7d)||0)-(parseFloat(b.change7d)||0);
+      else r=String(a[sortKey]||"").toLowerCase().localeCompare(String(b[sortKey]||"").toLowerCase());
+      return r*sortDir;
+    });
+  }
+  function updateSortIndicators(){
+    document.querySelectorAll(".toolroot-rune thead th[data-sort]").forEach(th=>{
+      const k=th.getAttribute("data-sort"), active=k===sortKey;
+      th.classList.toggle("sorted",active);
+      th.innerHTML=esc(TH_LABELS[k]||k)+(active?' <span class="sort-arrow">'+(sortDir<0?"▼":"▲")+"</span>":"");
+    });
+  }
 
   // European-style date/time display (DD/MM/YYYY, 24h) for trade-limit timestamps.
   function fmtEuTime(value){
@@ -81,27 +110,15 @@ window.__viewInit["rune-picker"] = function () {
     }
   }
 
-  function renderRuneResults(data){
-    runeResultData=data.results||[];
-    if(!data.results||!data.results.length){
-      runeBest.className="bestbox empty";
-      runeBest.textContent="No priced picks yet.";
+  function renderRows(){
+    if(!runeResultData.length){
       runeRows.innerHTML='<tr><td colspan="8" class="muted">No results. Check the pasted text.</td></tr>';
+      updateSortIndicators();
       return;
     }
-
-    const best=data.best||data.results.find(item=>Number(item.total)>0);
-    if(best){
-      runeBest.className="bestbox";
-      runeBest.innerHTML='<b>Best pick: '+esc(best.qty)+'x '+esc(best.name)+'</b><span>'+fx(best.total)+' total / '+fx(best.each)+' each - '+esc(best.category)+' via '+esc(best.source)+'</span>'+(best.rawPrice?'<div class="muted">Raw listing: '+esc(best.rawPrice)+'</div>':'');
-    }else{
-      runeBest.className="bestbox empty";
-      runeBest.textContent="No priced picks yet.";
-    }
-
-    runeRows.innerHTML=data.results.map((item,index)=>{
+    runeRows.innerHTML=sortedRows().map((item)=>{
       const missing=!item.total;
-      return '<tr id="rune-row-'+index+'">'+
+      return '<tr>'+
         '<td class="num">'+esc(item.qty)+'</td>'+
         '<td>'+esc(item.name)+'</td>'+
         '<td>'+esc(item.category||"")+'</td>'+
@@ -112,6 +129,28 @@ window.__viewInit["rune-picker"] = function () {
         '<td class="num">'+esc(item.change7d||"")+'</td>'+
       '</tr>';
     }).join("");
+    updateSortIndicators();
+  }
+
+  function renderRuneResults(data){
+    runeResultData=data.results||[];
+    if(!runeResultData.length){
+      runeBest.className="bestbox empty";
+      runeBest.textContent="No priced picks yet.";
+      renderRows();
+      return;
+    }
+
+    const best=data.best||runeResultData.find(item=>Number(item.total)>0);
+    if(best){
+      runeBest.className="bestbox";
+      runeBest.innerHTML='<b>Best pick: '+esc(best.qty)+'x '+esc(best.name)+'</b><span>'+fx(best.total)+' total / '+fx(best.each)+' each - '+esc(best.category)+' via '+esc(best.source)+'</span>'+(best.rawPrice?'<div class="muted">Raw listing: '+esc(best.rawPrice)+'</div>':'');
+    }else{
+      runeBest.className="bestbox empty";
+      runeBest.textContent="No priced picks yet.";
+    }
+
+    renderRows();
   }
 
   function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
@@ -153,7 +192,6 @@ window.__viewInit["rune-picker"] = function () {
         }else{
           Object.assign(item,{category:"NOT FOUND",each:"",total:"",source:"trade2",rawPrice:""});
         }
-        results.sort((a,b)=>(Number(b.total)||-1)-(Number(a.total)||-1));
         renderRuneResults({results,best:bestFromResults(results)});
       }
       setRuneStatus("Checked "+results.length+" picks. Trade queue complete.", "ok");
@@ -275,6 +313,16 @@ window.__viewInit["rune-picker"] = function () {
     inp.onchange=()=>{if(inp.files[0]) handleImageFile(inp.files[0]);};
     inp.click();
   });
+
+  document.querySelectorAll(".toolroot-rune thead th[data-sort]").forEach(th=>{
+    th.addEventListener("click",()=>{
+      const k=th.getAttribute("data-sort");
+      if(sortKey===k) sortDir=-sortDir;
+      else { sortKey=k; sortDir=(k==="name"||k==="category"||k==="source")?1:-1; }  // text cols default A→Z, numeric/conf high→low
+      renderRows();
+    });
+  });
+  updateSortIndicators();
 
   checkRunesBtn.addEventListener("click",()=>checkRunes(false));
   freshRunesBtn.addEventListener("click",()=>checkRunes(true));

@@ -49,3 +49,9 @@
 @media(max-width:860px){
   .toolroot-rune .split{grid-template-columns:1fr}
 }
+
+/* Sortable result headers — click to sort, arrow marks the active column */
+.toolroot-rune thead th[data-sort]{cursor:pointer;user-select:none;white-space:nowrap;transition:color var(--t)}
+.toolroot-rune thead th[data-sort]:hover{color:var(--text)}
+.toolroot-rune thead th.sorted{color:var(--gold)}
+.toolroot-rune .sort-arrow{font-size:.78em;opacity:.85;margin-left:1px}

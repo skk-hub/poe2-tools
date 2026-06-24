@@ -219,6 +219,30 @@ async function browserChecks() {
       await p.close();
     }
 
+    // Rune results SORT: default is confidence-then-value; clicking a header re-sorts
+    {
+      const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      await p.route("**/api/rune-prices", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+        count: 4, results: [
+          { qty: 1, name: "LowHigh", category: "x", each: 100, total: 100, confidence: "low", source: "s" },
+          { qty: 1, name: "HighLow", category: "x", each: 5, total: 5, confidence: "high", source: "s" },
+          { qty: 1, name: "HighHigh", category: "x", each: 50, total: 50, confidence: "high", source: "s" },
+          { qty: 1, name: "MedMid", category: "x", each: 20, total: 20, confidence: "medium", source: "s" },
+        ], best: { qty: 1, name: "LowHigh", each: 100, total: 100, category: "x", source: "s" },
+      }) }));
+      await p.goto(BASE + "/index.html#rune-picker", { waitUntil: "networkidle" }); await p.waitForTimeout(800);
+      await p.evaluate(() => { document.getElementById("runeInput").value = "x"; });
+      await p.click("#checkRunes"); await p.waitForTimeout(500);
+      const names = () => p.evaluate(() => [...document.querySelectorAll("#runeRows tr")].map(r => r.children[1] && r.children[1].textContent));
+      const def = await names();
+      // confidence first (high tier by value, then medium, then low) — LowHigh last despite top value
+      check(def[0] === "HighHigh" && def[1] === "HighLow" && def[3] === "LowHigh", "rune table default sort is confidence-then-value");
+      await p.click('.toolroot-rune thead th[data-sort="total"]'); await p.waitForTimeout(200);
+      const byVal = await names();
+      check(byVal[0] === "LowHigh" && byVal[3] === "HighLow", "rune table re-sorts by value when Total header clicked");
+      await p.close();
+    }
+
     // arbitrage RESULT TABLE styling, with mocked rows (the exchange has no real arbitrage)
     {
       const p = await browser.newPage({ viewport: { width: 1366, height: 900 } });
