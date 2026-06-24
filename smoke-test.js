@@ -146,6 +146,10 @@ async function httpChecks() {
 // ---- 3) browser checks ----
 async function browserChecks() {
   console.log("Browser checks:");
+  // SMOKE_NO_BROWSER=1 skips launching Chromium entirely. On Windows even headless
+  // Chromium briefly opens a window that STEALS FOCUS from the foreground app (the
+  // user's game) — so this env lets a run stay fully background/non-disruptive.
+  if (process.env.SMOKE_NO_BROWSER === "1") { skip("SMOKE_NO_BROWSER=1; browser checks skipped (no focus-stealing window)"); return; }
   const pw = loadPlaywright();
   if (!pw) { skip("Playwright not found; browser checks skipped"); return; }
   const exe = chromiumExe();
