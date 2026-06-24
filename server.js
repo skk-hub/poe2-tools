@@ -1377,8 +1377,23 @@ function robustBidPx(bidData, id, askPx) {
     .filter((o) => o.payAmount > 0 && o.receiveAmount > 0)
     .map((o) => ({ px: o.receiveAmount / o.payAmount, stock: o.payStock || 0 }))   // exalt per item
     .sort((a, b) => b.px - a.px);
+  // Drop bids "crossed" above the ask — a buy offer far over what the item sells for
+  // is bait/noise (e.g. a lone "10 ex for an idol" that lists at 3). If nothing passes,
+  // return 0 (no real bid) rather than trusting the bait — do NOT fall back to bids[0].
   const ok = (b) => !askPx || b.px <= askPx * 1.05;
-  return (bids.find((b) => b.stock >= 5 && ok(b)) || bids.find(ok) || bids[0] || {}).px || 0;
+  return (bids.find((b) => b.stock >= 5 && ok(b)) || bids.find(ok) || {}).px || 0;
+}
+
+// Cheapest ASK (exalt-per-item) = the realistic sell floor: the lowest offer with a
+// bit of stock (≥2 skips lone stock-1 baits), falling back to the outright cheapest.
+// NOT the clustered "wall" — many books (e.g. idols) have a few cheap real sellers
+// under a big overpriced wall, and the cheap ones are what you'd actually undercut to.
+function cheapestAsk(askData, id) {
+  const asks = collectExchangeOffers(askData, EXALTED_ID, id)
+    .filter((o) => o.payAmount > 0 && o.receiveAmount > 0)
+    .map((o) => ({ px: o.payAmount / o.receiveAmount, stock: o.receiveStock || 0 }))
+    .sort((a, b) => a.px - b.px);
+  return asks.find((a) => a.stock >= 2) || asks[0] || { px: 0, stock: 0 };
 }
 
 // One batched ex→currency exchange call; the best (cheapest) offer per currency
@@ -1644,8 +1659,9 @@ const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
 // Bump when the PRICING LOGIC changes so cached entries written by old logic are
 // auto-discarded and re-fetched — otherwise a stale book on the prod volume (which
 // survives `--build` redeploys) keeps serving old prices and silently defeats the
-// fix. v2 = bid-side (sell value) + thin/no-buyers; v1 = old one-sided cheapest-ask.
-const RUNE_BOOK_VERSION = 2;
+// fix. v5 = bid-else-cheapest-real-ask (ignores the overpriced wall); v4 = robust/
+// clustered ask; v3 = deep-ask; v2 = bid-only; v1 = one-sided cheapest-ask.
+const RUNE_BOOK_VERSION = 5;
 // Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles
 // (its inter-call gap grows to several seconds under load), so a forced refresh of
 // a handful of items can take 20-40s. Give it real headroom so a SINGLE press
@@ -1713,17 +1729,20 @@ async function refreshRuneBook(league, normNames, force) {
       const prices = existing ? { ...existing.prices } : {};
       const now = new Date().toISOString();
       for (const t of targets) {
-        const ask = bestExchangeOffer(askData, EXALTED_ID, t.id, 5) || bestExchangeOffer(askData, EXALTED_ID, t.id, 1);
-        const askPx = ask && ask.payPerReceive > 0 ? ask.payPerReceive : 0;
-        const bidPx = robustBidPx(bidData, t.id, askPx);
+        // Cheapest real ask = the sell floor; use a REAL (non-crossed) bid if one stands,
+        // else the ask. Only when there are NO offers at all is it thin/unpriceable.
+        const ask = cheapestAsk(askData, t.id);
+        const askPx = ask.px || 0;
+        const bidPx = robustBidPx(bidData, t.id, askPx);   // real, non-crossed bid only
+        const ex = bidPx > 0 ? bidPx : askPx;
         const common = { id: t.id, name: t.name, category: t.category, updated: now };
-        if (bidPx > 0) {
-          prices[t.norm] = { ...common, ex: round4(bidPx), stock: ask ? Math.floor(ask.receiveStock) || 0 : 0 };
-        } else if (askPx > 0) {
-          // Sellers list it but no buyers stand → unsellable at a real price right now.
-          prices[t.norm] = { ...common, ex: 0, thin: true, ask: round4(askPx), stock: 0 };
+        if (ex > 0) {
+          prices[t.norm] = { ...common, ex: round4(ex), stock: Math.floor(ask.stock) || 0 };
+        } else {
+          // No bid and no ask = not really traded on the exchange → mark thin so it isn't
+          // re-fetched every visit (shows "no market" rather than looping on "pricing…").
+          prices[t.norm] = { ...common, ex: 0, thin: true, stock: 0 };
         }
-        // (no ask and no bid → leave unbooked; genuinely no exchange data)
       }
       try { fs.writeFileSync(RUNE_BOOK_FILE, JSON.stringify({ league, version: RUNE_BOOK_VERSION, prices, updated: now }, null, 2)); } catch {}
     } catch {
