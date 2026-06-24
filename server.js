@@ -1043,12 +1043,14 @@ async function fetchTrade(url, options = {}) {
 // Tab Tracker — read a public stash tab's contents via Trade2 ONLY (no OAuth, no
 // cookie: PoE2's get-stash-items returns 403 unauthenticated). The user makes
 // tab(s) public and prices every item at a MARKER divine price to mark it apart
-// from real sales. trade2 returns ≤100 results per search, so we search EACH marker
-// price separately (filtered to that exact divine value) and union them — letting a
-// big set span multiple prices (e.g. 11/12/13/14 div) blow past the 100 cap. Every
-// filtered result IS a tracked item (the price filter isolates it — no sentinel
-// guessing). Values come from the exchange book. ponytail: a genuine sale priced at
-// exactly a marker value would be picked up too; reserve the marker prices.
+// from real sales. We find them with ONE ranged account search (min..max marker),
+// then sort each result into its band by exact price — so a normal tab is ~1 search
+// + a fetch or two, NOT one search per marker (that burst tripped the tight search
+// limit and made a 9-item scan take an hour of cooldowns; see readTrackedBands).
+// Trade2 caps a search at 100 results, so only a >100-item range falls back to a
+// per-marker read to span the cap. Every kept result IS a tracked item (price ==
+// a marker). ponytail: a genuine sale priced at exactly a marker is picked up too;
+// reserve the marker prices.
 const TAB_MARKERS_DEFAULT = [11, 12, 13, 14];
 const TAB_CACHE_FILE = path.join(DATA_DIR, ".tab-tracker.json");
 const TAB_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -1083,43 +1085,94 @@ function readTabCache(account, league) {
 // reused, not re-fetched. So a read cut short by a 429 caches the bands it finished,
 // and the next call continues with the rest — clicking "Value tab" makes progress
 // instead of restarting. Returns the per-band map {price: {lines, done}}.
+// Per-marker search+fetch for ONE price band (the cap-spanning fallback). ≤100 results.
+async function readOneBand(searchUrl, account, league, m) {
+  const body = JSON.stringify({
+    query: { status: { option: "any" }, filters: { trade_filters: { filters: {
+      account: { input: account },
+      price: { option: "divine", min: m, max: m },
+    } } } },
+    sort: { price: "desc" },
+  });
+  let search;
+  try { search = await fetchTrade(searchUrl, { method: "POST", body }); }
+  catch (e) { return { lines: [], done: false, hitLimit: true, truncated: false }; }
+  const ids = search.result || [];
+  const truncated = (search.total || 0) > ids.length;   // this one price has 100+ items
+  const lines = [];
+  for (let i = 0; i < ids.length; i += 10) {
+    let fetched;
+    try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id)); }
+    catch (e) { return { lines, done: false, hitLimit: true, truncated }; }
+    for (const r of fetched.result || []) {
+      const item = r.item || {};
+      const name = item.typeLine || item.baseType || item.name;
+      if (name) lines.push(name + " x" + (item.stackSize || 1));
+    }
+  }
+  return { lines, done: true, hitLimit: false, truncated };
+}
+
 async function readTrackedBands(account, league, markers, prior) {
   const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
   const bands = Object.assign({}, prior || {});
-  let hitLimit = false, truncated = false;
-  for (const m of markers) {
-    const key = String(m);
-    if (bands[key] && bands[key].done) continue;            // already read — resume past it
-    if (tradeStatus().limited) { hitLimit = true; break; }
-    const body = JSON.stringify({
-      query: { status: { option: "any" }, filters: { trade_filters: { filters: {
-        account: { input: account },
-        price: { option: "divine", min: m, max: m },
-      } } } },
-      sort: { price: "desc" },
-    });
-    let search;
-    try { search = await fetchTrade(searchUrl, { method: "POST", body }); }
-    catch (e) { hitLimit = true; break; }
-    const ids = search.result || [];
-    if ((search.total || 0) > ids.length) truncated = true; // this one price has 100+ items
-    const lines = [];
-    let bandDone = true;
-    for (let i = 0; i < ids.length; i += 10) {
-      const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id);
-      let fetched;
-      try { fetched = await fetchTrade(fetchUrl); }
-      catch (e) { hitLimit = true; bandDone = false; break; }
-      for (const r of fetched.result || []) {
-        const item = r.item || {};
-        const name = item.typeLine || item.baseType || item.name;
-        if (name) lines.push(name + " x" + (item.stackSize || 1));
-      }
+  const remaining = markers.filter((m) => !(bands[String(m)] && bands[String(m)].done));
+  if (!remaining.length) return { bands, hitLimit: false, truncated: false };
+  if (tradeStatus().limited) return { bands, hitLimit: true, truncated: false };
+
+  // ONE ranged search across ALL remaining markers (min..max) instead of one search
+  // PER marker. That per-marker burst hit the tight Trade2 SEARCH limit and turned a
+  // 9-item scan into an hour of 30-min cooldowns. Trade2 caps a search at 100 results,
+  // so for the normal case (a handful of tracked items) one search returns them all and
+  // we sort each into its marker band by the item's EXACT listed price (so a wide range
+  // over non-contiguous markers still keeps only true marker items — same result as the
+  // old per-marker union, at a fraction of the calls). Only a capped range (>100 items)
+  // falls back to per-marker to span the 100-cap.
+  const min = Math.min(...remaining), max = Math.max(...remaining);
+  const markerSet = new Set(remaining.map(Number));
+  const body = JSON.stringify({
+    query: { status: { option: "any" }, filters: { trade_filters: { filters: {
+      account: { input: account },
+      price: { option: "divine", min, max },
+    } } } },
+    sort: { price: "desc" },
+  });
+  let search;
+  try { search = await fetchTrade(searchUrl, { method: "POST", body }); }
+  catch (e) { return { bands, hitLimit: true, truncated: false }; }
+  const ids = search.result || [];
+  const capped = (search.total || 0) > ids.length;
+
+  if (capped && remaining.length > 1) {
+    // >100 items in the range → the single page missed some. Span the cap per-marker.
+    let hitLimit = false, truncated = false;
+    for (const m of remaining) {
+      if (tradeStatus().limited) { hitLimit = true; break; }
+      const r = await readOneBand(searchUrl, account, league, m);
+      bands[String(m)] = { lines: r.lines, done: r.done };
+      truncated = truncated || r.truncated;
+      if (r.hitLimit) { hitLimit = true; break; }
     }
-    bands[key] = { lines, done: bandDone };
-    if (hitLimit) break;
+    return { bands, hitLimit, truncated };
   }
-  return { bands, hitLimit, truncated };
+
+  // Single-search path: fetch the ids, sort each item into its marker band by price.
+  for (const m of remaining) bands[String(m)] = { lines: [], done: true };
+  let hitLimit = false;
+  for (let i = 0; i < ids.length; i += 10) {
+    let fetched;
+    try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id)); }
+    catch (e) { hitLimit = true; break; }
+    for (const r of fetched.result || []) {
+      const item = r.item || {};
+      const name = item.typeLine || item.baseType || item.name;
+      const price = r.listing && r.listing.price;
+      if (!name || !price || price.currency !== "divine" || !markerSet.has(Number(price.amount))) continue;
+      bands[String(price.amount)].lines.push(name + " x" + (item.stackSize || 1));
+    }
+  }
+  if (hitLimit) for (const m of remaining) bands[String(m)].done = false;   // resume next click
+  return { bands, hitLimit, truncated: false };
 }
 
 function parseTabLine(l) {
