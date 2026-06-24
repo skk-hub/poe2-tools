@@ -16,6 +16,9 @@
   .toolroot-gs textarea{min-height: 330px; resize: vertical; padding: 10px; line-height: 1.5; font: 11px var(--ff-mono);}
   .toolroot-gs input, .toolroot-gs select, .toolroot-gs button{min-height: 36px; padding: 0 10px;}
   .toolroot-gs textarea:focus, .toolroot-gs input:focus, .toolroot-gs select:focus{outline: none; border-color: var(--bd2);}
+  /* Modern select: native arrow off, custom chevron (kept after the shared
+     background:var(--s2) rule above so the chevron image survives). */
+  .toolroot-gs select{appearance:none; -webkit-appearance:none; background-color: var(--s2); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23b9b6ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 11px center; padding-right: 30px; cursor: pointer;}
   .toolroot-gs button{cursor: pointer; font-weight: 700;}
   .toolroot-gs button:hover{border-color: var(--bd2); background: var(--s3);}
   .toolroot-gs button:disabled{opacity: .55; cursor: not-allowed;}

@@ -30,8 +30,9 @@ a:hover{text-decoration:underline}
 .appbarin{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 24px;max-width:1280px;margin:0 auto}
 .brand{display:flex;align-items:center;gap:11px;min-width:0;text-decoration:none}
 .brand:hover{text-decoration:none}
-.mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(150deg,var(--gold-bright),var(--gold-deep));color:oklch(20% 0.04 70);display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:15px;box-shadow:var(--shadow-sm),inset 0 1px 0 oklch(100% 0 0 / .3)}
-.brandname{font-family:var(--font-display);color:var(--text);font-size:16px;font-weight:700;letter-spacing:.04em;line-height:1.1}
+.mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(150deg,var(--gold-bright),var(--gold-deep));color:oklch(21% 0.04 70);display:grid;place-items:center;box-shadow:var(--shadow-sm),inset 0 1px 0 oklch(100% 0 0 / .3)}
+.mark svg{width:19px;height:19px;display:block}
+.brandname{font-family:var(--font-ui);color:var(--text);font-size:16.5px;font-weight:800;letter-spacing:-.01em;line-height:1.05}
 .brandmeta{color:var(--text-faint);font-size:10.5px;margin-top:2px;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav{display:flex;align-items:center;gap:3px;flex-wrap:wrap;justify-content:flex-end}
 .navbtn{position:relative;height:34px;display:inline-flex;align-items:center;padding:0 13px;border-radius:var(--r);font:500 13px var(--font-ui);color:var(--text-muted);transition:color var(--t),background var(--t)}
@@ -175,7 +176,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
 <header class="appbar">
   <div class="appbarin">
     <a class="brand" href="#home" data-view-link="home">
-      <span class="mark">P</span>
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M12 2.5 19 9 12 21.5 5 9Z"/><path d="M5 9h14"/><path d="M9.3 9 12 2.5 14.7 9"/><path d="M9.3 9 12 21.5 14.7 9"/></svg></span>
       <span class="brandtext">
         <span class="brandname">PoE Tools</span>
         <span class="brandmeta">Path of Exile 2 &middot; Runes of Aldur</span>
@@ -226,7 +227,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       </div>
       <div class="econ-chartwrap" id="econChartWrap">
         <div class="econ-chart-head">
-          <span class="econ-chart-title">Relative value <small>each line vs. its own first reading · log scale</small></span>
+          <span class="econ-chart-title">Relative value <small>each currency vs. where it started</small></span>
           <div class="econ-legend" id="econLegend"></div>
         </div>
         <div class="econ-chart" id="econChart"></div>
@@ -274,7 +275,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         </div>
         <div class="toolbody">
           <div id="pasteZone" class="paste-zone" title="Click to browse, or drag and drop an image file">
-            <span id="pasteZoneLabel">Paste screenshot (Ctrl+V) or drop image — OCR runs server-side</span>
+            <span id="pasteZoneLabel">Paste a screenshot (Ctrl+V) or drop an image — we read the item names off it for you</span>
             <img id="pastePreview" alt="">
           </div>
           <textarea id="runeInput" spellcheck="false" placeholder="Example:&#10;3x Desert Rune&#10;Soul Core of Tacati&#10;Greater Essence of Enhancement"></textarea>
@@ -285,7 +286,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div class="toolbar">
           <div>
             <div class="tooltitle">Results</div>
-            <p class="sub">Sorted by confidence, then value — click any column header to re-sort. Conf = units traded (7d): <span class="conf conf-hi">High</span> ≥300, <span class="conf conf-md">Med</span> ≥30, <span class="conf conf-lo">Low</span> &lt;30 (thin market, price unreliable).</p>
+            <p class="sub">Sorted by confidence, then value — click any column header to re-sort. Conf = how many sold in the last 7 days (more sales = more reliable price): <span class="conf conf-hi">High</span> ≥300, <span class="conf conf-md">Med</span> ≥30, <span class="conf conf-lo">Low</span> &lt;30 (thin market, price unreliable).</p>
           </div>
         </div>
         <div class="toolbody">
@@ -307,9 +308,9 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
 <div class="pagehead">
       <div>
         <h1>Gear Search</h1>
-        <div class="sub">Import equipped gear, build slot-aware Trade2 filters, inspect the query, and compare candidate listings against your current item.</div>
+        <div class="sub">Import your gear, search Trade2 for upgrades one slot at a time, and compare each candidate against what you're wearing.</div>
       </div>
-      <div class="status" id="status">Trade queue: <b>checking</b></div>
+      <div class="status" id="status">Trade2: <b>checking…</b></div>
     </div>
 
     <main>
@@ -467,7 +468,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <div class="pagehead">
         <div>
           <h1>Arbitrage Scanner</h1>
-          <p class="sub">Manual Currency Exchange scan — ex-based spreads, stock capped, slippage buffered.</p>
+          <p class="sub">Scans the Currency Exchange for flips you can actually fill — profit shown after stock limits and price slippage.</p>
         </div>
         <div class="statusline" id="abStatus">Ready.</div>
       </div>
@@ -489,7 +490,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
             <label class="check"><input id="catFragments" type="checkbox" checked> Fragments</label>
             <label class="check"><input id="forceRefresh" type="checkbox"> Force live refresh (skip 2-min cache)</label>
           </div>
-          <div class="hint">Compares buying an item with ex vs. selling it back to ex via the official Currency Exchange. A scan is just 2 Trade2 calls (all buy legs + all sell legs) and results cache for 2 min — repeat scans reuse the cache unless you tick <b>Force live refresh</b>. Results are estimates; whisper/stock can change before you execute both legs.</div>
+          <div class="hint">Each scan checks the current buy and sell price of every item on the official Currency Exchange, then flags the ones you can buy and sell back for a profit. Results are cached for 2 minutes — tick <b>Force live refresh</b> to pull fresh prices. Prices are a snapshot; stock and offers can move before you finish both trades.</div>
         </div>
       </section>
       <section class="summary" id="abSummary" style="display:none"></section>
@@ -502,7 +503,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     <div class="pagehead">
       <div>
         <h1>Filter Helper</h1>
-        <p class="sub">Paste your loot filter and it tells you which <b>currency</b> it hides — by simulating the real first-match-wins cascade, so it catches a Hide sitting above your currency Show. Stays in your browser; no prices, no rate limits.</p>
+        <p class="sub">Paste your loot filter and it tells you which <b>currency</b> it hides. It reads the filter top to bottom the way the game does (first matching rule wins), so it catches a Hide sitting above your currency Show. Stays in your browser; no prices, no rate limits.</p>
       </div>
       <div class="controls">
         <div id="fhStatus" class="status">Paste your .filter below to check it.</div>
@@ -532,12 +533,12 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     <div class="pagehead">
       <div>
         <h1>Tab Tracker</h1>
-        <p class="sub">Values the currency parked in a stash tab at live market prices and <b>ranks it by what's worth selling</b> — items with live buyers sit on top with their real sell value; ones with no buyers drop to the bottom as <span class="muted">no live buyers</span>. Make tab(s) public and price every item at a <b>marker divine value</b> — this reads it via Trade2, no login needed. Trade2 caps each price at 100 results, so spread big sets across several marker prices (e.g. 11, 12, 13, 14).</p>
+        <p class="sub">Values the currency parked in a stash tab at live market prices and <b>ranks it by what's worth selling</b> — items with live buyers sit on top with their real sell value; ones with no buyers drop to the bottom as <span class="muted">no live buyers</span>. Make the tab public and give every item a <b>price note in divine</b> so the tool can read it — no login needed. Each lookup only sees the first 100 items, so spread a big tab across a few different price notes (e.g. 11, 12, 13, 14).</p>
       </div>
       <div class="controls">
         <label>Account <input id="ttAccount" placeholder="e.g. Name#1234"></label>
         <label>League <input id="ttLeague" value="Runes of Aldur"></label>
-        <label>Markers (div) <input id="ttMarkers" value="11, 12, 13, 14" aria-label="Marker divine prices" style="width:8em"></label>
+        <label>Price notes (div) <input id="ttMarkers" value="11, 12, 13, 14" aria-label="Price notes in divine" style="width:8em"></label>
         <button id="ttLoad" type="button" class="btn btn-primary">Value tab</button>
         <div id="ttStatus" class="status">Enter your account name and load your tracked tab.</div>
       </div>
@@ -547,7 +548,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <div class="tt-progress-label" id="ttProgressLabel">Working…</div>
     </div>
     <details class="tt-browser">
-      <summary>Read in your browser (VPN) — avoids the shared rate limit</summary>
+      <summary>Read it in your own browser instead (uses your VPN's fresh limit)</summary>
       <p class="sub">If the server read keeps rate-limiting, read your tab from your own browser instead (on your VPN, fresh budget): set your account + markers above, click <b>Copy reader snippet</b>, then on <b>pathofexile.com</b> (VPN on) open the console (F12) and paste it. It copies your items — paste them below and value them here (no server read).</p>
       <div class="controls">
         <button id="ttCopySnippet" type="button">Copy reader snippet</button>

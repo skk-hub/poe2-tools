@@ -49,7 +49,7 @@
 
   /* ---- Type ---- */
   --font-ui:'Inter',system-ui,-apple-system,"Segoe UI",sans-serif;
-  --font-display:'Cinzel',Georgia,serif;
+  --font-display:var(--font-ui); /* retired Cinzel — UI is one modern family (Inter) everywhere */
   --font-mono:'JetBrains Mono',ui-monospace,"SF Mono",monospace;
 
   /* ---- Radius ---- */
@@ -99,7 +99,30 @@ body{
 .num,[class*="mono"],code,kbd{ font-variant-numeric:tabular-nums; }
 .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 img,svg,video{ max-width:100%; }
-input[type=checkbox],input[type=radio]{ accent-color:var(--gold); }
+/* ---- Checkbox & radio: custom-drawn but standard. Off = hollow charcoal,
+   on = the same gold the buttons use. Full hover/focus/checked/disabled set. ---- */
+input[type=checkbox],input[type=radio]{
+  appearance:none; -webkit-appearance:none; margin:0; flex:none;
+  width:18px; height:18px; cursor:pointer; display:inline-grid; place-content:center;
+  background:var(--bg-deep); border:1px solid var(--border-strong); border-radius:var(--r-sm);
+  transition:background var(--t),border-color var(--t),box-shadow var(--t);
+}
+input[type=radio]{ border-radius:var(--r-pill); }
+input[type=checkbox]:hover,input[type=radio]:hover{ border-color:var(--gold); }
+input[type=checkbox]:focus-visible,input[type=radio]:focus-visible{ outline:none; box-shadow:0 0 0 3px var(--gold-glow); }
+input[type=checkbox]:checked,input[type=radio]:checked{ background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep)); border-color:transparent; }
+input[type=checkbox]::before{
+  content:""; width:5px; height:9px; margin-top:-1.5px;
+  border:solid oklch(22% 0.04 70); border-width:0 2px 2px 0;
+  transform:rotate(45deg) scale(0); transition:transform var(--t);
+}
+input[type=checkbox]:checked::before{ transform:rotate(45deg) scale(1); }
+input[type=radio]::before{
+  content:""; width:8px; height:8px; border-radius:50%;
+  background:oklch(22% 0.04 70); transform:scale(0); transition:transform var(--t);
+}
+input[type=radio]:checked::before{ transform:scale(1); }
+input[type=checkbox]:disabled,input[type=radio]:disabled{ opacity:.45; cursor:default; }
 
 ::-webkit-scrollbar{ width:11px; height:11px; }
 ::-webkit-scrollbar-track{ background:transparent; }
@@ -206,7 +229,7 @@ input[type=checkbox],input[type=radio]{ accent-color:var(--gold); }
   background:linear-gradient(150deg,var(--gold-bright),var(--gold-deep));
   color:oklch(20% 0.04 70); box-shadow:var(--shadow-sm),inset 0 1px 0 oklch(100% 0 0 / .3);
 }
-.appbar .brandname,.bar .brand{ color:var(--text); font-family:var(--font-display); }
+.appbar .brandname,.bar .brand{ color:var(--text); font-family:var(--font-ui); font-weight:800; letter-spacing:-.01em; }
 .appbar .navbtn,.bar .navbtn{
   position:relative; height:34px; display:inline-flex; align-items:center; padding:0 13px;
   border:0 !important; background:transparent; border-radius:var(--r);

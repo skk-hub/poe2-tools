@@ -404,10 +404,10 @@ window.__viewInit["gear-search"]=function(){
         const status = await api("/api/trade-status");
         const q = status.queue || {};
         els.status.innerHTML = status.limited
-          ? `Trade queue: <b>limited</b><br>until ${escapeHtml(fmtEuTime(status.tradeLimitedUntil))}${status.secondsRemaining ? ` (${status.secondsRemaining}s)` : ""}`
-          : `Trade queue: <b>ready</b><br>${q.queued || 0} queued / ${q.active || 0} active / ${q.minGapMs || 0}ms`;
+          ? `Trade2: <b>rate-limited</b><br>clears ${escapeHtml(fmtEuTime(status.tradeLimitedUntil))}${status.secondsRemaining ? ` (${status.secondsRemaining}s)` : ""}`
+          : `Trade2: <b>ready to search</b>`;
       } catch (err) {
-        els.status.innerHTML = `Trade queue: <b>offline</b>`;
+        els.status.innerHTML = `Trade2: <b>offline</b>`;
       }
     }
 

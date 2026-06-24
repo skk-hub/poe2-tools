@@ -17,11 +17,11 @@
   .toolroot-arb input:focus{outline:none;border-color:var(--border-gold);box-shadow:0 0 0 3px var(--gold-glow)}
   .toolroot-arb .checks{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   .toolroot-arb .check{display:inline-flex;align-items:center;gap:6px;color:var(--tx);font:12px var(--ff)}
-  .toolroot-arb .check input{width:15px;height:15px;margin:0}
+  .toolroot-arb .check input{width:18px;height:18px;margin:0}
   .toolroot-arb button{height:38px;border:1px solid transparent;background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));color:oklch(22% 0.04 70);font:700 13px var(--ff-ui);letter-spacing:.01em;cursor:pointer;border-radius:var(--r);padding:0 16px;transition:filter var(--t),transform var(--t),box-shadow var(--t)}
   .toolroot-arb button:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:var(--shadow-gold)}
   .toolroot-arb button:disabled{opacity:.5;cursor:default;transform:none;filter:none}
-  .toolroot-arb .hint{margin-top:12px;color:var(--mu);font:12px var(--ff);border-left:2px solid var(--bd);padding-left:12px}
+  .toolroot-arb .hint{margin-top:12px;color:var(--mu);font:12px var(--ff);line-height:1.55;background:oklch(100% 0 0 / .02);border:1px solid var(--bd);border-radius:var(--r-sm);padding:10px 12px}
   .toolroot-arb .summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
   .toolroot-arb .metric{border:1px solid var(--bd);background:linear-gradient(180deg,var(--surface-2),var(--surface-1));padding:12px 14px;border-radius:var(--r-md)}
   .toolroot-arb .metric b{display:block;color:var(--gd);font:700 20px var(--mono)}
