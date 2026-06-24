@@ -83,7 +83,7 @@
   .toolroot-mj .pin-label{color:var(--tx);font:700 12px var(--ff)}
   .toolroot-mj .pin-actions{display:flex;align-items:center;gap:6px}
   .toolroot-mj .pin-del{padding:4px 9px;border:1px solid var(--bd);background:transparent;color:var(--mu);font:11px var(--ff-mono);cursor:pointer;border-radius:var(--r-sm);line-height:1}
-  .toolroot-mj .pin-del:hover{color:#e66;border-color:#e66}
+  .toolroot-mj .pin-del:hover{color:var(--red);border-color:var(--red)}
   .toolroot-mj .pin-rx{display:block;font:11px var(--ff-mono);color:var(--gd);word-break:break-all;white-space:pre-wrap}
 
   /* Collapsible evaluator */

@@ -3,8 +3,8 @@
 .toolroot-tt .tt-total{
   margin:14px 0 6px;
   padding:12px 16px;
-  border:1px solid var(--line, #2a2a2a);
-  border-radius:var(--radius, 10px);
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
   background:var(--surface-2, #161616);
   display:flex;
   align-items:baseline;
@@ -23,8 +23,8 @@
 td .tt-rough{ margin-left:1px; }
 .toolroot-tt .tt-browser{
   margin:10px 0;
-  border:1px solid var(--line, #2a2a2a);
-  border-radius:var(--radius, 10px);
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
   background:var(--surface-2, #161616);
   padding:10px 14px;
 }

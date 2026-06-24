@@ -52,7 +52,7 @@ window.__viewInit["home"] = function () {
       // opened as a static file with no server — is caught in load() and hides it.)
       chips.innerHTML = '<span class="fxchip"><span class="fxname">No currency rates yet</span></span>';
       if (meta) {
-        meta.textContent = (d && d.limited) ? "Trade2 is rate-limited — tap ↻ to retry" : "Rates unavailable — tap ↻ to retry";
+        meta.textContent = (d && d.limited) ? "Trade2 is rate-limited — click ↻ to retry" : "Rates unavailable — click ↻ to retry";
         meta.classList.add("stale");
       }
       strip.hidden = false;
@@ -124,7 +124,7 @@ window.__viewInit["home"] = function () {
       const tick = () => {
         const secs = untilMs ? (untilMs - Date.now()) / 1000 : 0;
         if (untilMs && secs <= 0) { loadTrade(); return; }   // just cleared — recheck
-        if (tsText) tsText.textContent = untilMs ? "Trade2 rate-limited — clears in " + fmtSecs(secs) : "Trade2 rate-limited";
+        if (tsText) tsText.textContent = untilMs ? "Trade2 is rate-limited — clears in " + fmtSecs(secs) : "Trade2 is rate-limited";
       };
       tick();
       if (untilMs) tsTimer = setInterval(tick, 1000);
@@ -288,8 +288,8 @@ window.__viewInit["home"] = function () {
         return;
       }
       if (showCountdown) econEmpty.textContent = untilMs
-        ? "Trade2 rate-limited — ↻ available in " + fmtDur(secs) + "."
-        : "Trade2 rate-limited — ↻ re-enables once it clears.";
+        ? "Trade2 is rate-limited — ↻ available in " + fmtDur(secs) + "."
+        : "Trade2 is rate-limited — ↻ re-enables once it clears.";
     };
     tick();
     if (untilMs) econLimitTimer = setInterval(tick, 1000);
@@ -308,7 +308,7 @@ window.__viewInit["home"] = function () {
       econChartWrap.hidden = true; econCards.innerHTML = ""; econHeadline.innerHTML = "";
       econEmpty.hidden = false;
       if (limited) applyLimit(d, true);
-      else econEmpty.textContent = "No economy data yet — tap ↻ to fetch (~1 min).";
+      else econEmpty.textContent = "No economy data yet — click ↻ to fetch (~1 min).";
       return;
     }
     if (limited) applyLimit(d, false);

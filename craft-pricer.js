@@ -121,7 +121,7 @@ const BL={e:"essence",o:"omen",b:"currency",k:"catalyst"};
     return;
   }
   refreshBtn.disabled=true;
-  setStatus("Fetching poe.ninja prices...", "");
+  setStatus("Fetching prices...", "");
   try{
     const r=await fetch("/api/prices?league="+encodeURIComponent(league));
     if(!r.ok) throw new Error("local server returned HTTP "+r.status);
