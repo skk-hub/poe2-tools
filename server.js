@@ -1297,7 +1297,14 @@ async function getTradePrice(name, league, currencyRates, deadline = 0) {
       if (each > 0) prices.push({ each, rawAmount: price.amount, rawCurrency: price.currency });
     }
 
-    return prices.sort((a, b) => a.each - b.each)[0] || null;
+    prices.sort((a, b) => a.each - b.each);
+    // Drop lowball baits: a chase item gets a stray "1 ex" listing far under the real
+    // cluster (Cadigan's Epiphany lists at ~1 divine but has a 1ex bait on top). An
+    // entry under HALF the next is bait → skip it (chained baits drop one at a time),
+    // so the returned price is the real cheapest cluster, not the scam.
+    let i = 0;
+    while (i < prices.length - 1 && prices[i].each < prices[i + 1].each * 0.5) i++;
+    return prices[i] || null;
   } catch (err) {
     if (String(err && err.message).includes("rate limited")) return { limited: true };
     return null;
@@ -1415,7 +1422,10 @@ function cheapestAsk(askData, id) {
   let i = 0;
   while (i < asks.length - 1 && asks[i].px < asks[i + 1].px * 0.5) i++;
   const chosen = asks[i];
-  return { px: chosen.px, stock: chosen.stock };
+  // depth = how many above-floor sellers there are. A deep book (many) = a trustworthy
+  // exchange price; a lone wall (1-2) means the exchange ASK is unreliable for this item
+  // and the real price lives on the item-search trade board (see refreshRuneBook).
+  return { px: chosen.px, stock: chosen.stock, depth: asks.length };
 }
 
 // One batched ex→currency exchange call; the best (cheapest) offer per currency
@@ -1687,7 +1697,7 @@ const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
 // Storm Rune, real ~79/ex) with par/overpriced asks (1:1, 2:1) + zero bids, which the
 // ask-fallback mis-priced at a fake ~1-2ex. v6 = v5 + `rough` flag; v5 = bid-else-ask
 // (ignores the overpriced wall); v4 = clustered ask; v3 = deep-ask; v2 = bid-only.
-const RUNE_BOOK_VERSION = 9;
+const RUNE_BOOK_VERSION = 10;
 // Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles
 // (its inter-call gap grows to several seconds under load), so a forced refresh of
 // a handful of items can take 20-40s. Give it real headroom so a SINGLE press
@@ -1768,6 +1778,18 @@ async function refreshRuneBook(league, normNames, force, opts = {}) {
       const existing = readRuneBook(league);
       const prices = existing ? { ...existing.prices } : {};
       const now = new Date().toISOString();
+      // Item-search fallback budget (Rune Picker only). The bulk exchange is the WRONG
+      // source for chase items: the real trades clear instantly at the market ratio and
+      // don't sit as standing offers, so the offer book is just a lone bait + a greedy
+      // wall (Cadigan's Epiphany: 1ex + 4444ex, while the in-game Market Ratio is 576:1).
+      // The actual price lives on the item-search trade board. When the exchange ask book
+      // is too thin to trust (a lone wall, not a real cluster) we look it up there — but
+      // BUDGETED LOW: item-search is search+fetch per item on a MUCH tighter rate policy
+      // than the exchange — a few in a row trip it and poison the whole fill. 2 per fill
+      // covers the real workflow (price a chase item or two); the rest of a big paste
+      // fall back to the exchange ask and resolve over later checks.
+      let searchBudget = opts.perItemAsk ? 2 : 0;
+      const rates = opts.perItemAsk ? await getExchangeRates(league).catch(() => null) : null;
       for (const t of targets) {
         // Price off the BID (what buyers actually pay = real liquidation value). The ASK
         // side is NOT a price for thin items: GGG's bulk exchange floods cheap items
@@ -1778,20 +1800,31 @@ async function refreshRuneBook(league, normNames, force, opts = {}) {
         const ask = cheapestAsk(askData, t.id);
         const bidPx = robustBidPx(bidData, t.id, ask.px || 0);   // real, non-crossed bid only
         const common = { id: t.id, name: t.name, category: t.category, updated: now };
+        // The exchange ASK book is "thin/wall-y" when there are ≤3 above-floor sellers —
+        // a lone greedy wall, not a real cluster, so its price isn't trustworthy (Cadigan's
+        // one 4444ex wall vs the true 576ex). A deep book (≥4) is a real market we trust.
+        const thinAskBook = ask.depth >= 1 && ask.depth <= 3;
         if (bidPx > 0) {
           prices[t.norm] = { ...common, ex: round4(bidPx), stock: Math.floor(ask.stock) || 0, side: "bid" };
+        } else if (rates && ask.depth >= 1 && thinAskBook && searchBudget > 0) {
+          // Valuable item (someone's asking real ex for it) but the exchange book is a
+          // thin wall → get the true price from the item-search trade board, where chase
+          // items actually list and cluster. De-baited + ex-converted in getTradePrice.
+          searchBudget--;
+          const tp = await getTradePrice(t.name, league, rates);
+          if (tp && tp.limited) searchBudget = 0;   // hit the tight search limit → stop; rest fall back to ask
+          if (tp && !tp.limited && tp.each >= 2) {
+            prices[t.norm] = { ...common, ex: round4(tp.each), stock: 0, side: "market" };
+          } else if (ask.px >= 2) {
+            prices[t.norm] = { ...common, ex: round4(ask.px), stock: Math.floor(ask.stock) || 0, side: "ask" };
+          } else {
+            prices[t.norm] = { ...common, ex: 0, thin: true, stock: 0 };
+          }
         } else if (ask.px >= 2) {
-          // No standing BID, but a real ask-side market. Price off the lowest (de-baited)
-          // ask: the sell-side floor (what you'd undercut to liquidate), the only honest
-          // number the exchange gives. Labelled `side:"ask"` so the UI shows "lowest ask",
-          // not a confirmed buyer. Covers BOTH the liquid "of Aldur" runes (many sellers)
-          // AND thin chase items (Cadigan's Epiphany / Astrid's Creativity — 1-2 sellers,
-          // usually offline; the status:"any" read + de-baited cheapestAsk surface them).
-          //   GATE: cheapest de-baited ask ≥ 2 ex/item. This is the spam guard — sub-1ex
-          //   runes (Greater Storm/Iron Rune) all FLOOR at par 1ex on the ask side, so a
-          //   1ex cheapest stays thin → "no buyers". ≥2ex is unambiguously real pricing.
-          //   (The old `aboveParCount ≥ 3` extra gate was DROPPED: it wrongly killed thin
-          //   high-value items that have only 1-2 sellers — e.g. Astrid's at one 50ex ask.)
+          // No bid, but a real (deep-enough) ask cluster. Price off the lowest de-baited
+          // ask — the sell-side floor. Covers the liquid "of Aldur" runes (many sellers)
+          // and Astrid's-style items. GATE: ≥ 2 ex/item — the spam guard, since sub-1ex
+          // runes (Greater Storm/Iron) all floor at par 1ex and get filtered to nothing.
           prices[t.norm] = { ...common, ex: round4(ask.px), stock: Math.floor(ask.stock) || 0, side: "ask" };
         } else {
           // No bid AND no real ask market → not liquidatable on the exchange. Mark thin
@@ -2428,15 +2461,16 @@ async function fetchRunePrices(text, league, forceFresh) {
     const b = runeBookPrices[nn];
     if (!b || !(b.ex > 0)) return null;
     const askSide = b.side === "ask";
+    const marketSide = b.side === "market";   // priced off the item-search trade board
     return {
       qty, name: b.name || fallbackName, category: (b.category || "Exchange") + " (trade2)",
       each: b.ex, total: roundPriceExalted(b.ex * qty), currency: "exalted",
-      source: askSide ? "trade2 exchange (ask)" : "trade2 exchange",
-      rawPrice: askSide ? "lowest ask — no standing buyers, sell-side floor" : "",
+      source: marketSide ? "trade2 search" : askSide ? "trade2 exchange (ask)" : "trade2 exchange",
+      rawPrice: marketSide ? "cheapest item-search listing (exchange book too thin)" : askSide ? "lowest ask — no standing buyers, sell-side floor" : "",
       divineValue: currencyRates.divine ? roundPriceExalted(b.ex / currencyRates.divine) : 0,
-      // Ask-side is a sell floor, not a confirmed trade → cap confidence at "low" so it
-      // never outranks a real bid-priced or volume-backed pick in the default sort.
-      change7d: "", confidence: askSide ? "low" : (b.stock >= 10 ? "high" : "medium"),
+      // Ask-side is a sell floor (cap "low"); item-search is the real trade board for a
+      // chase item → "medium". Neither outranks a deep bid-priced/volume-backed pick.
+      change7d: "", confidence: marketSide ? "medium" : askSide ? "low" : (b.stock >= 10 ? "high" : "medium"),
       units: Number.isFinite(b.stock) ? b.stock : null,
     };
   };
