@@ -29,6 +29,7 @@ window.__viewInit["map-juicer"]=function(){
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
   let rarityMin = 0, packMin = 0, wdropMin = 0;   // all start at 0 (off) — build up from nothing; wdrop is 0 or 100
+  const DUMP_CAP_EX = 40;   // "low value" cutoff for the dump filter (baked — see buildDump)
   // Match a number ≥ pct (pct is a multiple of 10). Two-digit: first digit
   // (pct/10)…9 + any second digit (so ≥ pct); OR any three-digit (100+). Uses
   // [0-9] not "." so it can't swallow the trailing "%". The label token carries the
@@ -59,7 +60,34 @@ window.__viewInit["map-juicer"]=function(){
     return out;
   }
 
+  // Lowest 10%-decade at which `stat` alone is worth >= capEx, read off its baked
+  // price curve. Floored to the decade so we stay CONSERVATIVE: a roll anywhere in
+  // that decade *could* clear the cap, so we exclude the whole band rather than risk
+  // dumping a valuable map. Returns null if the stat never reaches capEx.
+  function dumpThreshold(stat, capEx){
+    const top = stat.ceiling || 130;
+    for (let p = 10; p <= top; p++){ if (curveEx(stat.curve, p) >= capEx) return Math.max(10, Math.floor(p/10)*10); }
+    return null;
+  }
+  // "Low-value dump" filter: fully exalt-slammed (0 revives) + Corrupted waystones
+  // worth roughly under DUMP_CAP_EX. A map's value ≈ its single best reward stat
+  // (see waystone-data marketWeights note), so a map is low-value when EVERY stat is
+  // below its cap threshold — we require corrupted + 0 revives and exclude any stat
+  // rolled into its >=cap band. Stats that can't reach the cap alone (peakEx < cap)
+  // need no exclusion. Thresholds come from the baked curves — no live scan needed.
+  function buildDump(){
+    const blocks = [`"${T.corrupted}"`, `"${T.revivesZero}"`];
+    for (const s of (MW().stats || [])){
+      if (!s.curve || !s.curve.length || (s.peakEx || 0) < DUMP_CAP_EX) continue;
+      const tok = L[s.key]; if (!tok) continue;
+      const decade = dumpThreshold(s, DUMP_CAP_EX);
+      if (decade != null) blocks.push(`"!${atLeast(tok, decade)}"`);
+    }
+    return blocks.join(" ");
+  }
+
   function buildWaystone(){
+    if (wMatch === "dump") return buildDump();
     const blocks = [];
     if (wMatch === "blue") {
       blocks.push(`"(${L.itemRarity}|${L.packSize}|${L.monsterRarity}|${L.monsterEffectiveness}|${L.waystoneDrop})"`);
@@ -100,8 +128,12 @@ window.__viewInit["map-juicer"]=function(){
     return `<label class="forge-tog"><input type="checkbox" data-tog="${id}"${on?" checked":""}><span>${esc(label)}</span></label>`;
   }
   function waystoneQs(){
+    const segs = `<div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}${seg("wmatch","dump",wMatch,"Low-value dump")}</div>`;
+    if (wMatch === "dump") {
+      return `${segs}<p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones worth roughly <b>under ${DUMP_CAP_EX} ex</b> — the cheap slammed maps safe to dump/vendor. Requires Corrupted + 0 revives and excludes any reward stat rolled high enough to be worth ~${DUMP_CAP_EX}ex+ (thresholds read off the baked Mod Value curves — no price refresh needed). Value ≈ best stat, so spot-check a map carrying several mid rolls.</p>`;
+    }
     return `
-      <div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}</div>
+      ${segs}
       ${wMatch==="floor"
         ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,0,70)}${stepper("pack","Min Pack Size",packMin,0,40)}</div><p class="forge-hint">Every minimum you set is <b>required</b> (AND) — a stone must clear all of them. Set a stat to 0 to drop it.</p>`
         : `<p class="forge-hint">Matches any waystone carrying a reward mod — the blue stones worth upgrading.</p>`}

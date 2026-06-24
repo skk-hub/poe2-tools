@@ -386,6 +386,12 @@ async function browserChecks() {
       // toggle "Corrupted only" -> the corrupted block appears
       await p.click('.toolroot-mj [data-tog="corrupt"]'); await p.waitForTimeout(120);
       check(/"corrupted"/.test(await out()), "regex forge emits the corrupted block when toggled");
+      // low-value dump mode: corrupted + fully juiced, excludes value-bearing stats (rarity/pack),
+      // skips stats that can't reach the cap (effectiveness/drop) — thresholds from the baked curves
+      await p.click('.toolroot-mj [data-wmatch="dump"]'); await p.waitForTimeout(150);
+      const dump = await out();
+      check(/"corrupted"/.test(dump) && /revives available: 0/.test(dump) && /!item rarity: \\\+\(\[5-9\]/.test(dump) && /!pack size: \\\+\(\[4-9\]/.test(dump) && !/effectiveness/.test(dump), "regex forge low-value dump mode (corrupted+juiced, excludes high rarity/pack)");
+      await p.click('.toolroot-mj [data-wmatch="floor"]'); await p.waitForTimeout(120);
       // switch to tablets, pick Breach -> just the content keyword (no mods pre-ticked)
       await p.click('.toolroot-mj [data-target="tablets"]'); await p.waitForTimeout(120);
       await p.click('.toolroot-mj [data-chip="breach"]'); await p.waitForTimeout(120);
