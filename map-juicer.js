@@ -29,7 +29,7 @@ window.__viewInit["map-juicer"]=function(){
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
   let rarityMin = 0, packMin = 0, wdropMin = 0;   // all start at 0 (off) — build up from nothing; wdrop is 0 or 100
-  let dumpCap = 5;   // "low value" cutoff (ex) for the dump filter — adjustable via the stepper
+  let dumpRarityKeep = 60;   // dump filter keeps maps with Item Rarity >= this% (the one tunable keeper); adjustable via stepper
   // Match a number ≥ pct (pct is a multiple of 10). Two-digit: first digit
   // (pct/10)…9 + any second digit (so ≥ pct); OR any three-digit (100+). Uses
   // [0-9] not "." so it can't swallow the trailing "%". The label token carries the
@@ -64,30 +64,23 @@ window.__viewInit["map-juicer"]=function(){
     return out;
   }
 
-  // Lowest 10%-decade at which `stat` alone is worth >= capEx, read off its baked
-  // price curve. Floored to the decade so we stay CONSERVATIVE: a roll anywhere in
-  // that decade *could* clear the cap, so we exclude the whole band rather than risk
-  // dumping a valuable map. Returns null if the stat never reaches capEx.
-  function dumpThreshold(stat, capEx){
-    const top = stat.ceiling || 130;
-    for (let p = 10; p <= top; p++){ if (curveEx(stat.curve, p) >= capEx) return Math.max(10, Math.floor(p/10)*10); }
-    return null;
-  }
-  // "Low-value dump" filter: fully exalt-slammed (0 revives) + Corrupted waystones
-  // worth roughly under DUMP_CAP_EX. A map's value ≈ its single best reward stat
-  // (see waystone-data marketWeights note), so a map is low-value when EVERY stat is
-  // below its cap threshold — we require corrupted + 0 revives and exclude any stat
-  // rolled into its >=cap band. Stats that can't reach the cap alone (peakEx < cap)
-  // need no exclusion. Thresholds come from the baked curves — no live scan needed.
+  // "Low-value dump" filter. Empirically (2026-06-24 buy-side sweep, gated on the
+  // user's actual class = corrupted + 0 revives): the WHOLE juiced corrupted class is
+  // ~5ex bulk. Only two things break past it — (a) Item Rarity >=~60% (~50-180ex,
+  // scarce; >=70% doesn't even exist on the market) and (b) high-roll COMBOS, which
+  // all carry Waystone Drop Chance >=100% (a monrar70+drop100+pack25 map sampled at
+  // 25/100/400ex). Monster Rarity can also exceed 100%. Single stats below those —
+  // any Pack/Effectiveness/Drop/Monster-Rarity short of the combo — sell for ~5ex no
+  // matter how high they look in the in-game price-check. So: keep those signals
+  // (the real money + the user's drop>=100 sustain), dump everything else.
   function buildDump(){
-    const blocks = [`"${T.corrupted}"`, `"${T.revivesZero}"`];
-    for (const s of (MW().stats || [])){
-      if (!s.curve || !s.curve.length || (s.peakEx || 0) < dumpCap) continue;
-      const tok = L[s.key]; if (!tok) continue;
-      const decade = dumpThreshold(s, dumpCap);
-      if (decade != null) blocks.push(`"!${atLeast(tok, decade, s.ceiling)}"`);
-    }
-    return blocks.join(" ");
+    return [
+      `"${T.corrupted}"`,
+      `"${T.revivesZero}"`,
+      `"!${atLeast(L.itemRarity, dumpRarityKeep, 87)}"`,   // keep high Item Rarity
+      `"!${atLeast(L.waystoneDrop, 100)}"`,                // keep Drop Chance >=100% (combo signal + sustain)
+      `"!${atLeast(L.monsterRarity, 100)}"`,               // keep Monster Rarity >=100%
+    ].join(" ");
   }
 
   function buildWaystone(){
@@ -135,7 +128,7 @@ window.__viewInit["map-juicer"]=function(){
   function waystoneQs(){
     const segs = `<div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}${seg("wmatch","dump",wMatch,"Low-value dump")}</div>`;
     if (wMatch === "dump") {
-      return `${segs}<div class="forge-steps">${stepper("dumpcap","Value cap",dumpCap,5,100," ex")}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones worth roughly <b>under ${dumpCap} ex</b> — the cheap slammed maps safe to dump/vendor. Requires Corrupted + 0 revives and excludes any reward stat rolled high enough to clear ~${dumpCap}ex (thresholds read off the baked Mod Value curves — no price refresh needed). Value ≈ best stat, so spot-check a map carrying several mid rolls.</p>`;
+      return `${segs}<div class="forge-steps">${stepper("rarityKeep","Keep if Item Rarity ≥",dumpRarityKeep,40,70)}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones that are <b>~5ex bulk</b> — and keeps the real money OUT of the dump pile: <b>Item Rarity ≥${dumpRarityKeep}%</b>, <b>Drop Chance ≥100%</b>, or <b>Monster Rarity ≥100%</b> (the high-roll combos that actually sell, plus your drop-sustain maps). Thresholds from a 2026-06-24 buy-side sweep gated on this exact map class. <b>Ignore the in-game price-check</b> — most "expensive"-looking juiced maps sell for ~5ex.</p>`;
     }
     return `
       ${segs}
@@ -193,7 +186,7 @@ window.__viewInit["map-juicer"]=function(){
     root.querySelectorAll("[data-step]").forEach(b => b.addEventListener("click", () => {
       const dir = Number(b.getAttribute("data-dir")), id = b.getAttribute("data-step");
       if (id === "rarity") rarityMin = clamp(rarityMin + dir*10, 0, 70);
-      else if (id === "dumpcap") dumpCap = clamp(dumpCap + dir*5, 5, 100);
+      else if (id === "rarityKeep") dumpRarityKeep = clamp(dumpRarityKeep + dir*10, 40, 70);
       else packMin = clamp(packMin + dir*10, 0, 40);
       renderSheet();
     }));

@@ -386,16 +386,16 @@ async function browserChecks() {
       // toggle "Corrupted only" -> the corrupted block appears
       await p.click('.toolroot-mj [data-tog="corrupt"]'); await p.waitForTimeout(120);
       check(/"corrupted"/.test(await out()), "regex forge emits the corrupted block when toggled");
-      // low-value dump mode: corrupted + fully juiced, default 5ex cap excludes every
-      // stat that can clear 5ex (rarity/pack/effectiveness/drop); thresholds from baked curves
+      // dump mode keeps the empirical money signals (Item Rarity >=60, Drop >=100,
+      // Monster Rarity >=100 — the combos that actually sell) and dumps the rest
       await p.click('.toolroot-mj [data-wmatch="dump"]'); await p.waitForTimeout(150);
       const dump = await out();
-      check(/"corrupted"/.test(dump) && /revives available: 0/.test(dump) && /!item rarity: \\\+\[3-9\]\[0-9\]%/.test(dump) && /!pack size: \\\+\[2-9\]\[0-9\]%/.test(dump) && /!monster effectiveness:/.test(dump) && /!monster rarity:/.test(dump) && !/drop chance/.test(dump), "regex forge dump mode at 5ex cap (excludes rarity/pack/effectiveness/monster-rarity, not worthless drop)");
-      // value-cap stepper adjusts the cutoff (5 -> 10 ex)
+      check(/"corrupted"/.test(dump) && /revives available: 0/.test(dump) && /!item rarity: \\\+\[6-9\]\[0-9\]%/.test(dump) && /!drop chance: \\\+\[0-9\]\[0-9\]\[0-9\]%/.test(dump) && /!monster rarity: \\\+\[0-9\]\[0-9\]\[0-9\]%/.test(dump) && !/pack size/.test(dump) && !/effectiveness/.test(dump), "regex forge dump keeps rarity>=60 + drop/monrar>=100, dumps the rest");
+      // rarity-keep stepper adjusts the kept threshold (60 -> 70 %)
       const capA = await p.evaluate(() => (document.querySelector('.toolroot-mj .forge-step-val') || {}).textContent || "");
-      await p.click('.toolroot-mj [data-step="dumpcap"][data-dir="1"]'); await p.waitForTimeout(120);
+      await p.click('.toolroot-mj [data-step="rarityKeep"][data-dir="1"]'); await p.waitForTimeout(120);
       const capB = await p.evaluate(() => (document.querySelector('.toolroot-mj .forge-step-val') || {}).textContent || "");
-      check(/5\s*ex/.test(capA) && /10\s*ex/.test(capB), "regex forge dump value-cap stepper adjusts the cutoff");
+      check(/60\s*%/.test(capA) && /70\s*%/.test(capB), "regex forge dump rarity-keep stepper adjusts the threshold");
       await p.click('.toolroot-mj [data-wmatch="floor"]'); await p.waitForTimeout(120);
       // switch to tablets, pick Breach -> just the content keyword (no mods pre-ticked)
       await p.click('.toolroot-mj [data-target="tablets"]'); await p.waitForTimeout(120);

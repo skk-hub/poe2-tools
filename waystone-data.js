@@ -112,12 +112,12 @@ window.WAYSTONE_DATA = {
     analyzed: "2026-06-13 (Drop Chance + Monster Rarity re-probed buy-side 2026-06-24)",
     league: "Runes of Aldur",
     baselineEx: 1, // a junk Tier-16 waystone floors at ~1ex
-    note: "Value depends on the rolled %, not just which stat. High Item Rarity is the top chase; Pack Size / Monster Effectiveness win on value-per-% at mid rolls but peak lower. Buy-side recheck (2026-06-24): Waystone Drop Chance is worthless to BUY (~1ex even at 105%), Monster Rarity is a mild ~5ex at ≥60%. The other waystone reward mods — Waystone Gold & Waystone Experience — have no liquid Tier-16 buy market (0 listings at modest rolls), so they're not priced here.",
+    note: "Value depends on the rolled %, not just which stat. High Item Rarity is the top chase; Pack Size / Monster Effectiveness win on value-per-% at mid rolls but peak lower. Buy-side recheck (2026-06-24): Waystone Drop Chance is worthless to BUY (~1ex even at 105%), Monster Rarity is a mild ~5ex at ≥60%. The other waystone reward mods — Waystone Gold & Waystone Experience — have no liquid Tier-16 buy market (0 listings at modest rolls), so they're not priced here. COMBO CAVEAT (key): waystone value is largely COMBINATION-driven and these per-stat solo curves can't express it — a single high stat is ~5ex, but high Monster Rarity + Drop Chance ≥100% + Pack together is a real chase (only ~3 on market, sampled 25/100/400ex). The dump filter (map-juicer buildDump) keeps Item Rarity ≥60% OR Drop ≥100% OR Monster Rarity ≥100% precisely to catch those combos; don't rely on the solo curves to value a multi-high map.",
     // ranked by peak (ceiling) value; `curve` = [rolled %, floor ex]
     stats: [
-      { key: "itemRarity", label: "Item Rarity", weight: 1.0, ceiling: 87, peakEx: 325,
-        curve: [[30, 1], [50, 20], [70, 325]],
-        tip: "Highest ceiling and the top chase — explodes past ~60% (70%+ ≈ 325ex). Mid rarity (≤50%) is cheap." },
+      { key: "itemRarity", label: "Item Rarity", weight: 1.0, ceiling: 66, peakEx: 180,
+        curve: [[30, 1], [55, 5], [60, 50], [66, 180]],
+        tip: "The one SOLO stat the market pays for — but only at the top: ~5ex until ~55%, then jumps (≥60% floored 50ex, up to ~180ex; 2026-06-24 buy probe). ≥70% doesn't exist on the market. Below 60% it's 5ex bulk like everything else." },
       { key: "packSize", label: "Pack Size", weight: 0.12, ceiling: 51, peakEx: 40,
         curve: [[20, 1], [30, 20], [40, 40]],
         tip: "Best value per % at mid rolls (~2ex/%). Caps ~40% → ~40ex; can't reach Rarity's top end." },
