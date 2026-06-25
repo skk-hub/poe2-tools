@@ -512,6 +512,13 @@ window.__viewInit["map-juicer"]=function(){
     let cls="warn", head="", lines=[], scoreHtml="";
     const rolls = {}; ms.rows.forEach(r => { rolls[r.key] = r.value; });
     const fits = contentFit(rolls);
+    // Combo signal: reward stats compound in-run (more pack × rarity × monsters =
+    // multiplicative loot), and a map with 2+ HIGH rolls is the rare chase that sells
+    // above any single stat. Gated scan found such combos have ~0 listings (scarce),
+    // so we DON'T fabricate an ex number — we surface it and flag a price-check.
+    const normRolls = ms.rows.filter(r => r.ceiling).map(r => Math.min(1, r.value / r.ceiling));
+    const decentStats = normRolls.filter(n => n >= 0.5).length;
+    const highStats = normRolls.filter(n => n >= 0.7).length;
     if (isTablet){
       const c = detectContent(text);
       const name = c ? c.label : "Generic tablet";
@@ -534,14 +541,18 @@ window.__viewInit["map-juicer"]=function(){
         if (ex >= 20){ cls="good"; head=`Good blue (best: ${bestTxt}) — Regal then Exalt, push that roll higher`; }
         else if (ex > 0){ cls="warn"; head=`Weak blue (best: ${bestTxt}) — Aug toward Rarity / Pack Size, or reroll`; }
         else { cls="warn"; head="Weak blue — Augment for a reward mod, or Transmute-reroll"; }
+      } else if (highStats >= 2){
+        cls="good"; head=`✓ Multi-stat chase — ${highStats} high rolls together${dangers.length?", has risk mods (run anyway)":""}. Price-check it: combos this juiced are scarce and sell well above any single stat`;
       } else {
         if (ex >= 100){ cls="good"; head=`✓ Premium juice (best: ${bestTxt})${dangers.length?" — has risk mods, run anyway":""}`; }
         else if (ex >= 30){ cls=dangers.length?"warn":"good"; head=`Solid map (best: ${bestTxt}) — run it`; }
+        else if (decentStats >= 2){ cls=dangers.length?"warn":"good"; head=`Juiced all-rounder (best: ${bestTxt}) — ${decentStats} solid stats that compound in-run, worth running${dangers.length?" despite risk mods":""}`; }
         else if (dangers.length){ cls="bad"; head="⚠ Risky rare, weak rewards — cheap throwaway only"; }
         else { cls="warn"; head=`Mediocre rare (best: ${bestTxt}) — okay to run, low market value`; }
       }
       scoreHtml = `<div class="scoreline">Est. floor value <b>≈ ${Math.round(ex)} ex</b><span>(its best stat priced off the curve)</span></div>`;
       for (const r of ms.rows){ lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""} <span style="color:var(--mu)">≈ ${r.ex}ex</span>`); }
+      if (decentStats >= 2) lines.push(`<span class="tag ${highStats>=2?"good":"mid"}">combo</span><b>${decentStats} strong stats together</b> — reward mods compound in-run, so it's worth more to run than the ${Math.round(ex)}ex solo floor${highStats>=2?". <b>Price-check before dumping</b> — multi-high maps are the rare chase, scarce on market.":"; the solo-stat floor under-rates combos."}`);
       if (fits.length && fits[0].fit > 0.15){ const top = fits[0], driver = top.top ? statLabel(top.top.k) : ""; let pair = `<span class="tag mid">pair</span>Best for <b>${esc(top.ct.label)}</b>${driver?` (${esc(driver)}-heavy)`:""} — socket ${esc(top.ct.label)} tablets`; if (fits[1] && fits[1].fit >= top.fit * 0.8) pair += `, or ${esc(fits[1].ct.label)}`; lines.push(pair); }
     } else { cls="warn"; head="Couldn't tell if this is a waystone or tablet — paste the full copied item text"; }
     if (dangers.length) lines.push(`<span class="tag bad">risk</span>${dangers.join(", ")}`);
