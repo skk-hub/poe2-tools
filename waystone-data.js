@@ -197,9 +197,9 @@ window.WAYSTONE_DATA = {
       label: "Ritual",
       tabletToken: "itual",
       desirable: [
-        { label: "Extra Reroll Favours", token: "olling favours|eroll favour|dditional time", div: 15, comboDiv: 60, note: "13–17 div solo · 20–60 div paired with other Ritual mods" }, // roll Favours 1–3 additional times
+        { label: "Extra Reroll Favours", token: "olling favours|eroll favour", div: 15, comboDiv: 60, note: "13–17 div solo · 20–60 div paired with other Ritual mods" }, // roll Favours 1–3 additional times (dropped "|dditional time" — it matched "Chain an additional time from terrain")
         { label: "Reduced Reroll Tribute", token: "educed tribute|eferring", pairs: true, note: "high value paired with rerolls / omens" }, // deferring/rerolling costs reduced Tribute
-        { label: "Omen Chance", token: "be omen|men", pairs: true, note: "low solo; high paired with Ritual mods" }, // Favours have increased chance to be Omens
+        { label: "Omen Chance", token: "be omen", pairs: true, note: "low solo; high paired with Ritual mods" }, // "Ritual Favours...increased chance to be Omens" (was "be omen|men" — the bare "men" matched ELEmental/augMENtation etc.)
       ],
       scalesWith: { monsterRarity: 1.0, packSize: 0.6 },
       blurb: "Ritual altars give Tribute to spend; scales with rare-monster density. Ritual tablets add altars / increase Tribute & rerolls.",

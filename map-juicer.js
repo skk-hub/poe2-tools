@@ -125,11 +125,14 @@ window.__viewInit["map-juicer"]=function(){
   function buildTablet(){
     const toks = D.contentTypes.filter(c => tContent.has(c.id)).map(c => c.tabletToken);
     if (!toks.length) return "";
+    // Content types OR into one block — a tablet is ONE mechanic, so "(breach|ritual)"
+    // = "either". Each ticked mod gets its OWN quoted block = AND in stash search: the
+    // tablet must have ALL ticked mods. (Was a single |-joined OR group, so ticking
+    // Effectiveness + Rarity matched a tablet with EITHER — a pure-Rarity tablet showed
+    // when you wanted Effectiveness. That's the "shows others" bug.)
     const kw = toks.length === 1 ? `"${toks[0]}"` : `"(${toks.join("|")})"`;
-    const mods = gatherDesirables().map(m => m.token).filter(t => tMods.has(t));
-    if (!mods.length) return kw;
-    const md = mods.length === 1 ? `"${mods[0]}"` : `"(${mods.join("|")})"`;
-    return `${kw} ${md}`;
+    const mods = gatherDesirables().map(m => m.token).filter(t => tMods.has(t)).map(t => `"${t}"`);
+    return mods.length ? `${kw} ${mods.join(" ")}` : kw;
   }
   function currentRegex(){ return target === "tablets" ? buildTablet() : buildWaystone(); }
 
@@ -257,7 +260,7 @@ window.__viewInit["map-juicer"]=function(){
     let mods = "";
     if (tContent.size){
       const modChips = gatherDesirables().map(m => `<button class="chip${tMods.has(m.token)?" on":""}" type="button" data-mod="${esc(m.token)}">${esc(m.label)}</button>`).join("");
-      mods = `<p class="forge-hint">Optionally require some of these mods (tick to add — none required by default):</p><div class="forge-chips">${modChips}</div>`;
+      mods = `<p class="forge-hint">Require specific mods — a tablet must have <b>every</b> ticked one (AND). None required by default:</p><div class="forge-chips">${modChips}</div>`;
     }
     return `
       <p class="forge-hint">Pick the content you're farming — socket the tablet in a Tower covering those maps.</p>
@@ -294,7 +297,7 @@ window.__viewInit["map-juicer"]=function(){
   }
   function renderSheet(){
     const note = target === "tablets"
-      ? `Each block is <code>"keyword"</code> AND <code>"desirable"</code>; multiple picks become <code>"(a|b|c)"</code>. Verify wording in your stash.`
+      ? `Content types OR into one block (a tablet is one mechanic); each ticked mod is <b>required</b> (its own AND block). Verify wording in your stash.`
       : `Matches the waystone "<b>Label: +X%</b>" reward block (0.5). Risk excluded: <b>${esc((D.dangerousMods||[]).join(", "))}</b>.`;
     els.sheet.innerHTML = `<div class="rxcard rx-forge">
       <div class="rxcard-head"><span class="rxcard-title">Regex Forge</span><span class="rxcard-kind">live</span></div>
