@@ -136,7 +136,7 @@ window.__viewInit["rune-picker"] = function () {
     runeResultData=data.results||[];
     if(!runeResultData.length){
       runeBest.className="bestbox empty";
-      runeBest.textContent="No priced picks yet.";
+      runeBest.textContent="No priced picks yet — paste reward lines or item choices above, then Check picks.";
       renderRows();
       return;
     }
@@ -147,7 +147,7 @@ window.__viewInit["rune-picker"] = function () {
       runeBest.innerHTML='<b>Best pick: '+esc(best.qty)+'x '+esc(best.name)+'</b><span>'+fx(best.total)+' total / '+fx(best.each)+' each - '+esc(best.category)+' via '+esc(best.source)+'</span>'+(best.rawPrice?'<div class="muted">Raw listing: '+esc(best.rawPrice)+'</div>':'');
     }else{
       runeBest.className="bestbox empty";
-      runeBest.textContent="No priced picks yet.";
+      runeBest.textContent="No priced picks yet — paste reward lines or item choices above, then Check picks.";
     }
 
     renderRows();
@@ -170,7 +170,7 @@ window.__viewInit["rune-picker"] = function () {
     if(tradeQueueRunning) return;
     tradeQueueRunning=true;
     try{
-      const queued=results.map((item,index)=>({item,index})).filter(entry=>entry.item.category==="TRADE QUEUED");
+      const queued=results.map((item,index)=>({item,index})).filter(entry=>entry.item.category==="Trade queued");
       for(let q=0;q<queued.length;q++){
         const {item}=queued[q];
         await waitForTradeCooldown();
@@ -190,7 +190,7 @@ window.__viewInit["rune-picker"] = function () {
         if(data.found){
           Object.assign(item,data);
         }else{
-          Object.assign(item,{category:"NOT FOUND",each:"",total:"",source:"trade2",rawPrice:""});
+          Object.assign(item,{category:"Not found",each:"",total:"",source:"trade2",rawPrice:""});
         }
         renderRuneResults({results,best:bestFromResults(results)});
       }
@@ -258,7 +258,7 @@ window.__viewInit["rune-picker"] = function () {
       if(!r.ok) throw new Error("local server returned HTTP "+r.status);
       const data=await r.json();
       renderRuneResults(data);
-      const queued=(data.results||[]).filter(item=>item.category==="TRADE QUEUED").length;
+      const queued=(data.results||[]).filter(item=>item.category==="Trade queued").length;
       const limited=data.tradeLimitedUntil?" Trade2 limited until "+fmtEuTime(data.tradeLimitedUntil)+".":"";
       const freshNote=forceFresh?" (fresh Trade2 prices)":"";
       setRuneStatus("Checked "+data.count+" picks"+freshNote+(queued?"; "+queued+" trade rows queued":"")+(data.truncated?" (first 30 lines only)":"")+"."+limited, data.tradeLimitedUntil?"err":"ok");
@@ -389,7 +389,7 @@ console.log('Copied '+out.split('\\n').length+' poe.ninja prices for "'+league+'
   function setNinjaStatus(t,k){ if(ninjaStatusEl){ ninjaStatusEl.textContent=t; ninjaStatusEl.className="status "+(k||""); } }
   if(ninjaCopyBtn) ninjaCopyBtn.addEventListener("click", async ()=>{
     const ok=await copyToClipboard(NINJA_SNIPPET);
-    ninjaCopyBtn.textContent = ok ? "Copied ✓" : "Copy failed";
+    ninjaCopyBtn.textContent = ok ? "Copied" : "Copy failed";
     setTimeout(()=>{ ninjaCopyBtn.textContent="Copy snippet"; }, 1400);
   });
   if(ninjaSaveBtn) ninjaSaveBtn.addEventListener("click", async ()=>{

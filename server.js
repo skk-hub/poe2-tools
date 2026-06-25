@@ -2781,12 +2781,12 @@ async function fetchRunePrices(text, league, forceFresh) {
 
     let tradePrice = null;
     if (isSkillOrSupport && tradePaused) {
-      results.push({ qty: parsed.qty, name: cleanName, category: "TRADE QUEUED", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — live-trade is best-effort", change7d: "" });
+      results.push({ qty: parsed.qty, name: cleanName, category: "Trade queued", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — live-trade is best-effort", change7d: "" });
       continue;
     }
 
     if (isSkillOrSupport) {
-      results.push({ qty: parsed.qty, name: cleanName, category: "TRADE QUEUED", each: "", total: "", currency: "", source: "trade2", rawPrice: "queued — shared rate-limit bucket, live-trade is best-effort", change7d: "" });
+      results.push({ qty: parsed.qty, name: cleanName, category: "Trade queued", each: "", total: "", currency: "", source: "trade2", rawPrice: "queued — shared rate-limit bucket, live-trade is best-effort", change7d: "" });
       continue;
     } else if (tradeFallbacks < MAX_TRADE_FALLBACKS) {
       tradeFallbacks++;
@@ -2813,7 +2813,7 @@ async function fetchRunePrices(text, league, forceFresh) {
       continue;
     }
 
-    results.push({ qty: parsed.qty, name: cleanName, category: "NOT FOUND", each: "", total: "", currency: "", source: "", rawPrice: "", change7d: "" });
+    results.push({ qty: parsed.qty, name: cleanName, category: "Not found", each: "", total: "", currency: "", source: "", rawPrice: "", change7d: "" });
   }
 
   // Background-fill the price book for pasted items that are missing or stale, so

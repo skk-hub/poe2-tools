@@ -242,9 +242,9 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       </div>
       <div class="controls">
         <label>League <input id="runeLeague" value="Runes of Aldur"></label>
-        <button id="pasteRunes" type="button">Paste clipboard</button>
-        <button id="checkRunes" type="button">Check picks</button>
-        <button id="freshRunes" type="button" title="Force a live Trade2 exchange refresh for the pasted items, then re-price (slower, ~15s)">Fetch fresh prices</button>
+        <button id="pasteRunes" type="button" class="btn">Paste clipboard</button>
+        <button id="checkRunes" type="button" class="btn btn-primary">Check picks</button>
+        <button id="freshRunes" type="button" title="Force a live Trade2 exchange refresh for the pasted items, then re-price (slower, ~15s)" class="btn">Fetch fresh prices</button>
         <div id="runeStatus" class="status">Paste item names to begin.</div>
       </div>
     </div>
@@ -267,12 +267,12 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
             <summary>Update currency-exchange prices from poe.ninja (browser)</summary>
             <p class="sub">Some currency-exchange items (the Verisium <b>alloys</b>, chase orbs) can't be priced from GGG's API — its standing offers are placeholder junk. Their real value lives on poe.ninja's currency exchange, which blocks our server. So pull it from <b>your</b> browser: open <b>poe.ninja → PoE2 → your league → Currency</b>, press F12 → Console, click <b>Copy snippet</b>, paste it there and hit Enter. It copies the prices — paste them below and Save. (Until you do, these show baked-in values.)</p>
             <div class="controls">
-              <button id="ninjaCopySnippet" type="button">Copy snippet</button>
+              <button id="ninjaCopySnippet" type="button" class="btn">Copy snippet</button>
               <a href="https://poe.ninja/poe2/economy" target="_blank" rel="noreferrer">Open poe.ninja PoE2</a>
             </div>
             <textarea id="ninjaPaste" spellcheck="false" placeholder="Paste what the snippet copied (one 'Name⇥value' per line)…"></textarea>
             <div class="controls">
-              <button id="ninjaSave" type="button">Save prices</button>
+              <button id="ninjaSave" type="button" class="btn">Save prices</button>
               <span id="ninjaStatus" class="status"></span>
             </div>
           </details>
@@ -313,7 +313,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div class="eval">
           <p class="sub">Copy an item in-game (Ctrl+C) and paste it — get its approx. value and best content pairing.</p>
           <textarea id="evalInput" spellcheck="false" placeholder="Paste copied item text here…&#10;(includes the 'Rarity:' line and its modifiers)"></textarea>
-          <button class="primary" id="evalBtn" type="button">Evaluate</button>
+          <button class="btn btn-primary" id="evalBtn" type="button">Evaluate</button>
           <div id="evalOut"></div>
         </div>
       </details>
@@ -324,7 +324,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       </div>
 
       <p class="foot">
-        Paste into the in-game stash search (Ctrl-F, 250-char limit). <code>"…"</code> AND · <code>|</code> OR · <code>!"…"</code> exclude.
+        Paste into the in-game stash search (Ctrl+F, 250-char limit). <code>"…"</code> AND · <code>|</code> OR · <code>!"…"</code> exclude.
         Data is patch <b id="footPatch"></b> — cross-check <a href="https://poe2.re" target="_blank" rel="noreferrer">poe2.re</a>.
       </p>
     </div>
@@ -338,11 +338,11 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         </div>
       </div>
       <textarea id="jpInput" spellcheck="false" placeholder="Paste copied jewel text here (Ctrl+C in-game).&#10;Multiple jewels at once is fine — paste them one after another.&#10;Each must include its 'Item Class: Jewels' and 'Rarity:' lines."></textarea>
-      <div class="jp-actions"><button class="primary" id="jpEval" type="button">Evaluate</button></div>
+      <div class="jp-actions"><button class="btn btn-primary" id="jpEval" type="button">Evaluate</button></div>
       <div id="jpOut"></div>
       <div class="jp-regex">
         <h2 class="jp-h2">Stash search regex — find keepers</h2>
-        <p class="sub">Paste into the in-game stash search (Ctrl-F). Each highlights jewels with a chase <b>combo</b> — quoted blocks are AND, <code>|</code> is OR. Single mods aren't here on purpose: almost every jewel has one, so they don't filter.</p>
+        <p class="sub">Paste into the in-game stash search (Ctrl+F). Each highlights jewels with a chase <b>combo</b> — quoted blocks are AND, <code>|</code> is OR. Single mods aren't here on purpose: almost every jewel has one, so they don't filter.</p>
         <div id="jpPresets"></div>
       </div>
       <p class="foot">
@@ -401,13 +401,13 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     </div>
     <details class="tt-browser">
       <summary>Read it in your own browser instead (uses your VPN's fresh limit)</summary>
-      <p class="sub">If the server read keeps rate-limiting, read your tab from your own browser instead (on your VPN, fresh budget): set your account + markers above, click <b>Copy reader snippet</b>, then on <b>pathofexile.com</b> (VPN on) open the console (F12) and paste it. It copies your items — paste them below and value them here (no server read).</p>
+      <p class="sub">If the server read keeps rate-limiting, read your tab from your own browser instead (on your VPN, fresh budget): set your account + markers above, click <b>Copy snippet</b>, then on <b>pathofexile.com</b> (VPN on) open the console (F12) and paste it. It copies your items — paste them below and value them here (no server read).</p>
       <div class="controls">
-        <button id="ttCopySnippet" type="button">Copy reader snippet</button>
+        <button id="ttCopySnippet" type="button" class="btn">Copy snippet</button>
       </div>
       <textarea id="ttPaste" spellcheck="false" placeholder="Paste the items the snippet copied (one 'Name xQty' per line)…"></textarea>
       <div class="controls">
-        <button id="ttValuePaste" type="button">Value pasted items</button>
+        <button id="ttValuePaste" type="button" class="btn">Value pasted items</button>
       </div>
     </details>
     <div id="ttTotal" class="tt-total" hidden></div>

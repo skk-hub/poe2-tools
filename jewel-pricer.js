@@ -24,7 +24,7 @@ window.__viewInit["jewel-pricer"] = function () {
   function renderPresets() {
     if (!els.presets) return;
     els.presets.innerHTML = (D.regexPresets || []).map((p, i) =>
-      `<div class="jp-preset"><div class="jp-preset-top"><span class="jp-preset-label">${esc(p.label)}</span><button type="button" data-jp-copy="${i}">Copy</button></div><code>${esc(p.re)}</code><span class="jp-preset-note">${esc(p.note)}</span></div>`
+      `<div class="jp-preset"><div class="jp-preset-top"><span class="jp-preset-label">${esc(p.label)}</span><button class="btn btn-sm" type="button" data-jp-copy="${i}">Copy</button></div><code>${esc(p.re)}</code><span class="jp-preset-note">${esc(p.note)}</span></div>`
     ).join("");
   }
   const TIER_RANK = { S: 3, A: 2, B: 1 };
@@ -105,7 +105,7 @@ window.__viewInit["jewel-pricer"] = function () {
         .map((m) => `<span class="tag ${tagCls(m.def.tier)}">${m.def.tier}</span>${esc(m.def.label)}${m.value ? ` <b>${m.value}%</b>` : ""}`);
       const scoreHtml = `<div class="scoreline">Est. floor <b>≈ ${Math.round(v.headlineEx)} ex</b><span>(best single mod — combos sell higher; price-check for the real number)</span></div>`;
       const pc = v.band === "junk" ? "" :
-        `<div class="jp-pc"><button type="button" data-jp-check="${idx}">Price check</button><span class="jp-pcout" id="jpPc${idx}"></span></div>`;
+        `<div class="jp-pc"><button class="btn btn-sm" type="button" data-jp-check="${idx}">Price check</button><span class="jp-pcout" id="jpPc${idx}"></span></div>`;
       cards.push(`<div class="verdict ${v.cls}"><div class="head">${esc(v.head)}</div>${scoreHtml}<ul>${modLines.map((l) => `<li>${l}</li>`).join("")}${parsed.mods.length === 0 ? "<li>No recognised mods — likely junk or a mod the tool doesn't track yet.</li>" : ""}</ul>${pc}</div>`);
     });
     els.out.innerHTML = cards.join("");
@@ -147,7 +147,7 @@ window.__viewInit["jewel-pricer"] = function () {
     const b = e.target.closest("[data-jp-copy]");
     if (!b) return;
     const p = D.regexPresets[Number(b.getAttribute("data-jp-copy"))];
-    copyText(p.re).then((ok) => { const t = b.textContent; b.textContent = ok ? "Copied" : "Ctrl+C"; setTimeout(() => { b.textContent = t; }, 1200); });
+    copyText(p.re).then((ok) => { const t = b.textContent; b.textContent = ok ? "Copied" : "Copy failed"; setTimeout(() => { b.textContent = t; }, 1200); });
   });
   renderPresets();
 };

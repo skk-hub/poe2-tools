@@ -108,8 +108,6 @@
   .toolroot-mj .mj-eval .eval{margin:0}
   .toolroot-mj .eval .sub{margin:0 0 10px}
   .toolroot-mj textarea{width:100%;min-height:150px;background:var(--bg-deep);border:1px solid var(--bd);color:var(--tx);padding:12px;font:12px var(--ff-mono);border-radius:var(--r-sm);resize:vertical}
-  .toolroot-mj .primary{height:38px;padding:0 18px;border:1px solid transparent;background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));color:oklch(22% 0.04 70);font:700 13px var(--ff-ui);letter-spacing:.01em;margin-top:10px;border-radius:var(--r);transition:filter var(--t),transform var(--t),box-shadow var(--t)}
-  .toolroot-mj .primary:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:var(--shadow-gold)}
 
   /* Evaluator verdict */
   .toolroot-mj .verdict{margin-top:12px;border:1px solid var(--bd);background:var(--s1);padding:12px;border-radius:var(--r-md)}

@@ -163,7 +163,7 @@ window.__viewInit["tab-tracker"] = function () {
       }
       if(!(data.results||[]).length){
         if(data.note){ wrap.hidden=true; totalEl.hidden=true; setStatus(data.note,""); hideProgress(); return; }
-        if(data.limited){ setStatus("Trade2 is rate-limited — click Value tab again in a bit.","err"); hideProgress(); return; }
+        if(data.limited){ setStatus("Trade2 is rate-limited — click Value tab again shortly.","err"); hideProgress(); return; }
       }
       // PRICE FILL: poll the cached path (no re-search) to fill values in batches.
       // AUTO-RESUMES across rate-limit cooldowns, hands-off, just like the read — a big
