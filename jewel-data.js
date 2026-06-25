@@ -58,4 +58,16 @@ window.JEWEL_DATA = {
     { key: "allAttributes",    label: "All Attributes",          re: /to all attributes\s*$/i,                statId: "explicit.stat_1379411836", tier: "B", soloEx: 1 },
     { key: "manaOnKill",       label: "Mana on Kill",            re: /maximum mana on kill/i,                 statId: "explicit.stat_1604736568", tier: "B", soloEx: 1 },
   ],
+  // Stash-search (Ctrl-F) regex presets. Each is a COMBO — quoted blocks AND, `|`
+  // ORs inside a block — because a single-mod filter highlights almost every jewel
+  // (most have one decent mod) and so doesn't separate good from junk. These flag
+  // jewels worth pasting into the evaluator; they don't price (combo + build-
+  // dependent — that's the live check's job). Matching is case-insensitive substring.
+  regexPresets: [
+    { label: "Crit Damage + Attack Speed", re: '"critical damage" "attack speed"', note: "Attack/crit builds — the liquid chase combo." },
+    { label: "Crit Damage + Cast Speed", re: '"critical damage" "cast speed"', note: "Crit caster builds." },
+    { label: "Crit Damage + Crit Chance", re: '"critical damage" "critical hit chance"', note: "Crit-stacking builds." },
+    { label: "Caster damage combo", re: '"spell damage" "cast speed|critical damage"', note: "Spell builds — Spell Damage plus a speed or crit mod." },
+    { label: "High Crit Damage (≥30%)", re: '"[3-9].% increased critical damage"', note: "One mod, but gated to a strong roll — catches premium Crit Damage." },
+  ],
 };

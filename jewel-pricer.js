@@ -6,9 +6,27 @@ window.__viewInit["jewel-pricer"] = function () {
     evalBtn: document.getElementById("jpEval"),
     out: document.getElementById("jpOut"),
     patch: document.getElementById("jpPatch"),
+    presets: document.getElementById("jpPresets"),
   };
   if (els.patch) els.patch.textContent = D.patch + " · " + D.league;
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  // Clipboard: navigator.clipboard only exists in a secure context (HTTPS/localhost);
+  // over plain-HTTP LAN/Tailscale fall back to execCommand (same as Map Juicer).
+  async function copyText(txt) {
+    if (navigator.clipboard && window.isSecureContext) { try { await navigator.clipboard.writeText(txt); return true; } catch {} }
+    const ta = document.createElement("textarea");
+    ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  function renderPresets() {
+    if (!els.presets) return;
+    els.presets.innerHTML = (D.regexPresets || []).map((p, i) =>
+      `<div class="jp-preset"><div class="jp-preset-top"><span class="jp-preset-label">${esc(p.label)}</span><button type="button" data-jp-copy="${i}">Copy</button></div><code>${esc(p.re)}</code><span class="jp-preset-note">${esc(p.note)}</span></div>`
+    ).join("");
+  }
   const TIER_RANK = { S: 3, A: 2, B: 1 };
 
   // Parse one item block: highest % per known mod (mirrors map-juicer statRoll).
@@ -125,4 +143,11 @@ window.__viewInit["jewel-pricer"] = function () {
     const btn = e.target.closest("[data-jp-check]");
     if (btn) priceCheck(Number(btn.getAttribute("data-jp-check")), btn);
   });
+  if (els.presets) els.presets.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-jp-copy]");
+    if (!b) return;
+    const p = D.regexPresets[Number(b.getAttribute("data-jp-copy"))];
+    copyText(p.re).then((ok) => { const t = b.textContent; b.textContent = ok ? "Copied" : "Ctrl+C"; setTimeout(() => { b.textContent = t; }, 1200); });
+  });
+  renderPresets();
 };

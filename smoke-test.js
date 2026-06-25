@@ -67,10 +67,10 @@ function staticChecks() {
   const themeCss = read("theme.css");
   check(/@font-face/.test(themeCss) && !/fonts\.googleapis\.com/.test(themeCss), "theme.css self-hosts fonts (no Google @import)");
   check(["inter", "cinzel", "jetbrains-mono"].every(f => themeCss.includes("/fonts/" + f + ".woff2")), "theme.css references all 3 self-hosted woff2");
-  const views = ["home", "craft-pricer", "rune-picker", "gear-search", "map-juicer", "arbitrage", "jewel-pricer"];
+  const views = ["home", "rune-picker", "map-juicer", "jewel-pricer", "filter-helper", "tab-tracker"];
   check(views.every(v => idx.includes(`id="${v}"`)), "index has all core view sections");
   check(idx.includes('href="#jewel-pricer"') && idx.includes('data-view-link="jewel-pricer"'), "index has the Jewel Pricer nav link");
-  check(["toolroot-arb", "toolroot-mj", "toolroot-gs", "toolroot-rune"].every(t => idx.includes(t)), "index has all 4 active inline tool roots");
+  check(["toolroot-mj", "toolroot-rune", "toolroot-jewel"].every(t => idx.includes(t)), "index has the active inline tool roots");
   check(idx.includes('id="fxStrip"') && idx.includes('id="fxStripRefresh"'), "home has currency strip + refresh button");
   check(/\.fxchip\.skel/.test(idx) && /@keyframes fxshimmer/.test(idx), "home currency strip has loading-skeleton CSS");
   check(/showSkeleton/.test(read("home.js")), "home.js renders a loading skeleton on first fetch");
@@ -79,23 +79,26 @@ function staticChecks() {
   check(/api\/economy\/history/.test(read("home.js")) && /lineChart/.test(read("home.js")), "home.js draws the economy chart from /api/economy/history");
   check(idx.includes('id="freshRunes"'), "rune-picker has a Fetch fresh prices button");
   check(/forceFresh\s*:/.test(read("rune-picker.js")), "rune-picker.js sends forceFresh to the API");
-  check(/being rebuilt/i.test(idx) && !idx.includes('id="cpGrid"'), "craft-pricer is a blanked placeholder (no cpGrid)");
   check(!/coming-soon/i.test(idx) && !/more tools/i.test(idx) && !/farming notes/i.test(idx), "More Tools + hallucinated placeholder pages removed");
   check(!/@scope\s*\(/.test(idx), "no @scope rules left (browser-portable scoping)");
   check(!/<iframe/.test(idx), "no iframes left (true inline views)");
   // every index inline <script> parses
   const scripts = [...idx.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
   check(scripts.length > 0 && scripts.every((s, i) => parses(s, "index script #" + (i + 1))), "index inline scripts parse");
-  const toolJs = ["arbitrage.js", "map-juicer.js", "gear-search.js", "rune-picker.js", "craft-pricer.js", "home.js", "jewel-pricer.js"];
+  const toolJs = ["map-juicer.js", "rune-picker.js", "home.js", "jewel-pricer.js"];
   for (const f of toolJs) check(parses(read(f), f), f + " parses");
   check(parses(read("jewel-data.js"), "jewel-data.js") && idx.includes('src="jewel-data.js"'), "jewel-data.js parses + is loaded before jewel-pricer.js");
-  check(["arbitrage.css", "map-juicer.css", "gear-search.css", "rune-picker.css", "craft-pricer.css", "jewel-pricer.css"].every(c => idx.includes(`href="${c}"`)), "index links all tool stylesheets");
+  check(["map-juicer.css", "rune-picker.css", "jewel-pricer.css"].every(c => idx.includes(`href="${c}"`)), "index links all tool stylesheets");
   check(toolJs.every(j => idx.includes(`src="${j}"`)), "index loads all view scripts");
   // Jewel Pricer: server endpoint + verified-id discipline (no guessed stat ids).
   const srvJ = read("server.js");
   check(/\/api\/jewel\/price/.test(srvJ) && /async function getJewelFloor/.test(srvJ), "server has the jewel price endpoint + getJewelFloor");
   check(/statId/.test(read("jewel-pricer.js")) && /\/api\/jewel\/price/.test(read("jewel-pricer.js")), "jewel-pricer.js posts statId mods to the price endpoint");
   check(/explicit\.stat_3556824919/.test(read("jewel-data.js")), "jewel-data.js carries the verified Crit Damage id");
+  check(/regexPresets/.test(read("jewel-data.js")) && /renderPresets/.test(read("jewel-pricer.js")) && idx.includes('id="jpPresets"'), "jewel pricer has stash-regex combo presets");
+  // Retired tools are fully gone (UI + files): user is rebuilding them from scratch.
+  check(["craft-pricer", "gear-search", "arbitrage"].every(t => !idx.includes(`data-view-link="${t}"`) && !idx.includes(`id="${t}" class="view"`)), "retired tools removed from index (nav + views)");
+  check(["arbitrage.js", "gear-search.js", "craft-pricer.js", "arbitrage-scanner.html", "character-upgrades.html"].every(f => !fs.existsSync(f)), "retired tool + redirect files deleted");
   // Record/replay: develop + test the tool with zero live GGG calls (no IP evasion).
   check(/replayMode/.test(read("trade-queue.js")) && /recordMode/.test(read("trade-queue.js")), "trade-queue.js has record/replay");
   check(/POE_OFFLINE/.test(srvJ) && /POE_RECORD/.test(srvJ) && /fixtureFile:\s*TRADE_FIXTURE_FILE/.test(srvJ), "server wires POE_OFFLINE / POE_RECORD into the queue");
@@ -119,7 +122,7 @@ function staticChecks() {
   const runeCss = read("rune-picker.css");
   check(runeOnly.every(s => runeCss.includes(s)) && /\.toolroot-rune\s+\.toolpanel/.test(runeCss), "rune-picker.css holds the rune-only rules, prefix-scoped");
   // redirect stubs
-  for (const [f, hash] of [["arbitrage-scanner.html", "#arbitrage"], ["waystone-juicer.html", "#map-juicer"], ["character-upgrades.html", "#gear-search"]]) {
+  for (const [f, hash] of [["waystone-juicer.html", "#map-juicer"]]) {
     check(read(f).includes("index.html" + hash), `${f} redirects to ${hash}`);
   }
   // theme.css: no self-referential var cycle (the bug that blanked tokens)
@@ -152,7 +155,7 @@ function staticChecks() {
 // ---- 2) HTTP checks ----
 async function httpChecks() {
   console.log("HTTP checks:");
-  for (const [p, type] of [["/", "html"], ["/theme.css", "css"], ["/arbitrage.css", "css"], ["/map-juicer.css", "css"], ["/gear-search.css", "css"], ["/rune-picker.css", "css"], ["/craft-pricer.css", "css"], ["/arbitrage.js", "javascript"], ["/map-juicer.js", "javascript"], ["/gear-search.js", "javascript"], ["/rune-picker.js", "javascript"], ["/craft-pricer.js", "javascript"], ["/home.js", "javascript"], ["/waystone-data.js", "javascript"], ["/arbitrage-scanner.html", "html"], ["/fonts/inter.woff2", "font/woff2"], ["/fonts/cinzel.woff2", "font/woff2"], ["/fonts/jetbrains-mono.woff2", "font/woff2"]]) {
+  for (const [p, type] of [["/", "html"], ["/theme.css", "css"], ["/map-juicer.css", "css"], ["/rune-picker.css", "css"], ["/jewel-pricer.css", "css"], ["/map-juicer.js", "javascript"], ["/rune-picker.js", "javascript"], ["/jewel-pricer.js", "javascript"], ["/jewel-data.js", "javascript"], ["/home.js", "javascript"], ["/waystone-data.js", "javascript"], ["/fonts/inter.woff2", "font/woff2"], ["/fonts/cinzel.woff2", "font/woff2"], ["/fonts/jetbrains-mono.woff2", "font/woff2"]]) {
     const r = await get(BASE + p); check(r.status === 200 && r.type.includes(type), `GET ${p} -> 200 ${type}`);
   }
   const ts = await get(BASE + "/api/trade-status"); check(ts.status === 200 && ts.body.includes("limited"), "GET /api/trade-status -> 200 JSON");
@@ -184,7 +187,7 @@ async function browserChecks() {
     }) }));
     await page.goto(BASE + "/#home", { waitUntil: "domcontentloaded" });
     let maxOv = 0, ifr = 0;
-    for (const v of ["gear-search", "map-juicer", "arbitrage", "rune-picker", "tab-tracker", "jewel-pricer", "craft-pricer", "home"]) {
+    for (const v of ["map-juicer", "rune-picker", "tab-tracker", "jewel-pricer", "filter-helper", "home"]) {
       await page.click(`[data-view-link="${v}"]`).catch(() => {});
       await page.waitForTimeout(500);
       maxOv = Math.max(maxOv, await page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth)));
@@ -200,7 +203,7 @@ async function browserChecks() {
     await page.close();
 
     // deep-link init (the bug that regressed): load a tool hash directly -> its JS ran
-    for (const [hash, sel, what] of [["#gear-search", "#gear-search #preview, #gear-search pre", "query preview"], ["#map-juicer", ".toolroot-mj .regexbox", "regex rows"], ["#jewel-pricer", "#jewel-pricer #jpPatch", "patch line"]]) {
+    for (const [hash, sel, what] of [["#map-juicer", ".toolroot-mj .regexbox", "regex rows"], ["#jewel-pricer", "#jewel-pricer #jpPatch", "patch line"]]) {
       const p = await browser.newPage({ viewport: { width: 1280, height: 860 } });
       await p.goto(BASE + "/index.html" + hash, { waitUntil: "networkidle" }); await p.waitForTimeout(1400);
       const got = await p.evaluate(s => { const el = document.querySelector(s); return !!el && (el.children.length > 0 || /\S/.test(el.textContent)); }, sel);
@@ -311,65 +314,8 @@ async function browserChecks() {
       await p.close();
     }
 
-    // arbitrage RESULT TABLE styling, with mocked rows (the exchange has no real arbitrage)
-    {
-      const p = await browser.newPage({ viewport: { width: 1366, height: 900 } });
-      await p.route("**/api/arbitrage/scan", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
-        updated: "now", universe: [{}, {}], opportunities: [
-          { name: "Divine Orb", category: "currency", askExPerItem: 125, bidExPerItem: 124, netBidExPerItem: 121, executableItems: 1, spendEx: 125, grossProfitEx: -1, netProfitEx: -4, roiPct: -3.2, buyStock: 400, sellStock: 40, flags: [] },
-          { name: "Chaos Orb", category: "currency", askExPerItem: 0.3, bidExPerItem: 0.29, netBidExPerItem: 0.28, executableItems: 300, spendEx: 90, grossProfitEx: -3, netProfitEx: -6, roiPct: -6.6, buyStock: 9000, sellStock: 800, flags: ["thin-stock"] },
-        ], errors: [] }) }));
-      await p.goto(BASE + "/index.html#arbitrage", { waitUntil: "networkidle" }); await p.waitForTimeout(800);
-      await p.click("#scanBtn"); await p.waitForTimeout(400);
-      const tbl = await p.evaluate(() => {
-        const t = document.querySelector("#abResults .tablewrap table"); if (!t) return null;
-        const rows = t.querySelectorAll("tbody tr");
-        const th = t.querySelector("th");
-        const r1 = rows[0] && getComputedStyle(rows[0]).backgroundColor;
-        const r2 = rows[1] && getComputedStyle(rows[1]).backgroundColor;
-        return { rows: rows.length, thSticky: th && getComputedStyle(th).position === "sticky", zebra: r1 !== r2 };
-      });
-      check(tbl && tbl.rows === 2, "arbitrage table renders rows (mocked data)");
-      check(tbl && tbl.thSticky, "arbitrage table: sticky header applied");
-      check(tbl && tbl.zebra, "arbitrage table: zebra striping applied");
-      await p.close();
-    }
-
-    // arbitrage empty state shows near-miss spreads (no opportunities cleared filters)
-    {
-      const p = await browser.newPage({ viewport: { width: 1366, height: 900 } });
-      await p.route("**/api/arbitrage/scan", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
-        updated: "now", universe: [{}, {}], opportunities: [], errors: [],
-        nearMiss: [
-          { name: "Divine Orb", category: "currency", askExPerItem: 150, bidExPerItem: 148, netProfitEx: -2.5, roiPct: -1.7 },
-          { name: "Chaos Orb", category: "currency", askExPerItem: 5, bidExPerItem: 4.9, netProfitEx: -6, roiPct: -2.1 },
-        ],
-      }) }));
-      await p.goto(BASE + "/index.html#arbitrage", { waitUntil: "networkidle" }); await p.waitForTimeout(800);
-      await p.click("#scanBtn"); await p.waitForTimeout(400);
-      const nm = await p.evaluate(() => {
-        const t = document.querySelector("#abResults .nearmiss table"); if (!t) return null;
-        return { rows: t.querySelectorAll("tbody tr").length, head: !!document.querySelector("#abResults .nearmiss-head") };
-      });
-      check(nm && nm.rows === 2 && nm.head, "arbitrage empty state shows near-miss spreads");
-      await p.close();
-    }
-
-    // gear-search empty state DIAGNOSES an over-strict (total=0) search
-    {
-      const p = await browser.newPage({ viewport: { width: 1366, height: 900 } });
-      await p.route("**/api/gear-search/search", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
-        slot: "bow", total: 0, fetched: 0, listings: [], url: "https://www.pathofexile.com/trade2/search/poe2/x",
-        statFilters: [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }], compositeFilters: [], unsupportedFilters: [],
-        query: { query: {} }, tradeStatus: { limited: false },
-      }) }));
-      await p.goto(BASE + "/index.html#gear-search", { waitUntil: "networkidle" }); await p.waitForTimeout(800);
-      await p.evaluate(() => { document.getElementById("matchMode").value = "count"; document.getElementById("minMatches").value = "3"; });
-      await p.click("#searchBtn"); await p.waitForTimeout(400);
-      const diag = await p.evaluate(() => { const e = document.querySelector("#results .empty"); return e ? e.textContent : ""; });
-      check(/too strict/i.test(diag) && /Match at least N/i.test(diag) && /3 of 4/.test(diag), "gear-search empty state diagnoses over-strict search");
-      await p.close();
-    }
+    // (retired 2026-06-26: Arbitrage Scanner + Gear Search browser checks removed
+    //  with the tools — user is rebuilding those from scratch.)
 
     // Home currency strip (mocked overview): chips render + refresh re-fetches
     {
@@ -425,16 +371,6 @@ async function browserChecks() {
       await p.close();
     }
 
-    // Craft Pricer blanked: opening it shows the rebuild placeholder, no script error
-    {
-      const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-      const errs = [];
-      p.on("pageerror", e => errs.push(String(e)));
-      await p.goto(BASE + "/index.html#craft-pricer", { waitUntil: "networkidle" }); await p.waitForTimeout(700);
-      const note = await p.evaluate(() => { const n = document.querySelector("#craft-pricer .rebuild-note"); return { shown: !!(n && n.offsetParent !== null), grid: !!document.querySelector("#cpGrid") }; });
-      check(note.shown && !note.grid && errs.length === 0, "craft-pricer shows the rebuild placeholder (no grid, no error)");
-      await p.close();
-    }
 
     // Regex Forge: %-aware floor by default, steppers rebuild it, toggle adds the 0-revives block
     {
@@ -499,7 +435,7 @@ async function browserChecks() {
     }) }));
     const pm = await m.newPage(); await pm.goto(BASE + "/#home", { waitUntil: "domcontentloaded" }); await pm.waitForTimeout(400);
     let mOv = await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth));
-    for (const v of ["craft-pricer", "gear-search", "map-juicer", "arbitrage", "rune-picker", "tab-tracker", "jewel-pricer"]) { await pm.click(`[data-view-link="${v}"]`); await pm.waitForTimeout(700); mOv = Math.max(mOv, await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth))); }
+    for (const v of ["map-juicer", "rune-picker", "tab-tracker", "jewel-pricer", "filter-helper"]) { await pm.click(`[data-view-link="${v}"]`); await pm.waitForTimeout(700); mOv = Math.max(mOv, await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth))); }
     check(mOv === 0, "mobile: no horizontal overflow on tool views");
     await m.close();
   } finally { await browser.close(); }

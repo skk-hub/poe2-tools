@@ -33,4 +33,16 @@
   .toolroot-jewel .jp-pcout b{color:var(--gd);font-size:14px}
   .toolroot-jewel .jp-pcout.thin b{color:var(--rd)}
 
+  /* stash-regex presets */
+  .toolroot-jewel .jp-regex{margin-top:22px;border-top:1px solid var(--bd);padding-top:16px}
+  .toolroot-jewel .jp-h2{font:700 14px var(--ff);color:var(--gd);margin:0 0 4px}
+  .toolroot-jewel #jpPresets{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  .toolroot-jewel .jp-preset{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-sm);padding:9px 11px}
+  .toolroot-jewel .jp-preset-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px}
+  .toolroot-jewel .jp-preset-label{font:600 12px var(--ff);color:var(--tx)}
+  .toolroot-jewel .jp-preset-top button{font:600 11px var(--ff);padding:3px 11px;border-radius:var(--r-sm);border:1px solid var(--bd);background:var(--bg-deep);color:var(--tx);cursor:pointer}
+  .toolroot-jewel .jp-preset-top button:hover{border-color:var(--gd);color:var(--gd)}
+  .toolroot-jewel .jp-preset code{display:block;font:12px var(--ff-mono);color:var(--gr);word-break:break-all}
+  .toolroot-jewel .jp-preset-note{display:block;font:11px var(--ff-mono);color:var(--mu);margin-top:4px}
+
   .toolroot-jewel .foot{margin-top:16px;color:var(--mu);font:11px var(--ff-mono);line-height:1.6}

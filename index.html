@@ -7,11 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="theme.css">
-<link rel="stylesheet" href="arbitrage.css">
 <link rel="stylesheet" href="map-juicer.css">
-<link rel="stylesheet" href="gear-search.css">
 <link rel="stylesheet" href="rune-picker.css">
-<link rel="stylesheet" href="craft-pricer.css">
 <link rel="stylesheet" href="filter-helper.css">
 <link rel="stylesheet" href="tab-tracker.css">
 <link rel="stylesheet" href="jewel-pricer.css">
@@ -185,11 +182,8 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     </a>
     <nav class="nav" aria-label="Primary">
       <a class="navbtn" href="#home" data-view-link="home">Home</a>
-      <a class="navbtn" href="#craft-pricer" data-view-link="craft-pricer">Craft Pricer</a>
       <a class="navbtn" href="#rune-picker" data-view-link="rune-picker">Rune Picker</a>
-      <a class="navbtn" href="#gear-search" data-view-link="gear-search">Gear Search</a>
       <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Regex Cheat Sheet</a>
-      <a class="navbtn" href="#arbitrage" data-view-link="arbitrage">Arbitrage Scanner</a>
       <a class="navbtn" href="#filter-helper" data-view-link="filter-helper">Filter Helper</a>
       <a class="navbtn" href="#tab-tracker" data-view-link="tab-tracker">Tab Tracker</a>
       <a class="navbtn" href="#jewel-pricer" data-view-link="jewel-pricer">Jewel Pricer</a>
@@ -237,19 +231,6 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <div class="econ-cards" id="econCards"></div>
       <p class="econ-empty" id="econEmpty" hidden></p>
     </section>
-  </section>
-
-  <section id="craft-pricer" class="view" data-view="craft-pricer">
-    <div class="pagehead">
-      <div>
-        <h1>Craft Pricer</h1>
-        <p class="sub">Being reimagined.</p>
-      </div>
-    </div>
-    <div class="rebuild-note">
-      <strong>Craft Pricer is being rebuilt from the ground up.</strong>
-      <span>The old ledger is gone. Its replacement is being forged.</span>
-    </div>
   </section>
 
   <section id="rune-picker" class="view" data-view="rune-picker">
@@ -318,136 +299,6 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
    </div>
   </section>
 
-    <section id="gear-search" class="view" data-view="gear-search">
-    <div class="toolroot toolroot-gs">
-<div class="pagehead">
-      <div>
-        <h1>Gear Search</h1>
-        <div class="sub">Import your gear, search Trade2 for upgrades one slot at a time, and compare each candidate against what you're wearing.</div>
-      </div>
-      <div class="status" id="status">Trade2: <b>checking…</b></div>
-    </div>
-
-    <main>
-      <aside class="stack">
-        <section class="import-shell" id="importShell">
-          <div class="import-bar">
-            <div>
-              <h2>Gear Import</h2>
-              <div class="sub">Paste copied item text, character JSON, or browser export HTML.</div>
-            </div>
-            <button class="import-toggle" id="importToggle" type="button" aria-label="Toggle gear import" title="Toggle gear import">
-              <span class="glyph" aria-hidden="true">⌄</span>
-            </button>
-          </div>
-          <div class="import-body" id="importBody">
-            <details class="advanced-import" id="advancedImport">
-              <summary>Advanced raw import</summary>
-              <div class="console-helper">
-                <div class="sub">Open your PoE2 character/equipment page, paste this in the browser console, then paste the copied export below.</div>
-                <div class="actions">
-                  <button id="copyConsoleBtn" type="button">Copy console code</button>
-                  <a href="https://pathofexile2.com/my-account/characters" target="_blank" rel="noreferrer">Open PoE2 Characters</a>
-                </div>
-                <pre class="console-code" id="consoleSnippet"></pre>
-              </div>
-              <label for="gearText">Raw item text, character JSON, or browser export HTML</label>
-              <textarea id="gearText" spellcheck="false" placeholder="Paste copied item text, character JSON, or browser export HTML"></textarea>
-              <div class="actions" style="margin-top:10px">
-                <button id="importBtn" type="button">Import export</button>
-                <button id="syncSlotsBtn" type="button">Fill slots from raw</button>
-              </div>
-            </details>
-            <div class="import-help">
-              <div>In game: hover an equipped item, press Ctrl+C, then paste it into the matching slot below.</div>
-              <div class="import-progress">
-                <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="importProgressFill"></div></div>
-                <div class="progress-copy" id="importProgressText">0 / 10 slots</div>
-              </div>
-            </div>
-            <div class="slot-grid" id="slotImportGrid"></div>
-            <div class="import-savebar">
-              <div>
-                <label for="importSaveName">Save name</label>
-                <input id="importSaveName" type="text" autocomplete="off" placeholder="Player or character name">
-              </div>
-              <div>
-                <label for="importProfileSelect">Saved imports</label>
-                <select id="importProfileSelect"></select>
-              </div>
-            </div>
-            <div class="actions">
-              <button class="primary" id="analyzeBtn">Analyze gear</button>
-              <button id="saveBtn">Save import</button>
-              <button id="loadBtn">Load import</button>
-              <button id="deleteSaveBtn">Delete save</button>
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <h2>Locked Loadout</h2>
-          <div class="locked-panel" id="lockedPanel">
-            <div class="empty">Lock candidate items to build a projected character overview.</div>
-          </div>
-        </section>
-      </aside>
-
-      <section class="stack">
-        <div class="panel">
-          <h2>Search Controls</h2>
-          <div class="row">
-            <div>
-              <label for="slotSelect">Slot</label>
-              <select id="slotSelect"></select>
-            </div>
-            <div>
-              <label for="budget">Max price, divine</label>
-              <input id="budget" type="number" min="0" step="1" value="100">
-            </div>
-          </div>
-          <div class="row" style="margin-top:10px">
-            <div>
-              <label for="matchMode">Match mode</label>
-              <select id="matchMode">
-                <option value="count" selected>Match at least N</option>
-                <option value="all">All filters (strict)</option>
-              </select>
-            </div>
-            <div>
-              <label for="minMatches">Min count</label>
-              <input id="minMatches" type="number" min="1" step="1">
-            </div>
-          </div>
-          <div style="margin-top:12px">
-            <h3>Stat Filters</h3>
-            <div class="filters" id="filters"></div>
-            <div class="actions" style="margin-top:8px">
-              <button id="addFilterBtn">Add filter</button>
-              <button class="primary" id="searchBtn">Search Trade2</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="summary" id="summary">
-          <div class="metric"><span class="muted">Selected</span><b>-</b></div>
-          <div class="metric"><span class="muted">Budget</span><b>-</b></div>
-          <div class="metric"><span class="muted">Total</span><b>-</b></div>
-          <div class="metric"><span class="muted">Fetched</span><b>-</b></div>
-        </div>
-
-        <div class="panel">
-          <h2>Trade2 Query Preview</h2>
-          <pre id="queryPreview">{}</pre>
-        </div>
-
-        <div class="results" id="results">
-          <div class="empty">Run a search to fetch the first 20 listings.</div>
-        </div>
-      </section>
-    </main>
-    </div>
-  </section>
   <section id="map-juicer" class="view" data-view="map-juicer">
     <div class="toolroot toolroot-mj">
       <div class="pagehead mj-head">
@@ -489,46 +340,16 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <textarea id="jpInput" spellcheck="false" placeholder="Paste copied jewel text here (Ctrl+C in-game).&#10;Multiple jewels at once is fine — paste them one after another.&#10;Each must include its 'Item Class: Jewels' and 'Rarity:' lines."></textarea>
       <div class="jp-actions"><button class="primary" id="jpEval" type="button">Evaluate</button></div>
       <div id="jpOut"></div>
+      <div class="jp-regex">
+        <h2 class="jp-h2">Stash search regex — find keepers</h2>
+        <p class="sub">Paste into the in-game stash search (Ctrl-F). Each highlights jewels with a chase <b>combo</b> — quoted blocks are AND, <code>|</code> is OR. Single mods aren't here on purpose: almost every jewel has one, so they don't filter.</p>
+        <div id="jpPresets"></div>
+      </div>
       <p class="foot">
         Triage is offline (zero trade calls) — a whole stash sorts instantly. <b>Price check</b> runs ONE rate-limited Trade2 search that ANDs the jewel's top mods, so the floor is "cheapest <i>good</i> jewel like this", not the junk floor. Rare jewels only; uniques (Timeless / Megalomaniac / Cluster) are a later pass.
       </p>
     </div>
   </section>
-  <section id="arbitrage" class="view" data-view="arbitrage">
-    <div class="toolroot toolroot-arb">
-      <div class="pagehead">
-        <div>
-          <h1>Arbitrage Scanner</h1>
-          <p class="sub">Scans the Currency Exchange for flips you can actually fill — profit shown after stock limits and price slippage.</p>
-        </div>
-        <div class="statusline" id="abStatus">Ready.</div>
-      </div>
-      <section class="panel">
-        <div class="panel-head">
-          <span class="panel-title">Scan Settings</span>
-          <button id="scanBtn" type="button">Scan</button>
-        </div>
-        <div class="panel-body">
-          <div class="controls">
-            <label>Budget ex <input id="budgetEx" type="number" min="1" step="1" value="100"></label>
-            <label>Min profit ex <input id="minProfitEx" type="number" min="0" step="1" value="5"></label>
-            <label>Min ROI % <input id="minProfitPct" type="number" min="0" step="0.5" value="3"></label>
-            <label>Min stock <input id="minStock" type="number" min="1" step="1" value="5"></label>
-            <label>Slippage % <input id="slippagePct" type="number" min="0" max="50" step="0.5" value="2"></label>
-          </div>
-          <div class="checks" style="margin-top:12px">
-            <label class="check"><input id="catCurrency" type="checkbox" checked> Currency</label>
-            <label class="check"><input id="catFragments" type="checkbox" checked> Fragments</label>
-            <label class="check"><input id="forceRefresh" type="checkbox"> Force live refresh (skip 2-min cache)</label>
-          </div>
-          <div class="hint">Each scan checks the current buy and sell price of every item on the official Currency Exchange, then flags the ones you can buy and sell back for a profit. Results are cached for 2 minutes — tick <b>Force live refresh</b> to pull fresh prices. Prices are a snapshot; stock and offers can move before you finish both trades.</div>
-        </div>
-      </section>
-      <section class="summary" id="abSummary" style="display:none"></section>
-      <section id="abResults" class="empty">Run a manual scan to look for executable flips.</section>
-    </div>
-  </section>
-
   <section id="filter-helper" class="view" data-view="filter-helper">
    <div class="toolroot toolroot-fh">
     <div class="pagehead">
@@ -655,11 +476,8 @@ window.addEventListener("DOMContentLoaded",()=>runViewInit(currentView()));
 <!-- Inlined tool views: external lazy-init modules (+ data dep) -->
 <script src="waystone-data.js"></script>
 <script src="home.js"></script>
-<script src="craft-pricer.js"></script>
 <script src="rune-picker.js"></script>
-<script src="arbitrage.js"></script>
 <script src="map-juicer.js"></script>
-<script src="gear-search.js"></script>
 <script src="filter-helper.js"></script>
 <script src="tab-tracker.js"></script>
 <script src="jewel-data.js"></script>
