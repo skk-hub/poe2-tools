@@ -28,7 +28,7 @@ window.__viewInit["map-juicer"]=function(){
 
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
-  let rarityMin = 0, packMin = 0, wdropMin = 0;   // all start at 0 (off) — build up from nothing; wdrop is 0 or 100
+  let rarityMin = 0, packMin = 0, effMin = 0, wdropMin = 0;   // all start at 0 (off) — build up from nothing; wdrop is 0 or 100
   let dumpRarityKeep = 60;   // dump filter keeps maps with Item Rarity >= this% (the one tunable keeper); adjustable via stepper
   // Match a number ≥ pct (pct is a multiple of 10). Two-digit: first digit
   // (pct/10)…9 + any second digit (so ≥ pct); OR any three-digit (100+). Uses
@@ -98,6 +98,7 @@ window.__viewInit["map-juicer"]=function(){
       // pack/rarity floor got "ignored".
       if (rarityMin > 0) blocks.push(`"${atLeast(L.itemRarity, rarityMin)}"`);
       if (packMin > 0)   blocks.push(`"${atLeast(L.packSize, packMin)}"`);
+      if (effMin > 0)    blocks.push(`"${atLeast(L.monsterEffectiveness, effMin, 70)}"`);
       if (wdropMin > 0)  blocks.push(`"${atLeast(L.waystoneDrop, wdropMin)}"`);
     }
     if (wRevives) blocks.push(noRevivesRegex());
@@ -126,13 +127,28 @@ window.__viewInit["map-juicer"]=function(){
   const PIN_KEY = "poe2.regexForge.pins";
   function loadPins(){ try { return JSON.parse(localStorage.getItem(PIN_KEY)) || []; } catch { return []; } }
   function savePins(p){ try { localStorage.setItem(PIN_KEY, JSON.stringify(p)); } catch {} }
+  // A pin's label must describe the actual filter, not just the mode — otherwise
+  // every floor pin reads "Waystones · rarity/pack floor" and they're indistinguishable.
   function currentLabel(){
     if (target === "tablets"){
       const names = D.contentTypes.filter(c => tContent.has(c.id)).map(c => c.label);
-      return "Tablets" + (names.length ? " · " + names.join("/") : "");
+      const nMods = gatherDesirables().filter(m => tMods.has(m.token)).length;
+      return "Tablets · " + (names.length ? names.join("/") : "any") + (nMods ? " +" + nMods + " mod" + (nMods > 1 ? "s" : "") : "");
     }
-    const m = wMatch === "dump" ? "low-value dump" : wMatch === "blue" ? "any reward mod" : "rarity/pack floor";
-    return "Waystones · " + m;
+    if (wMatch === "dump") return "Waystones dump · keep Rarity ≥" + dumpRarityKeep + "%";
+    const tags = [];
+    if (wMatch === "blue") tags.push("any reward mod");
+    else {
+      if (rarityMin > 0) tags.push("Rarity ≥" + rarityMin);
+      if (packMin > 0)   tags.push("Pack ≥" + packMin);
+      if (effMin > 0)    tags.push("Eff ≥" + effMin);
+      if (wdropMin > 0)  tags.push("Drop ≥100");
+      if (!tags.length)  tags.push("floor");
+    }
+    if (wRevives) tags.push("juiced"); else if (wNotRevives) tags.push("not-juiced");
+    if (wCorrupt) tags.push("corrupt"); else if (wNotCorrupt) tags.push("not-corrupt");
+    if (wExclude) tags.push("no-risk");
+    return "Waystones · " + tags.join(", ");
   }
   function pinCurrent(){
     const rx = currentRegex();
@@ -183,7 +199,7 @@ window.__viewInit["map-juicer"]=function(){
     return `
       ${segs}
       ${wMatch==="floor"
-        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,0,70)}${stepper("pack","Min Pack Size",packMin,0,40)}</div><p class="forge-hint">Every minimum you set is <b>required</b> (AND) — a stone must clear all of them. Set a stat to 0 to drop it.</p>`
+        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,0,70)}${stepper("pack","Min Pack Size",packMin,0,40)}${stepper("eff","Min Effectiveness",effMin,0,70)}</div><p class="forge-hint">Every minimum you set is <b>required</b> (AND) — a stone must clear all of them. Set a stat to 0 to drop it.</p>`
         : `<p class="forge-hint">Matches any waystone carrying a reward mod — the blue stones worth upgrading.</p>`}
       ${wMatch==="floor" ? toggle("wdrop","Require Waystone Drop ≥100% (midrange isn't worth it)",wdropMin>=100) : ""}
       <div class="forge-togrow">${toggle("revives","Fully juiced only (0 revives = 6-mod map)",wRevives)}${toggle("notrevives","Not juiced",wNotRevives)}</div>
@@ -247,6 +263,7 @@ window.__viewInit["map-juicer"]=function(){
       const dir = Number(b.getAttribute("data-dir")), id = b.getAttribute("data-step");
       if (id === "rarity") rarityMin = clamp(rarityMin + dir*10, 0, 70);
       else if (id === "rarityKeep") dumpRarityKeep = clamp(dumpRarityKeep + dir*10, 40, 70);
+      else if (id === "eff") effMin = clamp(effMin + dir*10, 0, 70);
       else packMin = clamp(packMin + dir*10, 0, 40);
       renderSheet();
     }));
