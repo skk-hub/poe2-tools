@@ -358,5 +358,50 @@ window.__viewInit["rune-picker"] = function () {
   checkRunesBtn.addEventListener("click",()=>checkRunes(false));
   freshRunesBtn.addEventListener("click",()=>checkRunes(true));
   pasteRunesBtn.addEventListener("click",pasteRunes);
+
+  // ── poe.ninja currency-exchange prices (browser bridge) ───────────────────
+  // poe.ninja's PoE2 API is Cloudflare-blocked server-side, so the user runs this
+  // snippet in their own browser ON poe.ninja (CF-cleared, same-origin) to copy the
+  // currency-exchange prices, then pastes them here → /api/currency-overrides. The
+  // `\t`/`\n` are intentionally escaped so the COPIED code contains real escapes.
+  const NINJA_SNIPPET = `(async()=>{try{
+var slug=location.pathname.split('/')[3]||'standard';
+var small={of:1,the:1,a:1,and:1,to:1,in:1};
+var league=slug.split('-').map(function(w,i){return (i>0&&small[w])?w:w.charAt(0).toUpperCase()+w.slice(1);}).join(' ');
+var r=await fetch('/poe2/api/economy/currencyexchange/overview?leagueName='+encodeURIComponent(league)+'&overviewName=Currency',{credentials:'include'});
+if(!r.ok){console.log('poe.ninja fetch failed '+r.status+' for "'+league+'" — open your league\\'s Currency page first');return;}
+var d=await r.json();var L={};(d.lines||[]).forEach(function(l){L[l.id]=l;});
+var out=(d.items||[]).map(function(it){var l=L[it.id]||{};var v=(l.primaryValue!=null?l.primaryValue:l.secondaryValue);return v>0?it.name+'\\t'+v:null;}).filter(Boolean).join('\\n');
+await navigator.clipboard.writeText(out);
+console.log('Copied '+out.split('\\n').length+' poe.ninja prices for "'+league+'". Paste them into the Rune Picker.');
+}catch(e){console.log('snippet error: '+e.message);}})();`;
+
+  async function copyToClipboard(txt){
+    try{ if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(txt); return true; } }catch{}
+    const ta=document.createElement("textarea"); ta.value=txt; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    let ok=false; try{ ok=document.execCommand("copy"); }catch{} ta.remove(); return ok;
+  }
+  const ninjaCopyBtn=document.getElementById("ninjaCopySnippet");
+  const ninjaSaveBtn=document.getElementById("ninjaSave");
+  const ninjaPasteEl=document.getElementById("ninjaPaste");
+  const ninjaStatusEl=document.getElementById("ninjaStatus");
+  function setNinjaStatus(t,k){ if(ninjaStatusEl){ ninjaStatusEl.textContent=t; ninjaStatusEl.className="status "+(k||""); } }
+  if(ninjaCopyBtn) ninjaCopyBtn.addEventListener("click", async ()=>{
+    const ok=await copyToClipboard(NINJA_SNIPPET);
+    ninjaCopyBtn.textContent = ok ? "Copied ✓" : "Copy failed";
+    setTimeout(()=>{ ninjaCopyBtn.textContent="Copy snippet"; }, 1400);
+  });
+  if(ninjaSaveBtn) ninjaSaveBtn.addEventListener("click", async ()=>{
+    const text=(ninjaPasteEl.value||"").trim();
+    if(!text){ setNinjaStatus("Paste the prices the snippet copied first.","err"); return; }
+    try{
+      const r=await fetch("/api/currency-overrides",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})});
+      const d=await r.json();
+      setNinjaStatus("Saved "+(d.saved||0)+" prices"+(runeInput.value.trim()?" — re-checking…":"."),"ok");
+      if(runeInput.value.trim()) checkRunes(false);
+    }catch(err){ setNinjaStatus("Save failed: "+err.message,"err"); }
+  });
+
   refreshTradeStatus();
 };

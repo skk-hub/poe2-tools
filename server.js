@@ -2448,6 +2448,52 @@ function runePastedNorms(limitedRawLines) {
   return norms;
 }
 
+// ── Currency-exchange-ratio overrides ──────────────────────────────────────
+// Some items (Verisium "alloys" etc.) CANNOT be priced from GGG's Trade2 offer
+// APIs: their standing offers are placeholder noise (1ex / exactly 1 divine / 0.5
+// divine), decoupled from the real per-item market ratio. That ratio lives only in
+// GGG's computed currency-exchange (OAuth-gated cxapi) or poe.ninja. poe.ninja's
+// PoE2 API is Cloudflare-blocked server-side (404 + cf-ray for every league), so we
+// can't fetch it from here — instead the Rune Picker UI runs a browser snippet on
+// poe.ninja (CF-cleared, same-origin) that copies the currency overview, and the user
+// pastes it (POST /api/currency-overrides). Until then a baked SEED (user-provided
+// 2026-06-25, EXALTED per item) keeps these correct. An exact name match here wins
+// over the (junk) exalted-side exchange book.
+const CURRENCY_OVERRIDE_FILE = path.join(DATA_DIR, ".currency-overrides.json");
+const CURRENCY_OVERRIDE_SEED = {
+  "Celestial Alloy": 160, "Sovereign Alloy": 32, "Transcendent Alloy": 42,
+  "Mystic Alloy": 10, "Prismatic Alloy": 9, "The Runefather's Alloy": 4, "The Runebinder's Alloy": 10,
+};
+let currencyOverrideCache = null;
+function readCurrencyOverrides() {
+  if (currencyOverrideCache) return currencyOverrideCache;
+  const out = {};
+  for (const [name, ex] of Object.entries(CURRENCY_OVERRIDE_SEED)) out[normalizeName(name)] = { ex, name, source: "curated" };
+  let file = {};
+  try { file = JSON.parse(fs.readFileSync(CURRENCY_OVERRIDE_FILE, "utf8")) || {}; } catch {}
+  for (const [k, e] of Object.entries(file.prices || {})) {
+    if (e && e.ex > 0) out[normalizeName(k)] = { ex: e.ex, name: e.name || k, source: e.source || "poe.ninja", updated: e.updated };
+  }
+  currencyOverrideCache = out;
+  return out;
+}
+function currencyOverride(norm) { return readCurrencyOverrides()[norm] || null; }
+function writeCurrencyOverrides(prices) {
+  let file = {}; try { file = JSON.parse(fs.readFileSync(CURRENCY_OVERRIDE_FILE, "utf8")) || {}; } catch {}
+  file.prices = file.prices || {};
+  const now = new Date().toISOString();
+  let n = 0;
+  for (const [name, ex] of Object.entries(prices)) {
+    const v = Number(ex);
+    if (!(v > 0) || !String(name).trim()) continue;
+    file.prices[normalizeName(name)] = { ex: Math.round(v * 100) / 100, name: String(name).trim(), source: "poe.ninja", updated: now };
+    n++;
+  }
+  try { fs.writeFileSync(CURRENCY_OVERRIDE_FILE, JSON.stringify(file, null, 2)); } catch {}
+  currencyOverrideCache = null;
+  return n;
+}
+
 async function fetchRunePrices(text, league, forceFresh) {
   const initialTradeStatus = tradeStatus();
   const rawLines = String(text || "")
@@ -2558,6 +2604,22 @@ async function fetchRunePrices(text, league, forceFresh) {
     if (seenCleanNames.has(norm)) continue;
     seenCleanNames.add(norm);
     if (!isSkillOrSupport) pastedNorms.push(norm);
+
+    // Currency-exchange-ratio override wins first (alloys etc. GGG's offer API can't
+    // price). Real value from poe.ninja's currency-exchange overview (browser snippet)
+    // or the baked seed — see CURRENCY_OVERRIDE_SEED.
+    const ov = !isSkillOrSupport ? currencyOverride(norm) : null;
+    if (ov && ov.ex > 0) {
+      results.push({
+        qty: parsed.qty, name: ov.name || cleanName, category: "Currency Exchange",
+        each: ov.ex, total: roundPriceExalted(ov.ex * parsed.qty), currency: "exalted",
+        source: ov.source === "curated" ? "curated" : "poe.ninja",
+        rawPrice: ov.updated ? "poe.ninja ratio · " + String(ov.updated).slice(0, 10) : "curated — update from poe.ninja",
+        divineValue: currencyRates.divine ? roundPriceExalted(ov.ex / currencyRates.divine) : 0,
+        change7d: "", confidence: "high", units: null,
+      });
+      continue;
+    }
 
     // On-demand fresh (the "Fetch fresh prices" button): the user is explicitly
     // asking for the LIVE Trade2 exchange price, so prefer the book whenever it has
@@ -4610,6 +4672,24 @@ const server = http.createServer(async (req, res) => {
       const league = input.league || "Runes of Aldur";
       const body = JSON.stringify(await fetchRunePrices(input.text || "", league, input.forceFresh === true));
       send(res, 200, body, "application/json; charset=utf-8");
+      return;
+    }
+
+    // Ingest currency-exchange prices pasted from the poe.ninja browser snippet
+    // (poe.ninja is Cloudflare-blocked server-side, so the user's browser fetches it).
+    // Accepts {prices:{name:ex}} or {text:"Name<tab>ex\n..."}.
+    if (url.pathname === "/api/currency-overrides" && req.method === "POST") {
+      const input = await readJson(req);
+      let prices = {};
+      if (input.prices && typeof input.prices === "object") prices = input.prices;
+      else if (input.text) {
+        for (const line of String(input.text).split(/\r?\n/)) {
+          const m = line.match(/^\s*(.+?)\s*[\t=:]\s*([\d.]+)\s*(?:ex)?\s*$/i);
+          if (m) prices[m[1].trim()] = Number(m[2]);
+        }
+      }
+      const saved = writeCurrencyOverrides(prices);
+      send(res, 200, JSON.stringify({ saved }), "application/json; charset=utf-8");
       return;
     }
 

@@ -280,6 +280,19 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
           </div>
           <textarea id="runeInput" spellcheck="false" placeholder="Example:&#10;3x Desert Rune&#10;Soul Core of Tacati&#10;Greater Essence of Enhancement"></textarea>
           <p class="sample">Paste a screenshot with Ctrl+V anywhere on the page, drop an image into the box above, or type item names manually.</p>
+          <details class="rune-ninja">
+            <summary>Update currency-exchange prices from poe.ninja (browser)</summary>
+            <p class="sub">Some currency-exchange items (the Verisium <b>alloys</b>, chase orbs) can't be priced from GGG's API — its standing offers are placeholder junk. Their real value lives on poe.ninja's currency exchange, which blocks our server. So pull it from <b>your</b> browser: open <b>poe.ninja → PoE2 → your league → Currency</b>, press F12 → Console, click <b>Copy snippet</b>, paste it there and hit Enter. It copies the prices — paste them below and Save. (Until you do, these show baked-in values.)</p>
+            <div class="controls">
+              <button id="ninjaCopySnippet" type="button">Copy snippet</button>
+              <a href="https://poe.ninja/poe2/economy" target="_blank" rel="noreferrer">Open poe.ninja PoE2</a>
+            </div>
+            <textarea id="ninjaPaste" spellcheck="false" placeholder="Paste what the snippet copied (one 'Name⇥value' per line)…"></textarea>
+            <div class="controls">
+              <button id="ninjaSave" type="button">Save prices</button>
+              <span id="ninjaStatus" class="status"></span>
+            </div>
+          </details>
         </div>
       </div>
       <div class="toolpanel">

@@ -5,6 +5,15 @@
 .toolroot-rune #checkRunes{background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));color:oklch(22% 0.04 70);border-color:transparent;font-weight:700}
 .toolroot-rune #checkRunes:hover{filter:brightness(1.06);box-shadow:var(--shadow-gold)}
 
+/* poe.ninja currency-exchange bridge (browser snippet → paste). */
+.toolroot-rune .rune-ninja{margin-top:14px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface-1);padding:0 14px}
+.toolroot-rune .rune-ninja>summary{list-style:none;cursor:pointer;color:var(--gold);font:600 12px var(--font-ui);text-transform:uppercase;letter-spacing:.04em;padding:11px 0;user-select:none}
+.toolroot-rune .rune-ninja>summary::-webkit-details-marker{display:none}
+.toolroot-rune .rune-ninja>summary::before{content:"▸";color:var(--text-faint);margin-right:8px;font-size:10px}
+.toolroot-rune .rune-ninja[open]>summary::before{content:"▾"}
+.toolroot-rune .rune-ninja[open]{padding-bottom:14px}
+.toolroot-rune .rune-ninja textarea{min-height:90px;margin:8px 0}
+
 /* "Fetch fresh prices" — secondary action; shows an inline spinner while it
    blocks on the live Trade2 refresh. */
 .toolroot-rune #freshRunes{position:relative;border-color:var(--border-gold);color:var(--gold-bright)}
