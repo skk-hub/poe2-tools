@@ -1825,8 +1825,15 @@ async function refreshRuneBook(league, normNames, force, opts = {}) {
       // so the extra calls are fine and the queue self-paces). Tab Tracker keeps the
       // batched read (triage over big tabs — protect its call budget) with starvation
       // backfill (skipBackfill=false) to recover the fully-starved few it can.
-      const askBatch = opts.perItemAsk ? 1 : RUNE_BOOK_BATCH;
-      const askData = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id), askBatch, opts.perItemAsk ? true : false, "any");
+      // ASK leg: batched (one ~10-item page covers a whole reward paste) + starvation
+      // backfill. If a spam whale (Greater Storm Rune = 99/100 listings) floods the
+      // shared page and zeroes an item to no offers, fetchExchangeChunked re-fetches
+      // just that item solo (skipBackfill=false). This is FAST for the common paste —
+      // ~1 call, not one-per-item — and still recovers the starved few. (Was blanket
+      // per-item = N calls every time, needlessly slow when no whale is even pasted;
+      // that was the Rune Picker "slow" regression.) The item-search fallback below
+      // still gives chase items their real price.
+      const askData = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id), RUNE_BOOK_BATCH, false, "any");
       const bidData = await fetchExchangeChunked(league, targets.map((t) => t.id), [EXALTED_ID], RUNE_BOOK_BATCH, true, "any");
       const existing = readRuneBook(league);
       const prices = existing ? { ...existing.prices } : {};
