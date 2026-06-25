@@ -67,8 +67,9 @@ function staticChecks() {
   const themeCss = read("theme.css");
   check(/@font-face/.test(themeCss) && !/fonts\.googleapis\.com/.test(themeCss), "theme.css self-hosts fonts (no Google @import)");
   check(["inter", "cinzel", "jetbrains-mono"].every(f => themeCss.includes("/fonts/" + f + ".woff2")), "theme.css references all 3 self-hosted woff2");
-  const views = ["home", "craft-pricer", "rune-picker", "gear-search", "map-juicer", "arbitrage"];
-  check(views.every(v => idx.includes(`id="${v}"`)), "index has all 6 view sections");
+  const views = ["home", "craft-pricer", "rune-picker", "gear-search", "map-juicer", "arbitrage", "jewel-pricer"];
+  check(views.every(v => idx.includes(`id="${v}"`)), "index has all core view sections");
+  check(idx.includes('href="#jewel-pricer"') && idx.includes('data-view-link="jewel-pricer"'), "index has the Jewel Pricer nav link");
   check(["toolroot-arb", "toolroot-mj", "toolroot-gs", "toolroot-rune"].every(t => idx.includes(t)), "index has all 4 active inline tool roots");
   check(idx.includes('id="fxStrip"') && idx.includes('id="fxStripRefresh"'), "home has currency strip + refresh button");
   check(/\.fxchip\.skel/.test(idx) && /@keyframes fxshimmer/.test(idx), "home currency strip has loading-skeleton CSS");
@@ -85,10 +86,16 @@ function staticChecks() {
   // every index inline <script> parses
   const scripts = [...idx.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
   check(scripts.length > 0 && scripts.every((s, i) => parses(s, "index script #" + (i + 1))), "index inline scripts parse");
-  const toolJs = ["arbitrage.js", "map-juicer.js", "gear-search.js", "rune-picker.js", "craft-pricer.js", "home.js"];
+  const toolJs = ["arbitrage.js", "map-juicer.js", "gear-search.js", "rune-picker.js", "craft-pricer.js", "home.js", "jewel-pricer.js"];
   for (const f of toolJs) check(parses(read(f), f), f + " parses");
-  check(["arbitrage.css", "map-juicer.css", "gear-search.css", "rune-picker.css", "craft-pricer.css"].every(c => idx.includes(`href="${c}"`)), "index links all 5 tool stylesheets");
-  check(toolJs.every(j => idx.includes(`src="${j}"`)), "index loads all 6 view scripts");
+  check(parses(read("jewel-data.js"), "jewel-data.js") && idx.includes('src="jewel-data.js"'), "jewel-data.js parses + is loaded before jewel-pricer.js");
+  check(["arbitrage.css", "map-juicer.css", "gear-search.css", "rune-picker.css", "craft-pricer.css", "jewel-pricer.css"].every(c => idx.includes(`href="${c}"`)), "index links all tool stylesheets");
+  check(toolJs.every(j => idx.includes(`src="${j}"`)), "index loads all view scripts");
+  // Jewel Pricer: server endpoint + verified-id discipline (no guessed stat ids).
+  const srvJ = read("server.js");
+  check(/\/api\/jewel\/price/.test(srvJ) && /async function getJewelFloor/.test(srvJ), "server has the jewel price endpoint + getJewelFloor");
+  check(/statId/.test(read("jewel-pricer.js")) && /\/api\/jewel\/price/.test(read("jewel-pricer.js")), "jewel-pricer.js posts statId mods to the price endpoint");
+  check(/explicit\.stat_3556824919/.test(read("jewel-data.js")), "jewel-data.js carries the verified Crit Damage id");
   // Map Juicer regex is %-aware (the fix): value range + the 0-revives regex.
   const mj = read("map-juicer.js"), wd = read("waystone-data.js");
   check(/revives available: 0/.test(wd) && /line:\s*{/.test(wd), "waystone-data has revives + colon-format line tokens");
@@ -174,7 +181,7 @@ async function browserChecks() {
     }) }));
     await page.goto(BASE + "/#home", { waitUntil: "domcontentloaded" });
     let maxOv = 0, ifr = 0;
-    for (const v of ["gear-search", "map-juicer", "arbitrage", "rune-picker", "tab-tracker", "craft-pricer", "home"]) {
+    for (const v of ["gear-search", "map-juicer", "arbitrage", "rune-picker", "tab-tracker", "jewel-pricer", "craft-pricer", "home"]) {
       await page.click(`[data-view-link="${v}"]`).catch(() => {});
       await page.waitForTimeout(500);
       maxOv = Math.max(maxOv, await page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth)));
@@ -190,7 +197,7 @@ async function browserChecks() {
     await page.close();
 
     // deep-link init (the bug that regressed): load a tool hash directly -> its JS ran
-    for (const [hash, sel, what] of [["#gear-search", "#gear-search #preview, #gear-search pre", "query preview"], ["#map-juicer", ".toolroot-mj .regexbox", "regex rows"]]) {
+    for (const [hash, sel, what] of [["#gear-search", "#gear-search #preview, #gear-search pre", "query preview"], ["#map-juicer", ".toolroot-mj .regexbox", "regex rows"], ["#jewel-pricer", "#jewel-pricer #jpPatch", "patch line"]]) {
       const p = await browser.newPage({ viewport: { width: 1280, height: 860 } });
       await p.goto(BASE + "/index.html" + hash, { waitUntil: "networkidle" }); await p.waitForTimeout(1400);
       const got = await p.evaluate(s => { const el = document.querySelector(s); return !!el && (el.children.length > 0 || /\S/.test(el.textContent)); }, sel);
@@ -489,7 +496,7 @@ async function browserChecks() {
     }) }));
     const pm = await m.newPage(); await pm.goto(BASE + "/#home", { waitUntil: "domcontentloaded" }); await pm.waitForTimeout(400);
     let mOv = await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth));
-    for (const v of ["craft-pricer", "gear-search", "map-juicer", "arbitrage", "rune-picker", "tab-tracker"]) { await pm.click(`[data-view-link="${v}"]`); await pm.waitForTimeout(700); mOv = Math.max(mOv, await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth))); }
+    for (const v of ["craft-pricer", "gear-search", "map-juicer", "arbitrage", "rune-picker", "tab-tracker", "jewel-pricer"]) { await pm.click(`[data-view-link="${v}"]`); await pm.waitForTimeout(700); mOv = Math.max(mOv, await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth))); }
     check(mOv === 0, "mobile: no horizontal overflow on tool views");
     await m.close();
   } finally { await browser.close(); }

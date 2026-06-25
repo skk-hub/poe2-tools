@@ -1,0 +1,36 @@
+/* .toolroot-jewel — Jewel Pricer (prefixed scope, no @scope dependency) */
+  .toolroot-jewel{display:block;max-width:1000px}
+  .toolroot-jewel h1{margin:0;color:var(--gd);font:700 22px/1.1 var(--ff-display);letter-spacing:.04em}
+  .toolroot-jewel .sub{color:var(--mu);font:12px var(--ff-mono);margin:6px 0 0}
+  .toolroot-jewel .jp-head{margin:0 0 14px}
+
+  .toolroot-jewel textarea{width:100%;min-height:160px;background:var(--bg-deep);border:1px solid var(--bd);color:var(--tx);padding:12px;font:12px var(--ff-mono);border-radius:var(--r-sm);resize:vertical}
+  .toolroot-jewel .jp-actions{margin:10px 0 0}
+
+  /* one card per pasted jewel */
+  .toolroot-jewel .verdict{margin-top:12px;border:1px solid var(--bd);background:var(--surface-1);padding:12px;border-radius:var(--r-md)}
+  .toolroot-jewel .verdict .head{font:700 14px var(--ff)}
+  .toolroot-jewel .verdict.good .head{color:var(--gr)}
+  .toolroot-jewel .verdict.warn .head{color:var(--gd)}
+  .toolroot-jewel .verdict.bad .head{color:var(--rd)}
+  .toolroot-jewel .verdict ul{margin:8px 0 0;padding-left:18px;color:var(--mu);font:12px var(--ff-mono)}
+  .toolroot-jewel .verdict li{margin:2px 0}
+  .toolroot-jewel .scoreline{display:flex;align-items:baseline;gap:8px;margin:6px 0 2px;color:var(--mu);font:12px var(--ff-mono)}
+  .toolroot-jewel .scoreline b{color:var(--gd);font-size:14px}
+
+  .toolroot-jewel .tag{display:inline-block;font:700 10px var(--ff-mono);text-transform:uppercase;padding:1px 6px;border:1px solid var(--bd);border-radius:var(--r-sm);margin-right:6px}
+  .toolroot-jewel .tag.s{color:var(--gd);border-color:oklch(80% 0.15 74 / .6);background:oklch(80% 0.15 74 / .08)}
+  .toolroot-jewel .tag.a{color:var(--gr);border-color:oklch(67% 0.14 148 / .5)}
+  .toolroot-jewel .tag.b{color:var(--mu)}
+  .toolroot-jewel .tag.junk{color:var(--rd);border-color:oklch(62% 0.14 20 / .4)}
+
+  /* price-check button + result, inside a verdict card */
+  .toolroot-jewel .jp-pc{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+  .toolroot-jewel .jp-pc button{font:600 12px var(--ff);padding:6px 12px;border-radius:var(--r-sm);border:1px solid var(--bd);background:var(--surface-2,var(--bg-deep));color:var(--tx);cursor:pointer}
+  .toolroot-jewel .jp-pc button:hover:not(:disabled){border-color:var(--gd);color:var(--gd)}
+  .toolroot-jewel .jp-pc button:disabled{opacity:.55;cursor:default}
+  .toolroot-jewel .jp-pcout{font:12px var(--ff-mono);color:var(--mu)}
+  .toolroot-jewel .jp-pcout b{color:var(--gd);font-size:14px}
+  .toolroot-jewel .jp-pcout.thin b{color:var(--rd)}
+
+  .toolroot-jewel .foot{margin-top:16px;color:var(--mu);font:11px var(--ff-mono);line-height:1.6}

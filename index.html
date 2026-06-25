@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="craft-pricer.css">
 <link rel="stylesheet" href="filter-helper.css">
 <link rel="stylesheet" href="tab-tracker.css">
+<link rel="stylesheet" href="jewel-pricer.css">
 <style>
 /* ===== Hub: modern dashboard, built on theme.css tokens ===== */
 .shell{padding:32px 24px 56px;max-width:1280px;margin:0 auto}
@@ -191,6 +192,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <a class="navbtn" href="#arbitrage" data-view-link="arbitrage">Arbitrage Scanner</a>
       <a class="navbtn" href="#filter-helper" data-view-link="filter-helper">Filter Helper</a>
       <a class="navbtn" href="#tab-tracker" data-view-link="tab-tracker">Tab Tracker</a>
+      <a class="navbtn" href="#jewel-pricer" data-view-link="jewel-pricer">Jewel Pricer</a>
     </nav>
   </div>
 </header>
@@ -476,6 +478,22 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       </p>
     </div>
   </section>
+  <section id="jewel-pricer" class="view" data-view="jewel-pricer">
+    <div class="toolroot toolroot-jewel">
+      <div class="pagehead jp-head">
+        <div>
+          <h1>Jewel Pricer</h1>
+          <p class="sub">Paste 1+ rare jewels — instant keep/junk triage, then an opt-in live floor check. <span id="jpPatch"></span></p>
+        </div>
+      </div>
+      <textarea id="jpInput" spellcheck="false" placeholder="Paste copied jewel text here (Ctrl+C in-game).&#10;Multiple jewels at once is fine — paste them one after another.&#10;Each must include its 'Item Class: Jewels' and 'Rarity:' lines."></textarea>
+      <div class="jp-actions"><button class="primary" id="jpEval" type="button">Evaluate</button></div>
+      <div id="jpOut"></div>
+      <p class="foot">
+        Triage is offline (zero trade calls) — a whole stash sorts instantly. <b>Price check</b> runs ONE rate-limited Trade2 search that ANDs the jewel's top mods, so the floor is "cheapest <i>good</i> jewel like this", not the junk floor. Rare jewels only; uniques (Timeless / Megalomaniac / Cluster) are a later pass.
+      </p>
+    </div>
+  </section>
   <section id="arbitrage" class="view" data-view="arbitrage">
     <div class="toolroot toolroot-arb">
       <div class="pagehead">
@@ -644,5 +662,7 @@ window.addEventListener("DOMContentLoaded",()=>runViewInit(currentView()));
 <script src="gear-search.js"></script>
 <script src="filter-helper.js"></script>
 <script src="tab-tracker.js"></script>
+<script src="jewel-data.js"></script>
+<script src="jewel-pricer.js"></script>
 </body>
 </html>
