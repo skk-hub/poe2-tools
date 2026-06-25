@@ -25,6 +25,13 @@ const TRADE_HEADERS = {
   "User-Agent": "poe-tools-local/0.1 (contact: " + (process.env.POE_CONTACT || "unset") + ")",
 };
 const TRADE_TIMEOUT_MS = 3500;
+// Record/replay Trade2 traffic so the tool develops + tests with zero live GGG
+// calls (the legit alternative to IP-rotation evasion). POE_RECORD=1 captures real
+// responses to trade-fixtures.json; POE_OFFLINE=1 serves them back, never hitting
+// the network or the shared rate-limit budget. Both off = normal live behaviour.
+const TRADE_RECORD = process.env.POE_RECORD === "1";
+const TRADE_OFFLINE = process.env.POE_OFFLINE === "1";
+const TRADE_FIXTURE_FILE = path.join(__dirname, "trade-fixtures.json");
 const MAX_RUNE_LINES = 30;
 const MAX_TRADE_FALLBACKS = 0;
 const MAX_SKILL_TRADE_FALLBACKS = 1;
@@ -271,7 +278,12 @@ const tradeQueue = createTradeQueue({
   headers: TRADE_HEADERS,
   minGapMs: TRADE_MIN_GAP_MS,
   timeoutMs: TRADE_TIMEOUT_MS,
+  record: TRADE_RECORD,
+  replay: TRADE_OFFLINE,
+  fixtureFile: TRADE_FIXTURE_FILE,
 });
+if (TRADE_OFFLINE) console.log("[trade] OFFLINE replay mode — serving trade-fixtures.json, zero live GGG calls");
+else if (TRADE_RECORD) console.log("[trade] RECORD mode — live calls captured to trade-fixtures.json");
 const comparableCache = new Map();
 const ARBITRAGE_CACHE_FILE = path.join(DATA_DIR, ".arbitrage-scan-cache.json");
 const ARBITRAGE_CACHE_MS = 2 * 60 * 1000;

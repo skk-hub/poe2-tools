@@ -96,6 +96,9 @@ function staticChecks() {
   check(/\/api\/jewel\/price/.test(srvJ) && /async function getJewelFloor/.test(srvJ), "server has the jewel price endpoint + getJewelFloor");
   check(/statId/.test(read("jewel-pricer.js")) && /\/api\/jewel\/price/.test(read("jewel-pricer.js")), "jewel-pricer.js posts statId mods to the price endpoint");
   check(/explicit\.stat_3556824919/.test(read("jewel-data.js")), "jewel-data.js carries the verified Crit Damage id");
+  // Record/replay: develop + test the tool with zero live GGG calls (no IP evasion).
+  check(/replayMode/.test(read("trade-queue.js")) && /recordMode/.test(read("trade-queue.js")), "trade-queue.js has record/replay");
+  check(/POE_OFFLINE/.test(srvJ) && /POE_RECORD/.test(srvJ) && /fixtureFile:\s*TRADE_FIXTURE_FILE/.test(srvJ), "server wires POE_OFFLINE / POE_RECORD into the queue");
   // Map Juicer regex is %-aware (the fix): value range + the 0-revives regex.
   const mj = read("map-juicer.js"), wd = read("waystone-data.js");
   check(/revives available: 0/.test(wd) && /line:\s*{/.test(wd), "waystone-data has revives + colon-format line tokens");

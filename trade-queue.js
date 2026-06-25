@@ -1,4 +1,5 @@
 const fs = require("fs");
+const crypto = require("crypto");
 
 const DEFAULT_TIMEOUT_MS = 3500;
 const DEFAULT_MIN_GAP_MS = 3000;
@@ -8,6 +9,15 @@ function createTradeQueue(options = {}) {
   const headers = options.headers || {};
   const timeoutMs = Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS;
   const baseMinGapMs = Number(options.minGapMs) || DEFAULT_MIN_GAP_MS;
+  // Record/replay so the tool can be developed + tested with ZERO live GGG calls
+  // (the legit fix for "testing keeps tripping the limit" — no IP evasion). RECORD
+  // saves each real response keyed by method+path+body; REPLAY serves it back and
+  // never touches the network or the rate-limit budget. A replay miss throws (so a
+  // missing fixture is obvious, never a silent live call).
+  const recordMode = !!options.record;
+  const replayMode = !!options.replay;
+  const fixtureFile = options.fixtureFile || null;
+  let fixturesCache = null;
 
   let blockedUntil = 0;
   let rateLimitState = {};
@@ -114,6 +124,11 @@ function createTradeQueue(options = {}) {
 
   function status() {
     const now = Date.now();
+    // Offline replay never touches GGG, so it's never rate-limited — report clear so
+    // endpoints proceed to fetch (and hit fixtures) instead of short-circuiting.
+    if (replayMode) {
+      return { limited: false, tradeLimitedUntil: "", secondsRemaining: 0, rateLimit: {}, replay: true, queue: { active, queued, minGapMs: 0, lastCall: "" } };
+    }
     if (blockedUntil && now >= blockedUntil) {
       blockedUntil = 0;
       saveStatus();
@@ -173,7 +188,38 @@ function createTradeQueue(options = {}) {
     return run;
   }
 
+  function loadFixtures() {
+    if (fixturesCache) return fixturesCache;
+    try { fixturesCache = JSON.parse(fs.readFileSync(fixtureFile, "utf8")); }
+    catch { fixturesCache = {}; }
+    return fixturesCache;
+  }
+  // Key a request by what determines its response: method + path/query + body.
+  // (Host is stripped; the search `id` lives in the recorded search RESPONSE, so a
+  // replayed search yields the same ids → the follow-up fetch URL matches too.)
+  function fixtureKey(url, opts) {
+    const method = (opts.method || "GET").toUpperCase();
+    const pathQ = String(url).replace(/^https?:\/\/[^/]+/i, "");
+    return crypto.createHash("sha1").update(method + " " + pathQ + " " + (opts.body || "")).digest("hex").slice(0, 16);
+  }
+  function saveFixture(url, opts, json) {
+    if (!fixtureFile) return;
+    const fx = loadFixtures();
+    fx[fixtureKey(url, opts)] = {
+      method: (opts.method || "GET").toUpperCase(),
+      path: String(url).replace(/^https?:\/\/[^/]+/i, ""),
+      response: json,
+    };
+    try { fs.writeFileSync(fixtureFile, JSON.stringify(fx, null, 1)); } catch {}
+  }
+
   async function request(url, requestOptions = {}) {
+    if (replayMode) {
+      const fx = loadFixtures();
+      const key = fixtureKey(url, requestOptions);
+      if (Object.prototype.hasOwnProperty.call(fx, key)) return JSON.parse(JSON.stringify(fx[key].response));
+      throw new Error("offline replay: no fixture for " + (requestOptions.method || "GET") + " " + url + " — run with POE_RECORD=1 once to capture it");
+    }
     return enqueue(async () => {
       const current = status();
       if (current.limited) {
@@ -204,7 +250,9 @@ function createTradeQueue(options = {}) {
         throw new Error("trade2 returned HTTP " + response.status + (detail ? ": " + detail.slice(0, 500) : ""));
       }
 
-      return response.json();
+      const json = await response.json();
+      if (recordMode) saveFixture(url, requestOptions, json);
+      return json;
     });
   }
 
