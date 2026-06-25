@@ -52,6 +52,8 @@ window.__viewInit["map-juicer"]=function(){
   let wRevives = false;        // require fully-juiced (0 revives)
   let wExclude = false;        // exclude risk suffixes — off by default; tick it when you want it
   let wCorrupt = false;        // require Corrupted
+  let wNotRevives = false;     // exclude fully-juiced (keep maps that still have revives)
+  let wNotCorrupt = false;     // exclude Corrupted
   const tContent = new Set();  // selected tablet content-type ids
   const tMods = new Set();      // selected desirable-mod tokens to require
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -98,7 +100,9 @@ window.__viewInit["map-juicer"]=function(){
       if (wdropMin > 0)  blocks.push(`"${atLeast(L.waystoneDrop, wdropMin)}"`);
     }
     if (wRevives) blocks.push(noRevivesRegex());
+    else if (wNotRevives) blocks.push(`"!${T.revivesZero}"`);
     if (wCorrupt) blocks.push(`"${T.corrupted}"`);
+    else if (wNotCorrupt) blocks.push(`"!${T.corrupted}"`);
     if (wExclude) blocks.push(`"!${T.danger}"`);
     return blocks.join(" ");
   }
@@ -181,8 +185,8 @@ window.__viewInit["map-juicer"]=function(){
         ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,0,70)}${stepper("pack","Min Pack Size",packMin,0,40)}</div><p class="forge-hint">Every minimum you set is <b>required</b> (AND) — a stone must clear all of them. Set a stat to 0 to drop it.</p>`
         : `<p class="forge-hint">Matches any waystone carrying a reward mod — the blue stones worth upgrading.</p>`}
       ${wMatch==="floor" ? toggle("wdrop","Require Waystone Drop ≥100% (midrange isn't worth it)",wdropMin>=100) : ""}
-      ${toggle("revives","Fully juiced only (0 revives = 6-mod map)",wRevives)}
-      ${toggle("corrupt","Corrupted only",wCorrupt)}
+      <div class="forge-togrow">${toggle("revives","Fully juiced only (0 revives = 6-mod map)",wRevives)}${toggle("notrevives","Not juiced",wNotRevives)}</div>
+      <div class="forge-togrow">${toggle("corrupt","Corrupted only",wCorrupt)}${toggle("notcorrupt","Not corrupted",wNotCorrupt)}</div>
       ${toggle("exclude","Exclude risk suffixes (less recovery, −max res, …)",wExclude)}`;
   }
   function tabletQs(){
@@ -247,7 +251,14 @@ window.__viewInit["map-juicer"]=function(){
     }));
     root.querySelectorAll("[data-tog]").forEach(c => c.addEventListener("change", () => {
       const k = c.getAttribute("data-tog");
-      if (k === "revives") wRevives = c.checked; else if (k === "exclude") wExclude = c.checked; else if (k === "corrupt") wCorrupt = c.checked; else if (k === "wdrop") wdropMin = c.checked ? 100 : 0;
+      // corrupt/juiced each have an "only" + a "not" toggle — mutually exclusive
+      // (can't require AND exclude the same thing), so ticking one clears its opposite.
+      if (k === "revives") { wRevives = c.checked; if (c.checked) wNotRevives = false; }
+      else if (k === "notrevives") { wNotRevives = c.checked; if (c.checked) wRevives = false; }
+      else if (k === "corrupt") { wCorrupt = c.checked; if (c.checked) wNotCorrupt = false; }
+      else if (k === "notcorrupt") { wNotCorrupt = c.checked; if (c.checked) wCorrupt = false; }
+      else if (k === "exclude") wExclude = c.checked;
+      else if (k === "wdrop") wdropMin = c.checked ? 100 : 0;
       renderSheet();
     }));
     root.querySelectorAll("[data-chip]").forEach(b => b.addEventListener("click", () => {
