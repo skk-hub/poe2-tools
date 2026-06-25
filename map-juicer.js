@@ -82,6 +82,7 @@ window.__viewInit["map-juicer"]=function(){
       `"!${atLeast(L.itemRarity, dumpRarityKeep, 87)}"`,   // keep high Item Rarity
       `"!${atLeast(L.waystoneDrop, 100)}"`,                // keep Drop Chance >=100% (combo signal + sustain)
       `"!${atLeast(L.monsterRarity, 100)}"`,               // keep Monster Rarity >=100%
+      `"!${atLeast(L.monsterEffectiveness, 40, 70)}"`,     // keep Monster Effectiveness >=40% — gated buy-side probe (2026-06-25, corrupted+0-revives T16): ME>=40 floors ~10-50ex, NOT ~5ex bulk. (Pack Size probed same run = still 1ex even at 35%, so it stays dumpable.)
     ].join(" ");
   }
 
@@ -177,7 +178,7 @@ window.__viewInit["map-juicer"]=function(){
   function waystoneQs(){
     const segs = `<div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}${seg("wmatch","dump",wMatch,"Low-value dump")}</div>`;
     if (wMatch === "dump") {
-      return `${segs}<div class="forge-steps">${stepper("rarityKeep","Keep if Item Rarity ≥",dumpRarityKeep,40,70)}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones that are <b>~5ex bulk</b> — and keeps the real money OUT of the dump pile: <b>Item Rarity ≥${dumpRarityKeep}%</b>, <b>Drop Chance ≥100%</b>, or <b>Monster Rarity ≥100%</b> (the high-roll combos that actually sell, plus your drop-sustain maps). Thresholds from a 2026-06-24 buy-side sweep gated on this exact map class. <b>Ignore the in-game price-check</b> — most "expensive"-looking juiced maps sell for ~5ex.</p>`;
+      return `${segs}<div class="forge-steps">${stepper("rarityKeep","Keep if Item Rarity ≥",dumpRarityKeep,40,70)}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones that are <b>~5ex bulk</b> — and keeps the real money OUT of the dump pile: <b>Item Rarity ≥${dumpRarityKeep}%</b>, <b>Monster Effectiveness ≥40%</b>, <b>Drop Chance ≥100%</b>, or <b>Monster Rarity ≥100%</b> (the high-roll combos that actually sell, plus your drop-sustain maps). Thresholds from buy-side sweeps gated on this exact map class (Monster Effectiveness added 2026-06-25: ME ≥40% floors ~10–50ex, not ~5ex bulk). Pack Size stays dumpable — even ≥35% sits at ~1ex buy-side. <b>Ignore the in-game price-check</b> — most "expensive"-looking juiced maps sell for ~5ex.</p>`;
     }
     return `
       ${segs}
