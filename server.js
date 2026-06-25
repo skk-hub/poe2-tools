@@ -3,8 +3,10 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
+const zlib = require("zlib");
 const { exec } = require("child_process");
 const { createTradeQueue } = require("./trade-queue");
+const pob = require("./pob.js");   // headless Path of Building bridge (Gear Finder)
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = 17777;
@@ -4319,6 +4321,98 @@ function analyzeGearSearch(text) {
   };
 }
 
+// ── Gear Upgrade Finder: Path of Building import ───────────────────────────
+// PoB stores each equipped item as in-game item TEXT inside <Item> tags (so
+// parseItemStats handles them), <Slot> maps items to equipment slots, and
+// <PlayerStat> holds PoB's computed build stats. A pasted PoB export is URL-safe
+// base64 of zlib-deflated XML; a saved .build/.xml is raw XML.
+const POB_BUILDS_DIR = process.env.POB_BUILDS_DIR ||
+  path.join(process.env.USERPROFILE || os.homedir(), "Documents", "Path of Building (PoE2)", "Builds");
+const POB_SLOT_MAP = {
+  "Helmet": "helmet", "Body Armour": "chest", "Gloves": "gloves", "Boots": "boots",
+  "Amulet": "amulet", "Ring 1": "ring1", "Ring 2": "ring2", "Belt": "belt",
+};
+// Reverse: tool slot id → PoB slot name (the headless calc keys on PoB names).
+const TOOL_TO_POB_SLOT = {
+  helmet: "Helmet", chest: "Body Armour", gloves: "Gloves", boots: "Boots",
+  amulet: "Amulet", ring1: "Ring 1", ring2: "Ring 2", belt: "Belt", quiver: "Weapon 2",
+};
+function toolSlotToPob(slotId) {
+  return TOOL_TO_POB_SLOT[slotId] ||
+    (/(bow|crossbow|wand|staff|sceptre|spear|mace|sword|axe|dagger|flail|focus|shield)/i.test(slotId) ? "Weapon 1" : slotId);
+}
+
+function decodePobCode(code) {
+  const b64 = String(code).trim().replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const buf = Buffer.from(b64, "base64");
+  try { return zlib.inflateSync(buf).toString("utf8"); }
+  catch { return zlib.inflateRawSync(buf).toString("utf8"); }
+}
+
+function unescapeXml(s) {
+  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+}
+
+// Best-effort weapon-slot id from a PoB item's text (no "Item Class:" line, so
+// match the base-type word; crossbow/quiver before bow).
+function pobWeaponSlot(raw) {
+  const t = raw.toLowerCase();
+  if (/quiver/.test(t)) return "quiver";
+  if (/crossbow/.test(t)) return "crossbow";
+  if (/\bbow\b/.test(t)) return "bow";
+  if (/quarterstaff|staff/.test(t)) return "staff";
+  if (/sceptre/.test(t)) return "sceptre";
+  if (/wand/.test(t)) return "wand";
+  if (/spear/.test(t)) return "spear";
+  return null;
+}
+
+function parsePobBuild(xml) {
+  // id -> item text (strip child tags like <ModRange/>, keep mod lines)
+  const items = {};
+  let m;
+  const itemRe = /<Item\b([^>]*)>([\s\S]*?)<\/Item>/g;
+  while ((m = itemRe.exec(xml))) {
+    const id = (m[1].match(/\bid="(\d+)"/) || [])[1];
+    if (!id) continue;
+    items[id] = unescapeXml(m[2].replace(/<[^>]+>/g, "")).split("\n").map((l) => l.trim()).filter(Boolean).join("\n");
+  }
+  // slot name -> itemId
+  const slots = {};
+  const slotRe = /<Slot\b([^>]*?)\/?>/g;
+  while ((m = slotRe.exec(xml))) {
+    const attrs = m[1];
+    const name = (attrs.match(/\bname="([^"]*)"/) || [])[1];
+    const itemId = (attrs.match(/\bitemId="(\d+)"/) || [])[1];
+    if (!name || !itemId || itemId === "0" || !items[itemId]) continue;
+    let slotId = POB_SLOT_MAP[name];
+    if (!slotId && /^Weapon [12]$/.test(name)) slotId = pobWeaponSlot(items[itemId]);
+    if (!slotId || slots[slotId]) continue; // skip flasks/jewels/sockets/swap + dupes
+    const raw = items[itemId];
+    const baseSlot = slotId === "ring1" || slotId === "ring2" ? "ring" : slotId;
+    slots[slotId] = { pobSlot: name, name: (raw.split("\n")[1] || raw.split("\n")[0] || "").trim(), raw, stats: parseItemStats(raw, baseSlot) };
+  }
+  // PoB computed stats — <PlayerStat value="X" stat="Y"/> (value first)
+  const build = {};
+  const psRe = /<PlayerStat\b([^>]*?)\/?>/g;
+  while ((m = psRe.exec(xml))) {
+    const v = (m[1].match(/\bvalue="([^"]*)"/) || [])[1];
+    const s = (m[1].match(/\bstat="([^"]+)"/) || [])[1];
+    if (s != null && v != null) build[s] = isNaN(Number(v)) ? v : Number(v);
+  }
+  return { slots, build };
+}
+
+// List saved PoB builds (name + mtime), newest first. [] if the dir is absent.
+function listPobBuilds() {
+  try {
+    return fs.readdirSync(POB_BUILDS_DIR)
+      .filter((f) => /\.(xml|build)$/i.test(f))
+      .map((f) => ({ file: f, name: f.replace(/\.(xml|build)$/i, ""), mtime: fs.statSync(path.join(POB_BUILDS_DIR, f)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime);
+  } catch { return []; }
+}
+
 // GGG's listing.account.online is null when offline, otherwise an object that
 // may carry status "afk"/"dnd" (absent = plain online). Note: this reflects the
 // seller, not whether the item is still in their stash.
@@ -4384,11 +4478,13 @@ async function searchGear(input) {
     if (!price || price.exalted <= 0) continue;
     if (budgetEx > 0 && price.exalted > budgetEx) continue;
     const item = entry.item || {};
-    const candidateStats = parseItemStats(itemTextFromTradeEntry(entry), slotId);
+    const candidateRaw = itemTextFromTradeEntry(entry);
+    const candidateStats = parseItemStats(candidateRaw, slotId);
     if (!compositeStatsSatisfied(candidateStats, compositeFilters).ok) continue;
     listings.push({
       id: entry.id,
       slot: slotId,
+      raw: candidateRaw,   // candidate item text → fed to headless PoB for ΔDPS ranking
       name: [item.name, item.typeLine].filter(Boolean).join(" ").trim() || slot.label,
       typeLine: item.typeLine || "",
       priceEx: price.exalted,
@@ -4848,6 +4944,60 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // ── Gear Upgrade Finder (PoB-driven) ──────────────────────────────────
+    if (url.pathname === "/api/gear/builds") {
+      send(res, 200, JSON.stringify({ dir: POB_BUILDS_DIR, builds: listPobBuilds(), headless: pob.available() }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/gear/import" && req.method === "POST") {
+      const input = await readJson(req, 8 * 1024 * 1024);
+      let xml;
+      try {
+        if (input.buildFile) {
+          xml = fs.readFileSync(path.join(POB_BUILDS_DIR, path.basename(String(input.buildFile))), "utf8"); // basename = traversal guard
+        } else if (input.code) {
+          xml = decodePobCode(input.code);
+        } else {
+          send(res, 400, JSON.stringify({ error: "Provide a PoB code or buildFile" }), "application/json; charset=utf-8"); return;
+        }
+      } catch (e) { send(res, 400, JSON.stringify({ error: "Could not read/decode build: " + e.message }), "application/json; charset=utf-8"); return; }
+      let parsed;
+      try { parsed = parsePobBuild(xml); } catch (e) { send(res, 400, JSON.stringify({ error: "Not a Path of Building build: " + e.message }), "application/json; charset=utf-8"); return; }
+      const headless = { available: pob.available() };
+      if (headless.available) { try { headless.stats = await pob.load(xml); } catch (e) { headless.error = String(e.message); } }
+      send(res, 200, JSON.stringify({ slots: parsed.slots, build: parsed.build, headless, xml }), "application/json; charset=utf-8");
+      return;
+    }
+
+    if (url.pathname === "/api/gear/search" && req.method === "POST") {
+      const input = await readJson(req, 2 * 1024 * 1024);
+      try {
+        send(res, 200, JSON.stringify(await searchGear(input)), "application/json; charset=utf-8");
+      } catch (err) {
+        if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8"); return; }
+        throw err;
+      }
+      return;
+    }
+
+    if (url.pathname === "/api/gear/rank" && req.method === "POST") {
+      const input = await readJson(req, 8 * 1024 * 1024);
+      if (!pob.available()) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
+      const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
+      try {
+        await pob.load(String(input.buildXml || ""));
+        const base = await pob.calc(pobSlot, "");
+        const results = [];
+        for (const it of (Array.isArray(input.items) ? input.items : []).slice(0, 20)) {
+          try { results.push({ id: it.id, stats: await pob.calc(pobSlot, String(it.raw || "")) }); }
+          catch (e) { results.push({ id: it.id, error: String(e.message) }); }
+        }
+        send(res, 200, JSON.stringify({ available: true, base, results }), "application/json; charset=utf-8");
+      } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
+      return;
+    }
+
     if (url.pathname === "/api/gear-search/analyze" && req.method === "POST") {
       const input = await readJson(req, 8 * 1024 * 1024);
       send(res, 200, JSON.stringify(analyzeGearSearch(input.text || "")), "application/json; charset=utf-8");
@@ -5138,5 +5288,8 @@ module.exports = {
   analyzeGearSearch,
   buildGearSearchQuery,
   gearSearchSlots,
+  decodePobCode,
+  parsePobBuild,
+  listPobBuilds,
   __setExchangeRawImpl(fn) { exchangeRawImpl = fn; },
 };
