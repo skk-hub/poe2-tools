@@ -1,0 +1,42 @@
+name: Discord commit notify
+
+# Posts the FULL commit message to Discord on every push (the built-in GitHub
+# ->Discord webhook truncates to ~50 chars of the first line). Uses a custom
+# embed so the whole multi-line message shows.
+#
+# Setup (one time):
+#   1. Repo Settings -> Secrets and variables -> Actions -> New repository secret
+#      Name: DISCORD_WEBHOOK   Value: your RAW Discord webhook URL (NO "/github").
+#   2. Remove the old GitHub->Discord webhook (the one ending in "/github") so you
+#      don't get two messages per push. (Settings -> Webhooks -> delete it.)
+
+on:
+  push:
+    branches: ["**"]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post commit to Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          MSG: ${{ github.event.head_commit.message }}
+          URL: ${{ github.event.head_commit.url }}
+          AUTHOR: ${{ github.event.head_commit.author.name }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.event.head_commit.id }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then echo "DISCORD_WEBHOOK secret not set — skipping."; exit 0; fi
+          title="${MSG%%$'\n'*}"                       # first line
+          short="${SHA:0:7}"
+          jq -n \
+            --arg title "$short  $title" \
+            --arg desc "$MSG" \
+            --arg url "$URL" \
+            --arg auth "$REPO · $BRANCH" \
+            --arg foot "pushed by $AUTHOR" \
+            '{embeds:[{title:$title, url:$url, description:$desc, color:13146940,
+                       author:{name:$auth}, footer:{text:$foot}}]}' \
+          | curl -sS -X POST -H "Content-Type: application/json" -d @- "$WEBHOOK"

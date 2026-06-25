@@ -90,8 +90,11 @@
   .toolroot-mj .pin-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
   .toolroot-mj .pin-label{color:var(--tx);font:700 12px var(--ff)}
   .toolroot-mj .pin-actions{display:flex;align-items:center;gap:6px}
-  .toolroot-mj .pin-del{padding:4px 9px;border:1px solid var(--bd);background:transparent;color:var(--mu);font:11px var(--ff-mono);cursor:pointer;border-radius:var(--r-sm);line-height:1}
+  .toolroot-mj .pin-del,.toolroot-mj .pin-rename{padding:4px 9px;border:1px solid var(--bd);background:transparent;color:var(--mu);font:11px var(--ff-mono);cursor:pointer;border-radius:var(--r-sm);line-height:1}
   .toolroot-mj .pin-del:hover{color:var(--red);border-color:var(--red)}
+  .toolroot-mj .pin-rename:hover{color:var(--gd);border-color:var(--border-gold)}
+  .toolroot-mj .pin-rename-in{height:24px;border:1px solid var(--border-gold);background:var(--bg-deep);color:var(--tx);font:700 12px var(--ff);border-radius:var(--r-sm);padding:0 6px;min-width:170px}
+  .toolroot-mj .pin-rename-in:focus{outline:none;box-shadow:0 0 0 2px var(--gold-glow)}
   .toolroot-mj .pin-rx{display:block;font:11px var(--ff-mono);color:var(--gd);word-break:break-all;white-space:pre-wrap}
 
   /* Collapsible evaluator */

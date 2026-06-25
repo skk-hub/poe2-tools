@@ -174,13 +174,32 @@ window.__viewInit["map-juicer"]=function(){
     renderSheet();
   }
   function unpin(rx){ savePins(loadPins().filter(p => p.rx !== rx)); renderSheet(); }
+  // Rename a pin in place (pins are keyed by ts). Fixes old pins saved before the
+  // auto-label change AND lets you give a pin any name you want.
+  function renamePin(ts, label){
+    const pins = loadPins();
+    const p = pins.find(x => String(x.ts) === String(ts));
+    if (p) { p.label = (label || "").trim() || p.label; savePins(pins); }
+    renderSheet();
+  }
+  function startRename(ts){
+    const span = els.sheet.querySelector(`[data-pinlabel="${ts}"]`);
+    if (!span) return;
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.value = span.textContent; inp.className = "pin-rename-in"; inp.setAttribute("aria-label", "Pin name");
+    span.replaceWith(inp); inp.focus(); inp.select();
+    let done = false;
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") inp.blur(); else if (e.key === "Escape") { done = true; renderSheet(); } });
+    inp.addEventListener("blur", () => { if (!done) { done = true; renamePin(ts, inp.value); } });
+  }
   function pinsHtml(){
     const pins = loadPins();
     if (!pins.length) return "";
     const items = pins.map(p => `<li class="pin-item">
       <div class="pin-row">
-        <span class="pin-label">${esc(p.label)}</span>
+        <span class="pin-label" data-pinlabel="${p.ts}">${esc(p.label)}</span>
         <span class="pin-actions">
+          <button class="pin-rename" type="button" data-rename="${p.ts}" aria-label="Rename pin" title="Rename">✎</button>
           <button class="copy" type="button" data-copy="${esc(p.rx)}">Copy</button>
           <button class="pin-del" type="button" data-unpin="${esc(p.rx)}" aria-label="Remove pin" title="Remove pin">✕</button>
         </span>
@@ -294,6 +313,7 @@ window.__viewInit["map-juicer"]=function(){
     const pinBtn = els.sheet.querySelector("[data-pin]");
     if (pinBtn) pinBtn.addEventListener("click", pinCurrent);
     els.sheet.querySelectorAll("[data-unpin]").forEach(b => b.addEventListener("click", () => unpin(b.getAttribute("data-unpin"))));
+    els.sheet.querySelectorAll("[data-rename]").forEach(b => b.addEventListener("click", () => startRename(b.getAttribute("data-rename"))));
   }
   function bindForge(){
     const root = els.sheet;
