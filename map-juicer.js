@@ -29,13 +29,21 @@ window.__viewInit["map-juicer"]=function(){
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
   let rarityMin = 0, packMin = 0, effMin = 0, wdropMin = 0;   // all start at 0 (off) — build up from nothing; wdrop is 0 or 100
-  let dumpRarityKeep = 60;   // dump filter keeps maps with Item Rarity >= this% (the one tunable keeper); adjustable via stepper
+  let dumpRarityKeep = 60;   // dump keeps maps with Item Rarity >= this%
+  let dropKeep = 115;        // dump keeps maps with Waystone Drop Chance >= this% (your sustain rule); 0 = dump any drop roll
   // Match a number ≥ pct (pct is a multiple of 10). Two-digit: first digit
   // (pct/10)…9 + any second digit (so ≥ pct); OR any three-digit (100+). Uses
   // [0-9] not "." so it can't swallow the trailing "%". The label token carries the
   // stat name; we bridge the real in-stash format "Label: +X%" with ": \+…%".
   function geNum(pct, ceiling){
-    if (pct >= 100) return "[0-9][0-9][0-9]";                    // 100%+ only
+    // 3-digit threshold (e.g. Drop Chance >=115): match 1XX >= pct. Same-tens with
+    // units>=u, OR any higher tens. Lets the Drop keep be an exact %, not just "100+".
+    if (pct > 100 && pct < 200){
+      const tens = Math.floor((pct % 100) / 10), units = pct % 10;
+      const hi = tens >= 9 ? "" : `|1[${tens + 1}-9][0-9]`;
+      return `(1${tens}[${units}-9]${hi})`;
+    }
+    if (pct >= 100) return "[0-9][0-9][0-9]";                    // exactly 100% = any 3-digit
     const d = Math.max(1, Math.floor(pct / 10));
     const two = `[${d}-9][0-9]`;
     // If the stat can't roll into three digits, omit the 100+ alternation — keeps the
@@ -75,15 +83,21 @@ window.__viewInit["map-juicer"]=function(){
   // any Pack/Effectiveness/Drop/Monster-Rarity short of the combo — sell for ~5ex no
   // matter how high they look in the in-game price-check. So: keep those signals
   // (the real money + the user's drop>=100 sustain), dump everything else.
+  // Keep only the signals that actually carry buy-side value gated on this class
+  // (2026-06-25 probe, corrupted+0-revives T16): Item Rarity ≥keep and Monster
+  // Effectiveness ≥40 floor ~10–50ex. Monster Rarity (~5ex solo) and Pack Size
+  // (~1ex) are NOT kept — junk alone. Drop Chance is the user's sustain keep, tunable
+  // (default 115; 0 = dump any drop roll). True combos can't be expressed in stash
+  // regex (no AND-of-keeps), so this is solo-OR; use the paste evaluator for combos.
   function buildDump(){
-    return [
+    const blocks = [
       `"${T.corrupted}"`,
       `"${T.revivesZero}"`,
       `"!${atLeast(L.itemRarity, dumpRarityKeep, 87)}"`,   // keep high Item Rarity
-      `"!${atLeast(L.waystoneDrop, 100)}"`,                // keep Drop Chance >=100% (combo signal + sustain)
-      `"!${atLeast(L.monsterRarity, 100)}"`,               // keep Monster Rarity >=100%
-      `"!${atLeast(L.monsterEffectiveness, 40, 70)}"`,     // keep Monster Effectiveness >=40% — gated buy-side probe (2026-06-25, corrupted+0-revives T16): ME>=40 floors ~10-50ex, NOT ~5ex bulk. (Pack Size probed same run = still 1ex even at 35%, so it stays dumpable.)
-    ].join(" ");
+      `"!${atLeast(L.monsterEffectiveness, 40, 70)}"`,     // keep Monster Effectiveness >=40%
+    ];
+    if (dropKeep > 0) blocks.push(`"!${atLeast(L.waystoneDrop, dropKeep)}"`);   // keep Drop >= selector (0 = dump any drop)
+    return blocks.join(" ");
   }
 
   function buildWaystone(){
@@ -181,12 +195,25 @@ window.__viewInit["map-juicer"]=function(){
 
   // ── Controls ──
   function seg(attr, val, cur, label){ return `<button class="seg-btn${val===cur?" on":""}" type="button" data-${attr}="${val}">${esc(label)}</button>`; }
-  function stepper(id, label, val, lo, hi, unit){
-    unit = unit || "%";
+  // Each tunable: [lo, hi, click-step]. The control is a typeable number input
+  // (type the value directly — no clicking to 0) flanked by −/+ for quick nudges.
+  const STEP_CFG = { rarity:[0,70,10], pack:[0,40,10], eff:[0,70,10], rarityKeep:[40,70,10], dropKeep:[0,150,5] };
+  function stepCur(id){ return ({ rarity:rarityMin, pack:packMin, eff:effMin, rarityKeep:dumpRarityKeep, dropKeep })[id]; }
+  function setStep(id, v){
+    const c = STEP_CFG[id]; if (!c) return;
+    v = clamp(Math.round(Number(v) || 0), c[0], c[1]);
+    if (id==="rarity") rarityMin=v; else if (id==="pack") packMin=v; else if (id==="eff") effMin=v;
+    else if (id==="rarityKeep") dumpRarityKeep=v; else if (id==="dropKeep") dropKeep=v;
+  }
+  function stepper(id, label){
+    const [lo, hi, step] = STEP_CFG[id], val = stepCur(id);
     return `<div class="forge-step"><span class="forge-step-lbl">${esc(label)}</span>
-      <button class="step" type="button" data-step="${id}" data-dir="-1"${val<=lo?" disabled":""} aria-label="decrease ${esc(label)}">−</button>
-      <span class="forge-step-val">${val}${esc(unit)}</span>
-      <button class="step" type="button" data-step="${id}" data-dir="1"${val>=hi?" disabled":""} aria-label="increase ${esc(label)}">+</button></div>`;
+      <span class="forge-step-ctl">
+        <button class="step" type="button" data-step="${id}" data-dir="-1"${val<=lo?" disabled":""} aria-label="decrease ${esc(label)}">−</button>
+        <input class="forge-step-in" type="number" data-stepin="${id}" value="${val}" min="${lo}" max="${hi}" step="${step}" inputmode="numeric" aria-label="${esc(label)}">
+        <span class="forge-step-unit">%</span>
+        <button class="step" type="button" data-step="${id}" data-dir="1"${val>=hi?" disabled":""} aria-label="increase ${esc(label)}">+</button>
+      </span></div>`;
   }
   function toggle(id, label, on){
     return `<label class="forge-tog"><input type="checkbox" data-tog="${id}"${on?" checked":""}><span>${esc(label)}</span></label>`;
@@ -194,12 +221,12 @@ window.__viewInit["map-juicer"]=function(){
   function waystoneQs(){
     const segs = `<div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}${seg("wmatch","dump",wMatch,"Low-value dump")}</div>`;
     if (wMatch === "dump") {
-      return `${segs}<div class="forge-steps">${stepper("rarityKeep","Keep if Item Rarity ≥",dumpRarityKeep,40,70)}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones that are <b>~5ex bulk</b> — and keeps the real money OUT of the dump pile: <b>Item Rarity ≥${dumpRarityKeep}%</b>, <b>Monster Effectiveness ≥40%</b>, <b>Drop Chance ≥100%</b>, or <b>Monster Rarity ≥100%</b> (the high-roll combos that actually sell, plus your drop-sustain maps). Thresholds from buy-side sweeps gated on this exact map class (Monster Effectiveness added 2026-06-25: ME ≥40% floors ~10–50ex, not ~5ex bulk). Pack Size stays dumpable — even ≥35% sits at ~1ex buy-side. <b>Ignore the in-game price-check</b> — most "expensive"-looking juiced maps sell for ~5ex.</p>`;
+      return `${segs}<div class="forge-steps">${stepper("rarityKeep","Keep if Item Rarity ≥")}${stepper("dropKeep","Keep if Drop Chance ≥")}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones that are <b>~5ex bulk</b> and keeps the real money OUT of the dump pile: <b>Item Rarity ≥${dumpRarityKeep}%</b>, <b>Monster Effectiveness ≥40%</b>${dropKeep>0?`, and <b>Drop Chance ≥${dropKeep}%</b> (your sustain rule — set Drop to <b>0</b> to dump any drop roll)`:` — <b>Drop Chance off</b>, dumping any drop roll`}. <b>Monster Rarity is no longer auto-kept</b>: gated buy-side it's ~5ex solo (same as Pack Size), not worth keeping alone. Thresholds from buy-side sweeps on this exact class (2026-06-25). <b>Ignore the in-game price-check</b> — most "expensive"-looking juiced maps sell for ~5ex.</p>`;
     }
     return `
       ${segs}
       ${wMatch==="floor"
-        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity",rarityMin,0,70)}${stepper("pack","Min Pack Size",packMin,0,40)}${stepper("eff","Min Effectiveness",effMin,0,70)}</div><p class="forge-hint">Every minimum you set is <b>required</b> (AND) — a stone must clear all of them. Set a stat to 0 to drop it.</p>`
+        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity")}${stepper("pack","Min Pack Size")}${stepper("eff","Min Effectiveness")}</div><p class="forge-hint">Every minimum you set is <b>required</b> (AND) — a stone must clear all of them. Type a value or use −/+; set a stat to 0 to drop it.</p>`
         : `<p class="forge-hint">Matches any waystone carrying a reward mod — the blue stones worth upgrading.</p>`}
       ${wMatch==="floor" ? toggle("wdrop","Require Waystone Drop ≥100% (midrange isn't worth it)",wdropMin>=100) : ""}
       <div class="forge-togrow">${toggle("revives","Fully juiced only (0 revives = 6-mod map)",wRevives)}${toggle("notrevives","Not juiced",wNotRevives)}</div>
@@ -233,6 +260,19 @@ window.__viewInit["map-juicer"]=function(){
       </div>
     </div>`;
   }
+  // Live-update only the output box (regex + length + pin/copy state) without
+  // rebuilding the controls — so a typed value doesn't yank focus out of the input.
+  function paintOutput(){
+    const rx = currentRegex(), len = rx.length, over = len > D.regexLimit, empty = !rx;
+    const box = els.sheet.querySelector(".regexbox");
+    if (box) box.textContent = empty ? (target === "tablets" ? "Pick at least one content type…" : "Set a minimum on at least one stat…") : rx;
+    const lenEl = els.sheet.querySelector(".rx-len");
+    if (lenEl) { lenEl.textContent = len + "/" + D.regexLimit; lenEl.classList.toggle("over", over); }
+    const copy = els.sheet.querySelector(".forge-out .copy");
+    if (copy) { copy.setAttribute("data-copy", rx); copy.disabled = empty; }
+    const pin = els.sheet.querySelector(".pin-btn");
+    if (pin) { const pinned = !empty && loadPins().some(p => p.rx === rx); pin.disabled = empty || pinned; pin.textContent = pinned ? "Pinned ✓" : "Pin"; pin.classList.toggle("on", pinned); }
+  }
   function renderSheet(){
     const note = target === "tablets"
       ? `Each block is <code>"keyword"</code> AND <code>"desirable"</code>; multiple picks become <code>"(a|b|c)"</code>. Verify wording in your stash.`
@@ -259,14 +299,19 @@ window.__viewInit["map-juicer"]=function(){
     const root = els.sheet;
     root.querySelectorAll("[data-target]").forEach(b => b.addEventListener("click", () => { target = b.getAttribute("data-target"); renderSheet(); }));
     root.querySelectorAll("[data-wmatch]").forEach(b => b.addEventListener("click", () => { wMatch = b.getAttribute("data-wmatch"); renderSheet(); }));
+    // −/+ buttons nudge by the per-control step; full re-render (focus isn't in play).
     root.querySelectorAll("[data-step]").forEach(b => b.addEventListener("click", () => {
-      const dir = Number(b.getAttribute("data-dir")), id = b.getAttribute("data-step");
-      if (id === "rarity") rarityMin = clamp(rarityMin + dir*10, 0, 70);
-      else if (id === "rarityKeep") dumpRarityKeep = clamp(dumpRarityKeep + dir*10, 40, 70);
-      else if (id === "eff") effMin = clamp(effMin + dir*10, 0, 70);
-      else packMin = clamp(packMin + dir*10, 0, 40);
+      const id = b.getAttribute("data-step"), dir = Number(b.getAttribute("data-dir"));
+      const st = (STEP_CFG[id] || [0,0,10])[2];
+      setStep(id, stepCur(id) + dir * st);
       renderSheet();
     }));
+    // Typeable inputs: live-update just the regex while typing (keeps focus), and do a
+    // full re-render on blur/Enter to snap the value + sync the −/+ disabled states.
+    root.querySelectorAll("[data-stepin]").forEach(inp => {
+      inp.addEventListener("input", () => { setStep(inp.getAttribute("data-stepin"), inp.value); paintOutput(); });
+      inp.addEventListener("change", () => { setStep(inp.getAttribute("data-stepin"), inp.value); renderSheet(); });
+    });
     root.querySelectorAll("[data-tog]").forEach(c => c.addEventListener("change", () => {
       const k = c.getAttribute("data-tog");
       // corrupt/juiced each have an "only" + a "not" toggle — mutually exclusive

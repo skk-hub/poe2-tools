@@ -52,6 +52,12 @@
   .toolroot-mj .step:hover:not(:disabled){border-color:var(--border-gold)}
   .toolroot-mj .step:disabled{opacity:.35;cursor:default}
   .toolroot-mj .forge-step-val{min-width:44px;text-align:center;color:var(--tx);font:700 13px var(--ff-mono)}
+  /* typeable value: number input you can type into OR nudge with the −/+ buttons */
+  .toolroot-mj .forge-step-ctl{display:inline-flex;align-items:center;gap:6px}
+  .toolroot-mj .forge-step-in{width:52px;height:26px;text-align:center;border:1px solid var(--bd);background:var(--bg-deep);color:var(--tx);font:700 13px var(--ff-mono);border-radius:var(--r-sm);padding:0 4px;-moz-appearance:textfield}
+  .toolroot-mj .forge-step-in:focus{outline:none;border-color:var(--border-gold);box-shadow:0 0 0 2px var(--gold-glow)}
+  .toolroot-mj .forge-step-in::-webkit-outer-spin-button,.toolroot-mj .forge-step-in::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .toolroot-mj .forge-step-unit{color:var(--mu);font:11px var(--ff-mono);margin-left:-2px}
 
   /* Toggles */
   .toolroot-mj .forge-tog{display:flex;align-items:center;gap:9px;color:var(--tx);font:12.5px var(--ff);cursor:pointer}
