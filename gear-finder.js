@@ -99,7 +99,7 @@ window.__viewInit["gear-finder"] = function () {
     if (d.error) { els.scoreOut.textContent = "Failed: " + d.error; return; }
     const hasDps = dpsOf(d.base) > 0;
     els.scoreOut.innerHTML = (d.results || []).map((r) => {
-      if (r.error || !r.stats) return `<div class="gf-srow">${esc(r.name)} — couldn't parse</div>`;
+      if (r.error || !r.stats) return `<div class="gf-srow">${esc(r.name)} — <span class="gf-delta down">${esc((r.error || "couldn't read this item").replace(/^pob:\s*/, ""))}</span></div>`;
       const dD = dpsOf(r.stats) - dpsOf(d.base), dE = ehpOf(r.stats) - ehpOf(d.base);
       return `<div class="gf-srow"><b>${esc(r.name)}</b> ${hasDps ? deltaSpan(dD, "DPS") : ""} ${deltaSpan(dE, "EHP")}</div>`;
     }).join("") || "No items parsed.";

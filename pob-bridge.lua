@@ -155,7 +155,7 @@ local function calcWith(slotName, itemText)
 		-- later item fails too. Reject it cleanly instead.
 		local ok0, item = pcall(new, "Item", itemText)
 		if not ok0 or not item or not item.base then
-			return nil, "couldn't read that item — copy the FULL item text (Ctrl+C in-game gives the cleanest copy)"
+			return nil, "no base type in the copy — include the item's name + base (e.g. 'Grim Gloves'), one item only"
 		end
 		override.repSlotName = slotName
 		override.repItem = item
