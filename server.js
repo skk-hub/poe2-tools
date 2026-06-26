@@ -1595,26 +1595,23 @@ async function fetchExchangeData(league) {
   const resolved = await resolveArbitrageItems(league);
   const icons = (arbitrageStaticCache && arbitrageStaticCache.iconsById) || {};
   const currencies = resolved.filter((it) => it.category === "currency" && it.id !== EXALTED_ID);
-  const buyData = await fetchExchangeChunked(league, EXALTED_ID, currencies.map((c) => c.id));
   const rates = { exalted: 1 };
   const items = [{ id: "exalted", name: "Exalted Orb", ex: 1, stock: 0, icon: normalizeIconUrl(icons.exalted), base: true }];
+  // Unified on Exiled's exchange method (exchangePriceEx): every currency is priced by
+  // the real per-item book on its liquid side (no more exalted-only read + TWO_SIDED
+  // geo-mid hacks). Bootstrap divine/chaos in exalted first so other items' divine/
+  // chaos-side offers convert; reuse those reads in the loop (no double call).
+  const dv = await exchangePriceEx(league, "divine");
+  const ch = await exchangePriceEx(league, "chaos");
+  const divineEx = dv && dv.ex > 0 ? dv.ex : 0;
+  const chaosEx = ch && ch.ex > 0 ? ch.ex : 0;
   for (const c of currencies) {
-    let ex, stock;
-    if (TWO_SIDED_IDS.has(c.id)) {
-      // Illiquid orb: price by the two-sided geo-mid (cheapest ask is far too high).
-      const g = await geoMidRate(league, c.id, buyData);
-      ex = round4(g.ex); stock = g.stock;
-    } else {
-      // Prefer a reasonably-stocked offer so one thin lowball listing can't skew
-      // the rate; fall back to any offer for genuinely thin currencies.
-      const best = bestExchangeOffer(buyData, EXALTED_ID, c.id, 5) || bestExchangeOffer(buyData, EXALTED_ID, c.id, 1);
-      if (!best) continue;
-      ex = round4(best.payPerReceive); stock = Math.floor(best.receiveStock) || 0;
-    }
-    if (!(ex > 0)) continue;
+    const p = c.id === "divine" ? dv : c.id === "chaos" ? ch : await exchangePriceEx(league, c.id, divineEx, chaosEx);
+    if (!p || !(p.ex > 0)) continue;
+    const ex = round4(p.ex);
     rates[c.id] = ex;
     rates[normalizeName(c.name)] = ex;
-    items.push({ id: c.id, name: c.name, ex, stock, icon: normalizeIconUrl(icons[c.id]) });
+    items.push({ id: c.id, name: c.name, ex, stock: p.depth || 0, side: p.side, icon: normalizeIconUrl(icons[c.id]) });
   }
   for (const [alias, target] of Object.entries(CURRENCY_ALIASES)) {
     const t = rates[normalizeName(target)];
