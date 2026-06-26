@@ -3955,8 +3955,12 @@ function pobItemFromTradeEntry(entry) {
   if (!base) return null;
   const name = item.name || "";
   const ilvl = item.ilvl || item.itemLevel || 81;
-  const impl = [].concat(item.enchantMods || [], item.runeMods || [], item.implicitMods || []).map(normalizePoeMarkup);
-  const expl = [].concat(item.explicitMods || [], item.fracturedMods || [], item.craftedMods || [], item.desecratedMods || []).map(normalizePoeMarkup);
+  // PoE2 trade2 returns each mod as an OBJECT ({description, hash, mods:[...]}), not a
+  // plain string like PoE1. String(obj) → "[object Object]" → PoB parses a blank item
+  // (mods dropped) → every candidate scores identically. Pull the actual text.
+  const modText = (m) => normalizePoeMarkup(typeof m === "string" ? m : (m && m.description) || "");
+  const impl = [].concat(item.enchantMods || [], item.runeMods || [], item.implicitMods || []).map(modText).filter(Boolean);
+  const expl = [].concat(item.explicitMods || [], item.fracturedMods || [], item.craftedMods || [], item.desecratedMods || []).map(modText).filter(Boolean);
   const head = name ? `Rarity: Rare\n${name}\n${base}` : `Rarity: Normal\n${base}`;
   return [head, `Item Level: ${ilvl}`, `Implicits: ${impl.length}`].concat(impl, expl).join("\n");
 }
