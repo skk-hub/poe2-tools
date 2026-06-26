@@ -4456,28 +4456,36 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
   const metric = dpsOfOut(base) > 0 ? "dps" : "ehp";
   const mf = metric === "dps" ? dpsOfOut : ehpOfOut;
   const baseVal = mf(base);
+  const currentStats = parseItemStats(currentRaw || "", baseSlot);
   const keys = (PRESERVE_CONTROL_STATS_BY_SLOT[baseSlot] || []).filter((k) => GEAR_PROBE_TEMPLATES[k] && gearStatId(k, baseSlot));
   const raw = [];
   for (const k of keys) {
     const [inc, line] = GEAR_PROBE_TEMPLATES[k];
     let per = 0;
     try { per = (mf(await pob.calc(pobSlot, currentRaw + "\n" + line(inc))) - baseVal) / inc; } catch {}
-    if (per > 1e-4) raw.push({ key: k, statId: gearStatId(k, baseSlot), label: statLabel(k), perUnit: Math.round(per * 100) / 100 });
+    if (per > 1e-4) raw.push({ key: k, statId: gearStatId(k, baseSlot), label: statLabel(k), perUnit: Math.round(per * 100) / 100, cur: Math.round(currentStats[k] || 0) });
   }
   const max = raw.reduce((m, w) => Math.max(m, w.perUnit), 0) || 1;
   const weights = raw.map((w) => ({ ...w, weight: Math.max(1, Math.round((w.perUnit / max) * 20)) })).sort((a, b) => b.weight - a.weight);
   return { metric, base: { Life: base.Life, EnergyShield: base.EnergyShield, TotalEHP: base.TotalEHP, dps: dpsOfOut(base) }, weights };
 }
 
-// A build-weighted Trade2 query: the `weight` stat group ranks items by the
-// weighted sum of their stats. Anonymous POST of a weight group 400s ("log in")
-// — so this is meant to be POSTed by the user's logged-in browser (the snippet).
+// A build-weighted Trade2 query: the `weight` group ranks items by the weighted
+// sum of their stats. But a pure weighted sum is LINEAR while DPS is often
+// multiplicative — an item heavy on flat damage but missing your top multiplier
+// (attack speed, crit) scores high yet is a real downgrade. So we also GATE the
+// query: the candidate must roll at least 60% of your current item's value on
+// the top-weighted stat. Anonymous POST of a weight group 400s ("log in") — so
+// this is POSTed by the user's logged-in browser (the snippet).
 function buildWeightedGearQuery(slot, weights, league, maxPriceDiv) {
+  const stats = [{ type: "weight", filters: weights.map((w) => ({ id: w.statId, value: { weight: w.weight } })), value: {} }];
+  const top = weights[0];
+  if (top && top.cur > 0) stats.push({ type: "and", filters: [{ id: top.statId, value: { min: Math.floor(top.cur * 0.6) } }] });
   const q = {
     query: {
       status: { option: "online" },
       filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } },
-      stats: [{ type: "weight", filters: weights.map((w) => ({ id: w.statId, value: { weight: w.weight } })), value: {} }],
+      stats,
     },
     sort: { "statgroup.0": "desc" },
   };
