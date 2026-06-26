@@ -36,6 +36,9 @@
   .toolroot-gear .gf-wval{flex:0 0 44px;text-align:right;font:700 12px var(--ff-mono);color:var(--gd)}
 
   .toolroot-gear .gf-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
+  .toolroot-gear .gf-bm{border-color:var(--gd);color:var(--gd);cursor:grab;text-decoration:none}
+  .toolroot-gear .gf-bm:hover{background:var(--gold-soft);text-decoration:none}
+  .toolroot-gear .gf-setup{flex-basis:100%;margin:4px 0 0;line-height:1.7}
   .toolroot-gear .gf-snippet{flex-basis:100%;margin-top:8px}
   .toolroot-gear .gf-snippet .sub{margin:0 0 6px}
   .toolroot-gear .gf-snippet code{display:block;background:var(--bg-deep);border:1px solid var(--bd);border-radius:var(--r-sm);padding:10px;font:11px var(--ff-mono);color:var(--gr);word-break:break-all;max-height:140px;overflow:auto}

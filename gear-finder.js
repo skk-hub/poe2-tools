@@ -7,9 +7,14 @@ window.__viewInit["gear-finder"] = function () {
     build: $("gfBuild"), slots: $("gfSlots"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), analyze: $("gfAnalyze"),
     status: $("gfStatus"), weights: $("gfWeights"),
-    actions: $("gfActions"), snippetBtn: $("gfSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
+    actions: $("gfActions"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
     item: $("gfItem"), scoreBtn: $("gfScoreBtn"), scoreOut: $("gfScoreOut"),
   };
+  // One-time bookmarklet: reads the {league,query} you copied and runs the
+  // weighted search in your logged-in pathofexile.com session. Static, so it's
+  // dragged to the bookmarks bar once; "Copy search" supplies the per-slot query.
+  const BOOKMARKLET = `javascript:(async()=>{try{const c=JSON.parse(await navigator.clipboard.readText());if(!c||!c.query){alert('Click "Copy search" in PoE Tools first');return}const L=encodeURIComponent(c.league||'Runes of Aldur');const r=await fetch('/api/trade2/search/poe2/'+L,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(c.query)});const d=await r.json();if(d.id){location.href='/trade2/search/poe2/'+L+'/'+d.id}else{alert('Trade search failed: '+JSON.stringify(d).slice(0,300))}}catch(e){alert('PoB Search: '+e.message)}})()`;
+  if (els.bookmarklet) els.bookmarklet.href = BOOKMARKLET;
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmt = (n) => Math.abs(n) >= 1000 ? Math.round(n).toLocaleString() : Math.round(n * 10) / 10;
   const ehpOf = (s) => (s && s.TotalEHP) || 0;
@@ -124,12 +129,21 @@ window.__viewInit["gear-finder"] = function () {
   els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) selectSlot(b.dataset.slot); });
   els.analyze.addEventListener("click", analyzeSlot);
   els.scoreBtn.addEventListener("click", scoreItems);
-  els.snippetBtn.addEventListener("click", () => {
-    if (!state.query) return;
+  els.copyQuery.addEventListener("click", () => {
+    if (!state.query) { setStatus("Analyze a slot first.", true); return; }
+    copyText(JSON.stringify({ league: state.league, query: state.query })).then((ok) => {
+      els.copyQuery.textContent = ok ? "Copied ✓" : "Copy failed";
+      setStatus(ok ? "Copied — now switch to a logged-in pathofexile.com tab and click your ⚡ PoB Trade Search bookmark." : "Copy failed — try the console snippet.");
+      setTimeout(() => { els.copyQuery.textContent = "Copy search"; }, 1600);
+    });
+  });
+  els.showSnippet.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (!state.query) { setStatus("Analyze a slot first.", true); return; }
     const txt = snippetText();
     els.snippetBox.hidden = false;
-    els.snippetBox.innerHTML = `<p class="sub">Open <b>pathofexile.com</b> (logged in), press F12 → Console, paste this, Enter — it opens a search ranked for your build:</p><code>${esc(txt)}</code>`;
-    copyText(txt).then((ok) => { els.snippetBtn.textContent = ok ? "Copied ✓" : "Copy failed"; setTimeout(() => { els.snippetBtn.textContent = "Copy logged-in search snippet"; }, 1400); });
+    els.snippetBox.innerHTML = `<p class="sub">Fallback: open <b>pathofexile.com</b> (logged in), F12 → Console, paste this, Enter:</p><code>${esc(txt)}</code>`;
+    copyText(txt);
   });
   els.basicBtn.addEventListener("click", async () => {
     if (!state.curSlot || !state.weights.length) return;

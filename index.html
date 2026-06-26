@@ -357,8 +357,10 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div id="gfStatus" class="status"></div>
         <div id="gfWeights"></div>
         <div id="gfActions" class="gf-actions" hidden>
-          <button class="btn" id="gfSnippet" type="button">Copy logged-in search snippet</button>
+          <button class="btn btn-primary" id="gfCopyQuery" type="button">Copy search</button>
+          <a class="btn gf-bm" id="gfBookmarklet" href="#" draggable="true" title="Drag me to your bookmarks bar">⚡ PoB Trade Search</a>
           <button class="btn" id="gfBasic" type="button">Open basic search</button>
+          <p class="sub gf-setup"><b>One-time:</b> drag the gold <b>⚡ PoB Trade Search</b> button up to your bookmarks bar. After that, each search is just: click <b>Copy search</b>, switch to a logged-in <b>pathofexile.com</b> tab, and click that bookmark — it opens results ranked for your build. <a id="gfShowSnippet" href="#">use the console snippet instead</a></p>
           <div id="gfSnippetBox" class="gf-snippet" hidden></div>
         </div>
         <div class="gf-score">
