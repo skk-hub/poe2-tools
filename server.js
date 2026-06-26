@@ -2874,6 +2874,27 @@ const UPGRADE_GUIDE_PROFILE = {
       stats: { projectileLevels: 4.2, attackCrit: 2.6, critDamage: 2.0, bowDamage: 1.7, projectileSpeed: 1.1, flatPhysAttack: 1.2, flatColdAttack: 1.1, rarity: 0.9 },
       notes: "Crit quiver or Cadiro's Gambit style value package.",
     },
+    focus: {
+      label: "Focus",
+      category: "armour.focus",
+      priority: 80,
+      stats: { energyShield: 2.6, spellDamage: 2.4, levelAllSpellSkills: 3.0, castSpeed: 1.6, critChance: 1.4, mana: 1.0, resists: 1.0, rarity: 0.8 },
+      notes: "Caster off-hand: ES, spell damage / +spell levels, then resists.",
+    },
+    shield: {
+      label: "Shield",
+      category: "armour.shield",
+      priority: 78,
+      stats: { energyShield: 2.2, armour: 1.8, evasion: 1.6, life: 1.4, resists: 1.4, str: 0.8, rarity: 0.8 },
+      notes: "Defensive off-hand: ES/armour/evasion, life, resists.",
+    },
+    buckler: {
+      label: "Buckler",
+      category: "armour.buckler",
+      priority: 77,
+      stats: { evasion: 2.6, life: 1.2, resists: 1.4, dex: 0.8, rarity: 0.8 },
+      notes: "Evasion off-hand with block.",
+    },
     amulet: {
       label: "Amulet",
       category: "accessory.amulet",
@@ -3019,6 +3040,10 @@ const SLOT_STAT_OVERRIDES = {
   quiver: {
     critDamage: "explicit.stat_3714003708",  // "#% increased Critical Damage Bonus for Attack Damage"
   },
+  focus: {
+    critChance: "explicit.stat_737908626",   // "#% to Critical Hit Chance for Spells" (caster off-hand)
+    critDamage: "explicit.stat_274716455",   // "#% increased Critical Spell Damage Bonus"
+  },
 };
 
 // Resolve a conceptual stat key to the Trade2 id correct for the given slot,
@@ -3146,6 +3171,9 @@ const PRESERVE_CONTROL_STATS_BY_SLOT = {
   quiver: ["attackCrit", "critDamage", "bowDamage", "projectileSpeed", "projectileLevels", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "manaOnKill", "str", "dex", "int", "rarity"],
   amulet: ["life", "energyShield", "mana", "spirit", "critChance", "critDamage", "spellDamage", "castSpeed", "levelAllSpellSkills", "levelAllAttackSkills", "projectileLevels", "manaRegen", "str", "dex", "int", "totalAllAttributes", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   helmet: ["energyShield", "evasion", "armour", "life", "mana", "critChance", "levelAllMinionSkills", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
+  focus: ["energyShield", "mana", "manaRegen", "spellDamage", "castSpeed", "levelAllSpellSkills", "levelAllMinionSkills", "critChance", "critDamage", "spirit", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
+  shield: ["energyShield", "armour", "evasion", "life", "str", "dex", "int", "totalAllAttributes", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
+  buckler: ["evasion", "energyShield", "life", "str", "dex", "int", "totalAllAttributes", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   chest: ["energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   boots: ["movementSpeed", "energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   gloves: ["attackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "manaOnKill", "rarity"],
@@ -3157,6 +3185,9 @@ const PRESERVE_CONTROL_STATS_BY_SLOT = {
 const SLOT_ALIASES = [
   [/Item Class:\s*Bows/i, "bow"],
   [/Item Class:\s*Quivers/i, "quiver"],
+  [/Item Class:\s*Foci/i, "focus"],
+  [/Item Class:\s*Bucklers/i, "buckler"],
+  [/Item Class:\s*Shields/i, "shield"],
   [/Item Class:\s*Amulets/i, "amulet"],
   [/Item Class:\s*Helmets/i, "helmet"],
   [/Item Class:\s*Body Armours/i, "chest"],
@@ -4405,7 +4436,8 @@ const POB_SLOT_MAP = {
 // Reverse: tool slot id → PoB slot name (the headless calc keys on PoB names).
 const TOOL_TO_POB_SLOT = {
   helmet: "Helmet", chest: "Body Armour", gloves: "Gloves", boots: "Boots",
-  amulet: "Amulet", ring1: "Ring 1", ring2: "Ring 2", belt: "Belt", quiver: "Weapon 2",
+  amulet: "Amulet", ring1: "Ring 1", ring2: "Ring 2", belt: "Belt",
+  quiver: "Weapon 2", focus: "Weapon 2", shield: "Weapon 2", buckler: "Weapon 2",
 };
 function toolSlotToPob(slotId) {
   return TOOL_TO_POB_SLOT[slotId] ||
@@ -4429,7 +4461,8 @@ function unescapeXml(s) {
 // them "Staff"/subType Warstaff). FALLBACK: keyword sniff for magic items (base is
 // buried in the name) or bases not in the list.
 const WEAPON_SLOT_IDS = new Set(["bow", "crossbow", "quarterstaff", "spear", "claw", "dagger",
-  "onesword", "twosword", "oneaxe", "twoaxe", "onemace", "twomace", "flail", "wand", "staff", "sceptre", "quiver"]);
+  "onesword", "twosword", "oneaxe", "twoaxe", "onemace", "twomace", "flail", "wand", "staff", "sceptre",
+  "quiver", "focus", "shield", "buckler"]);
 function pobWeaponSlot(raw) {
   for (const line of String(raw).split(/\r?\n/, 6)) {
     const b = POB_BASES[line.trim()];

@@ -44,6 +44,7 @@ for (const f of FILES) {
     const implicit = (body.match(/\bimplicit\s*=\s*"([^"]+)"/) || [])[1] || null;
     let slot = TYPE_SLOT[type];
     if (subType === "Warstaff") slot = "quarterstaff";   // quarterstaves: type "Staff", subType "Warstaff"
+    if (slot === "shield" && /\bBuckler\b/.test(name)) slot = "buckler";   // bucklers are a distinct trade category (armour.buckler)
     if (!slot) continue;
     out[name] = implicit ? { slot, implicit } : { slot };
     count++;
