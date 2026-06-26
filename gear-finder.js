@@ -155,7 +155,7 @@ window.__viewInit["gear-finder"] = function () {
         ? `<a class="gf-srow gf-srow-link" href="${esc(url)}" target="_blank" rel="noopener">${inner}</a>`
         : `<div class="gf-srow">${inner}</div>`;
     }).join("");
-    setStatus(`Scored ${cands.length} candidates by real PoB DPS (of ${d.total} matching)${d.weighted ? " — fetched the best for your build" : " — price spread (set POESESSID for build-ranked results)"}.`);
+    setStatus(`Scored ${d.scored || cands.length} candidates in PoB, showing the top ${cands.length}${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${d.partial ? " — stopped early on the rate limit" : ""}.`);
   }
 
   function snippetText() {

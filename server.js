@@ -5224,34 +5224,41 @@ const server = http.createServer(async (req, res) => {
         const { search, league: usedLeague } = await gearTradeSearch(q, league);
         const all = search.result || [];
         if (!all.length) { send(res, 200, JSON.stringify({ available: true, candidates: [], total: 0 }), "application/json; charset=utf-8"); return; }
-        // Weighted search is already ranked best-first → take the top 10. The price-sorted
-        // fallback samples a SPREAD (cheapest→priciest) so we don't only score the cheapest
-        // (weakest) items. Trade2 fetch caps at 10 ids per call either way.
-        const n = Math.min(all.length, 10);
-        const ids = weighted ? all.slice(0, n) : Array.from({ length: n }, (_, i) => all[Math.floor((i * all.length) / n)]);
-        let fetched;
-        try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id)); }
-        catch (e) { throw new Error("fetch (" + ids.length + " ids) failed: " + e.message); }  // distinguish fetch from the search query logged below
+        // Score a DEEPER pool through PoB and return the real winners — don't trust the
+        // trade sort (linear weighted sum) to pre-pick the best, since real DPS is
+        // multiplicative. Weighted search is best-first so take the top SCORE_CAP; the
+        // price fallback samples a spread. Capped at SCORE_CAP to bound fetch calls
+        // (≤10 ids/call, shared-IP rate limit) and PoB time; bail to partial on a limit.
+        const SCORE_CAP = 30;
+        const m = Math.min(all.length, SCORE_CAP);
+        const pick = weighted ? all.slice(0, m) : Array.from({ length: m }, (_, i) => all[Math.floor((i * all.length) / m)]);
         const rates = await getExchangeRates(league).catch(() => ({}));
         await pob.load(String(input.buildXml || ""));
         const base = await pob.calc(pobSlot, "");
         const cands = [];
-        for (const e of fetched.result || []) {
-          const txt = pobItemFromTradeEntry(e);
-          if (!txt) continue;
-          let stats; try { stats = await pob.calc(pobSlot, txt); } catch { continue; }
-          const price = listingPriceFromEntry(e, rates) || {};
-          cands.push({
-            name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(),
-            priceDiv: price.divine || 0, priceEx: price.exalted || 0,
-            dDPS: dpsOfOut(stats) - dpsOfOut(base), dEHP: ehpOfOut(stats) - ehpOfOut(base),
-          });
+        let fetchErr = null;
+        for (let i = 0; i < pick.length; i += 10) {   // Trade2 fetch caps at 10 ids/call
+          let fetched;
+          try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + pick.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id)); }
+          catch (e) { fetchErr = e; break; }   // rate-limit/error mid-sweep → keep what we scored
+          for (const e of fetched.result || []) {
+            const txt = pobItemFromTradeEntry(e);
+            if (!txt) continue;
+            let stats; try { stats = await pob.calc(pobSlot, txt); } catch { continue; }
+            const price = listingPriceFromEntry(e, rates) || {};
+            cands.push({
+              name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(),
+              priceDiv: price.divine || 0, priceEx: price.exalted || 0,
+              dDPS: dpsOfOut(stats) - dpsOfOut(base), dEHP: ehpOfOut(stats) - ehpOfOut(base),
+            });
+          }
         }
+        if (!cands.length && fetchErr) throw fetchErr;   // total failure → outer catch (rate-limit msg etc.)
         cands.sort((a, b) => (b.dDPS - a.dDPS) || (b.dEHP - a.dEHP));
         // The build-weighted/price search this came from — opening it lands on these
         // candidates (no per-item permalink exists on PoE trade). Each row links here.
         const searchUrl = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(usedLeague) + "/" + search.id : "";
-        send(res, 200, JSON.stringify({ available: true, weighted, searchUrl, total: Number(search.total) || ids.length, baseDps: dpsOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, weighted, searchUrl, scored: cands.length, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         const msg = String(err.message);
