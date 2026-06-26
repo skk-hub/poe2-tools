@@ -1560,6 +1560,37 @@ function cheapestAsk(askData, id) {
 // gives its ex-per-unit value. Goes through fetchExchangeChunked (cap 3) + the
 // shared queue, so a full refresh is ~3 calls for the 9 main currencies. The few
 // illiquid orbs in TWO_SIDED_IDS each add one bid-side call (see geoMidRate).
+// Drop the chained sub-½ lowball bait, return the cheapest remaining ratio + its depth.
+function sideCheapestRatio(data, haveId, wantId) {
+  const r = collectExchangeOffers(data, haveId, wantId)
+    .filter((o) => o.payAmount > 0 && o.receiveAmount > 0)
+    .map((o) => o.payAmount / o.receiveAmount)   // have-currency per want-item = price in `have`
+    .sort((a, b) => a - b);
+  if (!r.length) return null;
+  let i = 0;
+  while (i < r.length - 1 && r[i] < r[i + 1] * 0.5) i++;   // chained bait drop (Exiled's rule)
+  return { px: r[i], depth: r.length - i };
+}
+// Exiled-Exchange's currency method, ported. ONE bulk-exchange call with
+// have=[divine,exalted,chaos], want=[id]; per side take the bait-dropped cheapest
+// ratio; prefer the EXALTED side (base unit, the real market for sub-divine items),
+// falling back to divine/chaos × their ex-rate only when exalted has no offer.
+// Returns ex-per-item. This is why Exiled prices the "unpriceable" alloys/chase orbs:
+// the old override claim was wrong — we read only the junk exalted FLOOR (1ex spam) /
+// the placeholder divine side, never the real per-item book on the right side.
+async function exchangePriceEx(league, wantId, divineEx = 0, chaosEx = 0) {
+  if (String(wantId).toLowerCase() === EXALTED_ID) return { ex: 1, side: "exalted", depth: 99 };
+  let data;
+  try { data = await fetchExchangeRaw(league, ["divine", "exalted", "chaos"], wantId); }
+  catch { return null; }
+  if (!data || data.limited) return null;
+  const ex = sideCheapestRatio(data, "exalted", wantId);
+  if (ex) return { ex: round4(ex.px), side: "exalted", depth: ex.depth };
+  if (divineEx > 0) { const d = sideCheapestRatio(data, "divine", wantId); if (d) return { ex: round4(d.px * divineEx), side: "divine", depth: d.depth }; }
+  if (chaosEx > 0) { const c = sideCheapestRatio(data, "chaos", wantId); if (c) return { ex: round4(c.px * chaosEx), side: "chaos", depth: c.depth }; }
+  return null;
+}
+
 async function fetchExchangeData(league) {
   const resolved = await resolveArbitrageItems(league);
   const icons = (arbitrageStaticCache && arbitrageStaticCache.iconsById) || {};
@@ -2524,16 +2555,15 @@ function runePastedNorms(limitedRawLines) {
 }
 
 // ── Currency-exchange-ratio overrides ──────────────────────────────────────
-// Some items (Verisium "alloys" etc.) CANNOT be priced from GGG's Trade2 offer
-// APIs: their standing offers are placeholder noise (1ex / exactly 1 divine / 0.5
-// divine), decoupled from the real per-item market ratio. That ratio lives only in
-// GGG's computed currency-exchange (OAuth-gated cxapi) or poe.ninja. poe.ninja's
-// PoE2 API is Cloudflare-blocked server-side (404 + cf-ray for every league), so we
-// can't fetch it from here — instead the Rune Picker UI runs a browser snippet on
-// poe.ninja (CF-cleared, same-origin) that copies the currency overview, and the user
-// pastes it (POST /api/currency-overrides). Until then a baked SEED (user-provided
-// 2026-06-25, EXALTED per item) keeps these correct. An exact name match here wins
-// over the (junk) exalted-side exchange book.
+// FALLBACK ONLY (2026-06-26). We used to believe the Verisium "alloys" etc. couldn't
+// be priced from GGG's Trade2 offer API — but that was because the old code read only
+// the placeholder exalted FLOOR (1ex spam) / the wrong side. Exiled-Exchange's method
+// (exchangePriceEx: multi-have read of the real per-item book, exalted-side cluster)
+// prices them live from GGG alone — proven (Celestial Alloy: live 20ex vs this seed's
+// stale 160). fetchRunePrices now tries exchangePriceEx FIRST; this curated seed (and
+// the poe.ninja snippet store) only fill in when the live exchange is empty/limited.
+// poe.ninja's PoE2 API is still Cloudflare-blocked server-side, so the snippet remains
+// the manual fallback path — but it's no longer the primary source for these.
 const CURRENCY_OVERRIDE_FILE = path.join(DATA_DIR, ".currency-overrides.json");
 const CURRENCY_OVERRIDE_SEED = {
   "Celestial Alloy": 160, "Sovereign Alloy": 32, "Transcendent Alloy": 42,
@@ -2607,6 +2637,11 @@ async function fetchRunePrices(text, league, forceFresh) {
   // book hasn't scanned yet shows pending rather than a fabricated number.
   const exData = await getExchangeData(league);
   const currencyRates = exData.rates;
+  // Exchange name→id catalog so any pasted currency can be priced LIVE off GGG's bulk
+  // exchange (Exiled's method, exchangePriceEx) instead of the stale curated override.
+  const exchangeCatalog = await getExchangeCatalog(league).catch(() => new Map());
+  let liveExchangeCalls = 0;
+  const MAX_LIVE_EXCHANGE = 8;   // single user, but don't burst the shared IP on a big paste
 
   const all = [];
   const seenItemKey = new Set();
@@ -2680,9 +2715,29 @@ async function fetchRunePrices(text, league, forceFresh) {
     seenCleanNames.add(norm);
     if (!isSkillOrSupport) pastedNorms.push(norm);
 
-    // Currency-exchange-ratio override wins first (alloys etc. GGG's offer API can't
-    // price). Real value from poe.ninja's currency-exchange overview (browser snippet)
-    // or the baked seed — see CURRENCY_OVERRIDE_SEED.
+    // LIVE GGG bulk-exchange price first (Exiled's exact method, exchangePriceEx):
+    // multi-have read of the real per-item book. This prices the alloys/chase orbs the
+    // old code declared "unpriceable" — it was only ever reading the junk exalted floor.
+    // The curated/poe.ninja override is now a FALLBACK (exchange empty / rate-limited).
+    let live = null;
+    const cat = !isSkillOrSupport ? exchangeCatalog.get(norm) : null;
+    if (cat && cat.id && cat.id !== EXALTED_ID && liveExchangeCalls < MAX_LIVE_EXCHANGE && !tradeStatus().limited) {
+      liveExchangeCalls++;
+      live = await exchangePriceEx(league, cat.id, currencyRates.divine || 0, currencyRates.chaos || 0);
+    }
+    if (live && live.ex > 0) {
+      results.push({
+        qty: parsed.qty, name: cat.name || cleanName, category: "Currency Exchange",
+        each: live.ex, total: roundPriceExalted(live.ex * parsed.qty), currency: "exalted",
+        source: "trade2 exchange", rawPrice: "GGG exchange · " + live.side + "-side · " + live.depth + " offers",
+        divineValue: currencyRates.divine ? roundPriceExalted(live.ex / currencyRates.divine) : 0,
+        change7d: "", confidence: live.depth >= 3 ? "high" : "medium", units: null,
+      });
+      continue;
+    }
+
+    // Curated/poe.ninja override — now only a fallback when the live exchange returned
+    // nothing (thin/empty book) or we were rate-limited. See CURRENCY_OVERRIDE_SEED.
     const ov = !isSkillOrSupport ? currencyOverride(norm) : null;
     if (ov && ov.ex > 0) {
       results.push({
