@@ -5208,9 +5208,13 @@ const server = http.createServer(async (req, res) => {
       if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
       try {
         const { search } = await gearTradeSearch(q, league);
-        const ids = (search.result || []).slice(0, 12);
+        // Trade2 fetch accepts at most 10 ids per call — 11+ returns HTTP 400
+        // "Invalid query" (same as readOneBand's 10-chunking). We score ≤10 anyway.
+        const ids = (search.result || []).slice(0, 10);
         if (!ids.length) { send(res, 200, JSON.stringify({ available: true, candidates: [], total: 0 }), "application/json; charset=utf-8"); return; }
-        const fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id));
+        let fetched;
+        try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id)); }
+        catch (e) { throw new Error("fetch (" + ids.length + " ids) failed: " + e.message); }  // distinguish fetch from the search query logged below
         const rates = await getExchangeRates(league).catch(() => ({}));
         await pob.load(String(input.buildXml || ""));
         const base = await pob.calc(pobSlot, "");
