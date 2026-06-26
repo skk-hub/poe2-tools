@@ -56,6 +56,31 @@ h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;l
 .bg-bar.wait .bg-bar-fill::after{background-image:repeating-linear-gradient(45deg,var(--gold-deep,var(--gold)) 0 9px,var(--gold) 9px 18px)}
 .bg-bar-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
+/* Pinned-regex quick dock — floats on every page (except the Regex sheet itself, where
+   the full pins UI already lives) so a saved stash filter is one click from the clipboard
+   anywhere in the app. Reads the same localStorage pins the Regex Forge writes. */
+.rxdock[hidden]{display:none}
+.rxdock{position:fixed;right:16px;bottom:16px;z-index:90;width:min(280px,calc(100vw - 32px));
+  background:oklch(16% 0.006 270 / 0.92);border:1px solid var(--border-gold);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-lg);backdrop-filter:saturate(140%) blur(12px);-webkit-backdrop-filter:saturate(140%) blur(12px);
+  overflow:hidden;animation:fadeIn .25s var(--ease) both}
+.rxdock-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border)}
+.rxdock.min .rxdock-head{border-bottom:0}
+.rxdock-title{display:flex;align-items:center;gap:7px;flex:1;min-width:0;font:600 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--gold-bright)}
+.rxdock.min .rxdock-txt{display:none}
+.rxdock-count{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-pill);background:var(--gold-soft);color:var(--gold-bright);font:600 10.5px var(--font-mono)}
+.rxdock-toggle{width:24px;height:24px;flex:none;padding:0;display:grid;place-items:center;border-radius:var(--r);background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font:600 15px var(--font-mono);line-height:1;cursor:pointer;transition:background var(--t),color var(--t)}
+.rxdock-toggle:hover{background:var(--surface-3);color:var(--text)}
+.rxdock-body{display:flex;flex-wrap:wrap;gap:6px;padding:10px;max-height:42vh;overflow:auto}
+.rxdock.min .rxdock-body{display:none}
+.rxdock-chip{max-width:100%;padding:5px 10px;border-radius:var(--r-pill);background:var(--surface-1);border:1px solid var(--border);
+  color:var(--text-muted);font:500 12px var(--font-ui);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:background var(--t),border-color var(--t),color var(--t)}
+.rxdock-chip:hover{background:var(--gold-soft);border-color:var(--border-gold);color:var(--gold-bright)}
+.rxdock-chip.copied{background:var(--green);border-color:var(--green);color:oklch(18% 0.04 150)}
+.rxdock-chip.failed{background:var(--red);border-color:var(--red);color:#fff}
+@media(max-width:560px){.rxdock{right:10px;bottom:10px;left:10px;width:auto}}
+
 /* Home top bar — global Trade2 availability before opening a call-heavy tool */
 .homebar{display:flex;align-items:center;gap:10px;margin-bottom:22px}
 .tstatus{display:inline-flex;align-items:center;gap:9px;padding:7px 14px;border-radius:var(--r-pill);background:var(--surface-1);border:1px solid var(--border);font:600 12px var(--font-mono);color:var(--text-muted)}
@@ -196,6 +221,13 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
   <span class="bg-bar-fill" id="bgBarFill"></span>
   <span class="bg-bar-label" id="bgBarLabel"></span>
 </a>
+<div id="rxDock" class="rxdock" hidden aria-label="Pinned regexes — click a name to copy">
+  <div class="rxdock-head">
+    <span class="rxdock-title"><span aria-hidden="true">📌</span><span class="rxdock-txt">Pinned regex</span><span class="rxdock-count" id="rxDockCount">0</span></span>
+    <button class="rxdock-toggle" id="rxDockToggle" type="button" aria-label="Minimize pinned regex">–</button>
+  </div>
+  <div class="rxdock-body" id="rxDockBody"></div>
+</div>
 <main class="shell">
   <section id="home" class="view active" data-view="home">
     <div class="homebar">
@@ -516,6 +548,43 @@ window.__bg=(function(){
       if(state==="done"){ timers.set(key,setTimeout(()=>{jobs.delete(key);paint();},6000)); } paint(); },
     clear(key){ jobs.delete(key); const t=timers.get(key); if(t){clearTimeout(t);timers.delete(key);} paint(); },
   };
+})();
+// Pinned-regex quick dock: surfaces Regex-Forge pins on every page so a saved stash
+// filter is one click from the clipboard. Reads the SAME localStorage the Forge writes
+// (poe2.regexForge.pins). You always navigate away from the Regex sheet to use them, so
+// re-read on hashchange; also catch cross-tab edits + refocus. Hidden on the Regex sheet
+// (its own pins card is there) and when there are no pins.
+(function(){
+  const PIN_KEY="poe2.regexForge.pins", MIN_KEY="poe2.regexForge.dockMin";
+  const dock=document.getElementById("rxDock"); if(!dock) return;
+  const body=document.getElementById("rxDockBody"), countEl=document.getElementById("rxDockCount"), toggle=document.getElementById("rxDockToggle");
+  const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+  function loadPins(){ try{ return JSON.parse(localStorage.getItem(PIN_KEY))||[]; }catch{ return []; } }
+  async function copyText(txt){
+    // navigator.clipboard is undefined on plain-HTTP LAN/Tailscale → execCommand fallback.
+    if(navigator.clipboard&&window.isSecureContext){ await navigator.clipboard.writeText(txt); return true; }
+    const ta=document.createElement("textarea"); ta.value=txt; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    let ok=false; try{ ok=document.execCommand("copy"); }catch{ ok=false; } ta.remove(); return ok;
+  }
+  function setMin(min){ dock.classList.toggle("min",min); toggle.textContent=min?"+":"–"; toggle.setAttribute("aria-label",(min?"Expand":"Minimize")+" pinned regex"); }
+  toggle.addEventListener("click",()=>{ const min=!dock.classList.contains("min"); setMin(min); try{ localStorage.setItem(MIN_KEY,min?"1":"0"); }catch{} });
+  function render(){
+    const pins=loadPins(), onRegexPage=(location.hash||"#home").slice(1)==="map-juicer";
+    if(!pins.length||onRegexPage){ dock.hidden=true; return; }
+    dock.hidden=false; countEl.textContent=pins.length;
+    body.innerHTML=pins.map(p=>`<button class="rxdock-chip" type="button" data-rx="${esc(p.rx)}" title="${esc(p.rx)}">${esc(p.label)}</button>`).join("");
+    body.querySelectorAll("[data-rx]").forEach(b=>b.addEventListener("click",async()=>{
+      const orig=b.textContent; let ok=false; try{ ok=await copyText(b.getAttribute("data-rx")); }catch{ ok=false; }
+      b.classList.add(ok?"copied":"failed"); b.textContent=ok?"Copied ✓":"Copy failed";
+      setTimeout(()=>{ b.textContent=orig; b.classList.remove("copied","failed"); },1100);
+    }));
+  }
+  setMin(localStorage.getItem(MIN_KEY)==="1");
+  window.addEventListener("hashchange",render);
+  window.addEventListener("storage",e=>{ if(!e||e.key===PIN_KEY) render(); });
+  window.addEventListener("focus",render);
+  render();
 })();
 function currentView(){ const key=(location.hash||"#home").slice(1); return views.some(v=>v.dataset.view===key)?key:"home"; }
 function showView(userNav){
