@@ -28,18 +28,18 @@ function firstExisting(paths) {
 }
 function luajitPath() { return firstExisting(LUAJIT_CANDIDATES); }
 
-function available() {
+function localAvailable() {
   try {
     return !!luajitPath() && fs.existsSync(BRIDGE) && fs.existsSync(path.join(POB_DIR, "Launch.lua"));
   } catch { return false; }
 }
 
-let proc = null, ready = false, queue = [], cur = null;
+let proc = null, procReady = false, queue = [], cur = null;
 let buf = Buffer.alloc(0), stderrTail = "";
 
 function kill() {
   if (proc) { try { proc.kill(); } catch {} }
-  proc = null; ready = false; cur = null; queue = []; buf = Buffer.alloc(0);
+  proc = null; procReady = false; cur = null; queue = []; buf = Buffer.alloc(0);
 }
 
 function spawnProc() {
@@ -74,7 +74,7 @@ function onData(chunk) {
 }
 
 function handleFrame(tag, payload) {
-  if (tag === "READY") { ready = true; pump(); return; }
+  if (tag === "READY") { procReady = true; pump(); return; }
   if (!cur) return;
   const c = cur; cur = null;
   if (tag === "OK") { try { c.resolve(payload ? JSON.parse(payload) : {}); } catch { c.resolve({}); } }
@@ -83,7 +83,7 @@ function handleFrame(tag, payload) {
 }
 
 function pump() {
-  if (!ready || cur || !queue.length) return;
+  if (!procReady || cur || !queue.length) return;
   cur = queue.shift();
   const head = Buffer.from(cur.cmd + " " + Buffer.byteLength(cur.payload) + "\n", "utf8");
   proc.stdin.write(Buffer.concat([head, Buffer.from(cur.payload, "utf8")]));
@@ -104,9 +104,40 @@ function send(cmd, payload = "", timeoutMs = 20000) {
   });
 }
 
-// Public API
-async function load(buildXml) { return send("LOAD", buildXml, 30000); }      // -> base stats
-async function calc(slot, itemText) { return send("CALC", String(slot) + "\n" + String(itemText)); } // -> swapped stats
+// Local (spawn) public API
+async function localLoad(buildXml) { return send("LOAD", buildXml, 30000); }      // -> base stats
+async function localCalc(slot, itemText) { return send("CALC", String(slot) + "\n" + String(itemText)); } // -> swapped stats
 function shutdown() { if (proc) { try { send("QUIT").catch(() => {}); } catch {} setTimeout(kill, 500); } }
 
-module.exports = { available, load, calc, shutdown, luajitPath, POB_DIR, BRIDGE };
+// ── Remote mode ────────────────────────────────────────────────────────────
+// When POB_BRIDGE_URL is set (e.g. the VM pointing at a pob-agent.js on the Main
+// PC where PoB+LuaJIT live), proxy load/calc to that agent over HTTP instead of
+// spawning luajit locally. Lets the VM-hosted app use the PC's Path of Building.
+const REMOTE = (process.env.POB_BRIDGE_URL || "").trim().replace(/\/+$/, "") || null;
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs || 20000);
+  try { return await fetch(url, { ...options, signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
+}
+async function remoteCall(pathSeg, body, timeoutMs) {
+  const r = await fetchWithTimeout(REMOTE + pathSeg, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, timeoutMs);
+  if (!r.ok) throw new Error("pob agent HTTP " + r.status);
+  const j = await r.json();
+  if (j && j.error) throw new Error("pob agent: " + j.error);
+  return j;
+}
+
+// available() is sync (called in many spots) → optimistic when remote (a failed
+// call degrades gracefully); ready() is the async, accurate health check.
+function available() { return REMOTE ? true : localAvailable(); }
+async function ready() {
+  if (!REMOTE) return localAvailable();
+  try { const r = await fetchWithTimeout(REMOTE + "/pob/health", {}, 4000); const j = await r.json(); return !!(j && j.available); }
+  catch { return false; }
+}
+async function load(buildXml) { return REMOTE ? remoteCall("/pob/load", { xml: buildXml }, 30000) : localLoad(buildXml); }
+async function calc(slot, itemText) { return REMOTE ? remoteCall("/pob/calc", { slot, itemText }) : localCalc(slot, itemText); }
+
+module.exports = { available, ready, load, calc, shutdown, localAvailable, luajitPath, POB_DIR, BRIDGE, REMOTE };

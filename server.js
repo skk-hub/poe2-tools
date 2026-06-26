@@ -5016,7 +5016,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── Gear Upgrade Finder (PoB-driven) ──────────────────────────────────
     if (url.pathname === "/api/gear/builds") {
-      send(res, 200, JSON.stringify({ dir: POB_BUILDS_DIR, builds: listPobBuilds(), headless: pob.available() }), "application/json; charset=utf-8");
+      send(res, 200, JSON.stringify({ dir: POB_BUILDS_DIR, builds: listPobBuilds(), headless: await pob.ready() }), "application/json; charset=utf-8");
       return;
     }
 
@@ -5034,7 +5034,7 @@ const server = http.createServer(async (req, res) => {
       } catch (e) { send(res, 400, JSON.stringify({ error: "Could not read/decode build: " + e.message }), "application/json; charset=utf-8"); return; }
       let parsed;
       try { parsed = parsePobBuild(xml); } catch (e) { send(res, 400, JSON.stringify({ error: "Not a Path of Building build: " + e.message }), "application/json; charset=utf-8"); return; }
-      const headless = { available: pob.available() };
+      const headless = { available: await pob.ready() };
       if (headless.available) { try { headless.stats = await pob.load(xml); } catch (e) { headless.error = String(e.message); } }
       send(res, 200, JSON.stringify({ slots: parsed.slots, build: parsed.build, headless, xml }), "application/json; charset=utf-8");
       return;
