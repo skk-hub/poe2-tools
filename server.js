@@ -3030,6 +3030,23 @@ function gearStatFilters(mods) {
 // PoE2 trade 400s on an empty "and" group, so omit the stats group when there are none.
 const gearStatGroup = (filters) => (filters.length ? [{ type: "and", filters }] : []);
 
+// Run a gear trade2 SEARCH. The league lives in the URL (not the query body), and a
+// stale/wrong client league makes GGG reject a perfectly valid body as "Invalid query"
+// (code 2). So if a 400 comes back on a non-default league, retry ONCE on DEFAULT_LEAGUE
+// — the league this build tool targets anyway. Returns { search, league } (league used).
+async function gearTradeSearch(q, league) {
+  const u = (lg) => "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(lg);
+  try {
+    return { search: await fetchTrade(u(league), { method: "POST", body: JSON.stringify(q) }), league };
+  } catch (err) {
+    if (league !== DEFAULT_LEAGUE && String(err && err.message).includes("HTTP 400")) {
+      console.error("[gear] search 400 on league", JSON.stringify(league), "— retrying on", JSON.stringify(DEFAULT_LEAGUE));
+      return { search: await fetchTrade(u(DEFAULT_LEAGUE), { method: "POST", body: JSON.stringify(q) }), league: DEFAULT_LEAGUE };
+    }
+    throw err;
+  }
+}
+
 const GEAR_EQUIPMENT_FILTER_IDS = {
   dps: "dps",
   evasion: "ev",
@@ -5133,8 +5150,8 @@ const server = http.createServer(async (req, res) => {
       };
       if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
       try {
-        const search = await fetchTrade("https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league), { method: "POST", body: JSON.stringify(q) });
-        const url2 = search && search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(league) + "/" + search.id : null;
+        const { search, league: used } = await gearTradeSearch(q, league);
+        const url2 = search && search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(used) + "/" + search.id : null;
         send(res, 200, JSON.stringify({ url: url2, total: (search && search.total) || 0 }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8"); return; }
@@ -5190,7 +5207,7 @@ const server = http.createServer(async (req, res) => {
       };
       if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
       try {
-        const search = await fetchTrade("https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league), { method: "POST", body: JSON.stringify(q) });
+        const { search } = await gearTradeSearch(q, league);
         const ids = (search.result || []).slice(0, 12);
         if (!ids.length) { send(res, 200, JSON.stringify({ available: true, candidates: [], total: 0 }), "application/json; charset=utf-8"); return; }
         const fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id));
@@ -5216,9 +5233,9 @@ const server = http.createServer(async (req, res) => {
         const msg = String(err.message);
         // On a 400 ("Invalid query"), surface the exact query we sent — a bad stat id
         // or category is otherwise undiagnosable from the client.
-        const dbg = msg.includes("HTTP 400") ? " | query=" + JSON.stringify(q) : "";
-        if (dbg) console.error("[realrank] 400 from trade2; query was:", JSON.stringify(q));
-        send(res, 200, JSON.stringify({ available: true, error: msg + dbg, query: q }), "application/json; charset=utf-8");
+        const dbg = msg.includes("HTTP 400") ? " | league=" + JSON.stringify(league) + " query=" + JSON.stringify(q) : "";
+        if (dbg) console.error("[realrank] 400 from trade2; league:", league, "query:", JSON.stringify(q));
+        send(res, 200, JSON.stringify({ available: true, error: msg + dbg, league, query: q }), "application/json; charset=utf-8");
       }
       return;
     }
