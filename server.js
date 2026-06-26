@@ -5213,7 +5213,12 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, JSON.stringify({ available: true, total: Number(search.total) || ids.length, baseDps: dpsOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
-        send(res, 200, JSON.stringify({ available: true, error: String(err.message) }), "application/json; charset=utf-8");
+        const msg = String(err.message);
+        // On a 400 ("Invalid query"), surface the exact query we sent — a bad stat id
+        // or category is otherwise undiagnosable from the client.
+        const dbg = msg.includes("HTTP 400") ? " | query=" + JSON.stringify(q) : "";
+        if (dbg) console.error("[realrank] 400 from trade2; query was:", JSON.stringify(q));
+        send(res, 200, JSON.stringify({ available: true, error: msg + dbg, query: q }), "application/json; charset=utf-8");
       }
       return;
     }
