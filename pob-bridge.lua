@@ -149,8 +149,16 @@ local function calcWith(slotName, itemText)
 	if not calcFunc then return getStats() end
 	local override = {}
 	if itemText and itemText ~= "" then
+		-- Build the Item and VALIDATE it has a recognised base BEFORE calcing. An
+		-- item with no base (garbled copy / unknown base) makes the calc index a
+		-- nil and crash mid-run, which poisons the persistent process so every
+		-- later item fails too. Reject it cleanly instead.
+		local ok0, item = pcall(new, "Item", itemText)
+		if not ok0 or not item or not item.base then
+			return nil, "couldn't read that item — copy the FULL item text (Ctrl+C in-game gives the cleanest copy)"
+		end
 		override.repSlotName = slotName
-		override.repItem = new("Item", itemText)
+		override.repItem = item
 	end
 	local ok, out = pcall(calcFunc, override)
 	if not ok then return nil, tostring(out) end
