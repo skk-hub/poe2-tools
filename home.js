@@ -153,6 +153,8 @@ window.__viewInit["home"] = function () {
   let econRendered = false;
   let econLimited = false;        // rate-limited right now → keep ↻ disabled
   let econLimitTimer = null;      // 1s ticker for the "clears in …" countdown
+  let econSelId = null;           // clicked card → isolate that series, grey the rest
+  let econView = null;            // last-painted {series, points, latest, ...} for re-paint on select
 
   function fmtDur(s) {
     s = Math.max(0, Math.round(s));
@@ -192,11 +194,21 @@ window.__viewInit["home"] = function () {
     }).filter(s => s.pts.length);
   }
 
+  // A date tick: "Jun 24", plus the hour when the whole window is under ~2 days
+  // (so a fresh, dense history still tells you "today 14:00" not just "Jun 26").
+  function fmtTick(iso, withTime) {
+    const dt = new Date(iso);
+    const lbl = dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    if (!withTime) return lbl;
+    return lbl + " " + String(dt.getHours()).padStart(2, "0") + ":00";
+  }
+
   // Multi-line chart, each series indexed to 100 at its first sample → slopes show
-  // what's inflating relative to what. Default preserveAspectRatio keeps it
-  // undistorted; CSS scales width.
-  function lineChart(series, n) {
-    const W = 820, H = 240, pad = 10, innerW = W - pad * 2, innerH = H - pad * 2;
+  // what's inflating relative to what. `sel` (a currency id) isolates one line and
+  // greys the rest. Default preserveAspectRatio keeps it undistorted; CSS scales width.
+  function lineChart(series, points, sel) {
+    const n = points.length;
+    const W = 820, H = 258, pad = 10, axisH = 16, innerW = W - pad * 2, innerH = H - pad * 2 - axisH;
     let minY = 100, maxY = 100;
     series.forEach(s => {
       const base = s.pts[0].v;
@@ -213,20 +225,34 @@ window.__viewInit["home"] = function () {
     const Y = y => pad + (1 - (Math.log(y) - logMin) / (logMax - logMin)) * innerH;
     const base100 = Y(100).toFixed(1);
     const grid = '<line x1="' + pad + '" y1="' + base100 + '" x2="' + (W - pad) + '" y2="' + base100 + '" stroke="var(--bd)" stroke-dasharray="3 5"/>';
+    // Date axis: up to ~5 ticks at real point indices, with a faint vertical guide.
+    const spanMs = new Date(points[n - 1].t) - new Date(points[0].t);
+    const withTime = spanMs > 0 && spanMs < 2 * 864e5;
+    const axisY = H - pad, step = Math.max(1, Math.ceil((n - 1) / 4));
+    let axis = "";
+    for (let i = 0; i < n; i += step) {
+      const x = X(i), last = i + step >= n;
+      const anchor = i === 0 ? "start" : last ? "end" : "middle";
+      axis += '<line x1="' + x.toFixed(1) + '" y1="' + pad + '" x2="' + x.toFixed(1) + '" y2="' + (pad + innerH).toFixed(1) + '" stroke="var(--bd)" stroke-opacity="0.35"/>' +
+        '<text class="econ-tick" x="' + x.toFixed(1) + '" y="' + axisY + '" text-anchor="' + anchor + '">' + esc(fmtTick(points[i].t, withTime)) + '</text>';
+    }
     const body = series.map(s => {
       const c = COLORS[s.idx % COLORS.length];
+      const muted = sel && s.it.id !== sel;
+      const op = muted ? 0.12 : 1, w = sel && s.it.id === sel ? 2.6 : 2;
       const d = s.norm.map((q, k) => (k ? "L" : "M") + X(q.i).toFixed(1) + " " + Y(q.y).toFixed(1)).join(" ");
-      const dots = s.norm.map(q => '<circle cx="' + X(q.i).toFixed(1) + '" cy="' + Y(q.y).toFixed(1) + '" r="2.6" fill="' + c + '"/>').join("");
-      return '<path d="' + d + '" fill="none" stroke="' + c + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' + dots;
+      const dots = muted ? "" : s.norm.map(q => '<circle cx="' + X(q.i).toFixed(1) + '" cy="' + Y(q.y).toFixed(1) + '" r="2.6" fill="' + c + '"/>').join("");
+      return '<path d="' + d + '" fill="none" stroke="' + c + '" stroke-width="' + w + '" stroke-opacity="' + op + '" stroke-linejoin="round" stroke-linecap="round"/>' + dots;
     }).join("");
-    return '<svg class="econ-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Relative currency values over time">' + grid + body + "</svg>";
+    return '<svg class="econ-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Relative currency values over time">' + grid + axis + body + "</svg>";
   }
 
-  function legend(series) {
+  function legend(series, sel) {
     return series.map(s => {
       const chg = Math.round(s.norm[s.norm.length - 1].y - 100);
       const cls = chg > 0 ? "up" : chg < 0 ? "down" : "";
-      return '<span class="econ-leg"><i style="background:' + COLORS[s.idx % COLORS.length] + '"></i>' +
+      const dim = sel && s.it.id !== sel ? " dim" : "";
+      return '<span class="econ-leg' + dim + '"><i style="background:' + COLORS[s.idx % COLORS.length] + '"></i>' +
         esc(shortName(s.it.name)) + ' <b class="' + cls + '">' + fmtChg(chg) + "</b></span>";
     }).join("");
   }
@@ -239,7 +265,7 @@ window.__viewInit["home"] = function () {
     return '<svg class="econ-spark" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none"><path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
   }
 
-  function cards(latest, exPerDiv, chaosEx, items, points) {
+  function cards(latest, exPerDiv, chaosEx, items, points, sel) {
     const toC = (ex) => chaosEx ? ex / chaosEx : ex;     // ponytail: falls back to ex if chaos rate missing
     const unit = chaosEx ? "c" : "ex";
     return items.map((it, idx) => {
@@ -258,7 +284,8 @@ window.__viewInit["home"] = function () {
       const chg = hist.length > 1 ? Math.round((v / hist[0] - 1) * 100) : null;
       const cls = chg > 0 ? "up" : chg < 0 ? "down" : "";
       const chgHtml = chg === null ? "" : '<span class="econ-card-chg ' + cls + '">' + fmtChg(chg) + ' <small>vs start</small></span>';
-      return '<div class="econ-card"><div class="econ-card-top"><i style="background:' + COLORS[idx % COLORS.length] + '"></i>' +
+      const state = sel === it.id ? " sel" : sel ? " dim" : "";
+      return '<div class="econ-card' + state + '" data-id="' + esc(it.id) + '" role="button" tabindex="0" aria-pressed="' + (sel === it.id) + '"><div class="econ-card-top"><i style="background:' + COLORS[idx % COLORS.length] + '"></i>' +
         '<span class="econ-card-name">' + esc(shortName(it.name)) + '</span></div>' +
         '<div class="econ-card-val">' + main + "</div>" + subEx +
         '<div class="econ-card-foot">' + chgHtml + sparkline(points, it.id, COLORS[idx % COLORS.length]) + "</div></div>";
@@ -316,19 +343,31 @@ window.__viewInit["home"] = function () {
     const chaosEx = latest.chaosEx || 0;     // exalted-per-chaos; chaos is the base unit now
     const unit = chaosEx ? "c" : "ex";
     econHeadline.innerHTML = exPerDiv ? '<b>' + fmtEx(chaosEx ? exPerDiv / chaosEx : exPerDiv) + '</b> <span>' + unit + ' / Divine</span>' : "";
-    if (points.length >= 2) {
-      const series = buildSeries(points, items);
-      econChart.innerHTML = lineChart(series, points.length);
-      econLegend.innerHTML = legend(series);
-      econChartWrap.hidden = false; econEmpty.hidden = true;
-    } else {
+    const hasChart = points.length >= 2;
+    const series = hasChart ? buildSeries(points, items) : null;
+    // Drop a stale selection if that currency isn't in the current data.
+    if (econSelId && !items.some(it => it.id === econSelId)) econSelId = null;
+    econView = { series, points, latest, exPerDiv, chaosEx, items, hasChart };
+    paintEcon();
+    if (!hasChart) {
       econChartWrap.hidden = true; econEmpty.hidden = false;
       econEmpty.textContent = "Live values below — the relative-value trend graph fills in as history accumulates (sampled twice a day).";
-    }
-    econCards.innerHTML = cards(latest, exPerDiv, chaosEx, items, points);
+    } else { econChartWrap.hidden = false; econEmpty.hidden = true; }
     econSub.textContent = "Live · priced in Divine" + (points.length ? " · " + points.length + "-pt trend" : "") +
       (cur ? "" : (d.updated ? " · " + ago(d.updated) : ""));
     econRendered = true;
+  }
+
+  // Repaint chart + legend + cards from econView, applying the current selection.
+  // Cheap (string rebuild, no refetch) so a card click is instant.
+  function paintEcon() {
+    if (!econView) return;
+    const v = econView;
+    if (v.hasChart) {
+      econChart.innerHTML = lineChart(v.series, v.points, econSelId);
+      econLegend.innerHTML = legend(v.series, econSelId);   // legend needs s.norm from lineChart — call after
+    }
+    econCards.innerHTML = cards(v.latest, v.exPerDiv, v.chaosEx, v.items, v.points, econSelId);
   }
 
   async function loadEconomy(force) {
@@ -344,5 +383,17 @@ window.__viewInit["home"] = function () {
     }
   }
   if (econRefresh) econRefresh.addEventListener("click", () => loadEconomy(true));
+  // Click a card to isolate its line (grey the rest); click it again to show all.
+  function toggleSel(card) {
+    const id = card && card.dataset.id; if (!id) return;
+    econSelId = econSelId === id ? null : id;
+    paintEcon();
+  }
+  econCards.addEventListener("click", e => toggleSel(e.target.closest(".econ-card")));
+  econCards.addEventListener("keydown", e => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const card = e.target.closest(".econ-card"); if (!card) return;
+    e.preventDefault(); toggleSel(card);
+  });
   loadEconomy(false);
 };

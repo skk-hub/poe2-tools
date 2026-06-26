@@ -139,9 +139,15 @@ h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;l
 .econ-leg i{width:9px;height:9px;border-radius:50%;flex:none}
 .econ-leg b{font-family:var(--font-mono);font-weight:600;color:var(--text-faint)}
 .econ-leg b.up{color:var(--green)} .econ-leg b.down{color:var(--red)}
+.econ-leg.dim{opacity:.35}
 .econ-svg{width:100%;height:auto;display:block}
+.econ-tick{fill:var(--text-faint);font:500 10px var(--font-mono)}
 .econ-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
-.econ-card{background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 15px;box-shadow:var(--shadow-sm)}
+.econ-card{background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 15px;box-shadow:var(--shadow-sm);cursor:pointer;transition:opacity .15s,border-color .15s,transform .1s}
+.econ-card:hover{border-color:var(--border-gold,var(--gold))}
+.econ-card.sel{border-color:var(--border-gold,var(--gold));box-shadow:var(--shadow-md,var(--shadow-sm))}
+.econ-card.dim{opacity:.3}
+.econ-card:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .econ-card-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .econ-card-top i{width:9px;height:9px;border-radius:50%;flex:none}
 .econ-card-name{color:var(--text-muted);font:600 12px var(--font-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
