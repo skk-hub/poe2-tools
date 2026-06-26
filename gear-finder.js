@@ -8,7 +8,7 @@ window.__viewInit["gear-finder"] = function () {
     build: $("gfBuild"), slots: $("gfSlots"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), analyze: $("gfAnalyze"),
     status: $("gfStatus"), weights: $("gfWeights"),
-    actions: $("gfActions"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
+    actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
     item: $("gfItem"), scoreBtn: $("gfScoreBtn"), scoreOut: $("gfScoreOut"),
   };
   // One-time bookmarklet: reads the {league,query} you copied and runs the
@@ -131,6 +131,27 @@ window.__viewInit["gear-finder"] = function () {
     setStatus("");
   }
 
+  // Rank by REAL DPS: fetch in-budget candidates and score each in PoB.
+  async function realRank() {
+    if (!state.curSlot || !state.weights.length) { setStatus("Analyze the slot first.", true); return; }
+    const cur = (state.slots[state.curSlot] && state.slots[state.curSlot].stats) || {};
+    const mods = state.weights.slice(0, 4).map((w) => ({ statId: w.statId, min: Math.floor(cur[w.key] || 1) }));
+    els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
+    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, mods, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
+    els.realRankBtn.disabled = false;
+    if (d.available === false) { setStatus("Headless PoB isn't available.", true); return; }
+    if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
+    if (d.error) { setStatus("Failed: " + d.error, true); return; }
+    const cands = d.candidates || [];
+    if (!cands.length) { setStatus("No in-budget candidates matched your current rolls — raise the budget.", false); return; }
+    const hasDps = d.baseDps > 0;
+    els.realOut.innerHTML = cands.map((c) => {
+      const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
+      return `<div class="gf-srow"><b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span></div>`;
+    }).join("");
+    setStatus(`Scored ${cands.length} candidates by real PoB DPS (of ${d.total} matching).`);
+  }
+
   function snippetText() {
     const league = state.league, q = JSON.stringify(state.query);
     return `fetch("/api/trade2/search/poe2/${encodeURIComponent(league)}",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(${q})}).then(r=>r.json()).then(d=>{if(d.id){location.href="/trade2/search/poe2/${encodeURIComponent(league)}/"+d.id}else{alert("Search failed: "+JSON.stringify(d))}}).catch(e=>alert(e));`;
@@ -166,6 +187,7 @@ window.__viewInit["gear-finder"] = function () {
   });
   els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) selectSlot(b.dataset.slot); });
   els.analyze.addEventListener("click", analyzeSlot);
+  els.realRankBtn.addEventListener("click", realRank);
   els.scoreBtn.addEventListener("click", scoreItems);
   els.copyQuery.addEventListener("click", () => {
     if (!state.query) { setStatus("Analyze a slot first.", true); return; }

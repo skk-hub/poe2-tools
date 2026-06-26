@@ -366,11 +366,19 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div id="gfStatus" class="status"></div>
         <div id="gfWeights"></div>
         <div id="gfActions" class="gf-actions" hidden>
-          <button class="btn btn-primary" id="gfCopyQuery" type="button">Copy search</button>
-          <a class="btn gf-bm" id="gfBookmarklet" href="#" draggable="true" title="Drag me to your bookmarks bar">⚡ PoB Trade Search</a>
-          <button class="btn" id="gfBasic" type="button">Open basic search</button>
-          <p class="sub gf-setup"><b>One-time:</b> drag the gold <b>⚡ PoB Trade Search</b> button up to your bookmarks bar. After that, each search is just: click <b>Copy search</b>, switch to a logged-in <b>pathofexile.com</b> tab, and click that bookmark — it opens results ranked for your build. <a id="gfShowSnippet" href="#">use the console snippet instead</a></p>
-          <div id="gfSnippetBox" class="gf-snippet" hidden></div>
+          <button class="btn btn-primary" id="gfRealRank" type="button">Rank by real DPS</button>
+          <span class="sub">fetches in-budget candidates and scores each in Path of Building — accurate, uses a Trade2 search</span>
+          <div id="gfRealOut" class="gf-realout"></div>
+          <details class="gf-weighted">
+            <summary>Or build a weighted trade search to browse yourself (heuristic, no rate limit)</summary>
+            <div class="gf-row">
+              <button class="btn" id="gfCopyQuery" type="button">Copy search</button>
+              <a class="btn gf-bm" id="gfBookmarklet" href="#" draggable="true" title="Drag me to your bookmarks bar">⚡ PoB Trade Search</a>
+              <button class="btn" id="gfBasic" type="button">Open basic search</button>
+            </div>
+            <p class="sub gf-setup"><b>One-time:</b> drag the gold <b>⚡ PoB Trade Search</b> button to your bookmarks bar. Then: click <b>Copy search</b>, switch to a logged-in <b>pathofexile.com</b> tab, click the bookmark. <a id="gfShowSnippet" href="#">console snippet instead</a></p>
+            <div id="gfSnippetBox" class="gf-snippet" hidden></div>
+          </details>
         </div>
         <div class="gf-score">
           <p class="sub">Eyeing a specific item? Paste it (Ctrl+C from the trade site or in-game) to see the <b>exact gain</b> for your build — no rate limit:</p>

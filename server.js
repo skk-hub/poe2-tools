@@ -3917,6 +3917,21 @@ function itemTextFromTradeEntry(entry) {
   return lines.map(normalizePoeMarkup).join("\n");
 }
 
+// A Trade2 fetch result → a clean, PoB-parseable item string (Rarity / name /
+// base / Item Level / Implicits + mods). Used by real-DPS ranking; fetched items
+// always carry the base type, unlike hand-copies from the trade page.
+function pobItemFromTradeEntry(entry) {
+  const item = (entry && entry.item) || {};
+  const base = item.typeLine || item.baseType || "";
+  if (!base) return null;
+  const name = item.name || "";
+  const ilvl = item.ilvl || item.itemLevel || 81;
+  const impl = [].concat(item.enchantMods || [], item.runeMods || [], item.implicitMods || []).map(normalizePoeMarkup);
+  const expl = [].concat(item.explicitMods || [], item.fracturedMods || [], item.craftedMods || [], item.desecratedMods || []).map(normalizePoeMarkup);
+  const head = name ? `Rarity: Rare\n${name}\n${base}` : `Rarity: Normal\n${base}`;
+  return [head, `Item Level: ${ilvl}`, `Implicits: ${impl.length}`].concat(impl, expl).join("\n");
+}
+
 function normalizePreserveKey(key) {
   if (key === "explicitAttributes") return "explicitAttributes";
   if (key === "attributes") return "explicitAttributes";
@@ -5098,13 +5113,12 @@ const server = http.createServer(async (req, res) => {
       if (!slot) { send(res, 400, JSON.stringify({ error: "Unknown slot" }), "application/json; charset=utf-8"); return; }
       if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8"); return; }
       const league = sanitizeLeague(input.league || "Runes of Aldur");
+      // Gate on the top 2 stats at your current rolls ("and" — count groups 400 on PoE2 trade).
       const mods = (Array.isArray(input.mods) ? input.mods : (Array.isArray(input.statIds) ? input.statIds.map((id) => ({ statId: id, min: 1 })) : []))
-        .filter((m) => m && /^explicit\.stat_\d+$/.test(m.statId)).slice(0, 4)
+        .filter((m) => m && /^explicit\.stat_\d+$/.test(m.statId)).slice(0, 2)
         .map((m) => ({ id: m.statId, value: { min: Math.max(1, Math.floor(Number(m.min) || 1)) } }));
-      // count-mode: must match at least (n-1) of the top stats at your current rolls.
-      const minMatch = mods.length >= 3 ? mods.length - 1 : mods.length;
       const q = {
-        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "count", filters: mods, value: { min: minMatch } }] },
+        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: mods }] },
         sort: { price: "asc" },
       };
       if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
@@ -5145,6 +5159,53 @@ const server = http.createServer(async (req, res) => {
         }
         send(res, 200, JSON.stringify({ available: true, base, results }), "application/json; charset=utf-8");
       } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
+      return;
+    }
+
+    // Rank by REAL DPS: fetch a batch of in-budget candidates (one stat-min search
+    // + fetch), score each through headless PoB, sort by actual ΔDPS. The accurate
+    // answer the heuristic weighted search can't give.
+    if (url.pathname === "/api/gear/realrank" && req.method === "POST") {
+      const input = await readJson(req, 8 * 1024 * 1024);
+      if (!(await pob.ready())) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
+      const slot = gearSearchSlots()[String(input.slot || "")];
+      if (!slot) { send(res, 400, JSON.stringify({ error: "Unknown slot" }), "application/json; charset=utf-8"); return; }
+      if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
+      const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
+      const mods = (Array.isArray(input.mods) ? input.mods : []).filter((m) => m && /^explicit\.stat_\d+$/.test(m.statId)).slice(0, 2)
+        .map((m) => ({ id: m.statId, value: { min: Math.max(1, Math.floor(Number(m.min) || 1)) } }));
+      const q = {
+        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: mods }] },
+        sort: { price: "asc" },
+      };
+      if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
+      try {
+        const search = await fetchTrade("https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league), { method: "POST", body: JSON.stringify(q) });
+        const ids = (search.result || []).slice(0, 12);
+        if (!ids.length) { send(res, 200, JSON.stringify({ available: true, candidates: [], total: 0 }), "application/json; charset=utf-8"); return; }
+        const fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id));
+        const rates = await getExchangeRates(league).catch(() => ({}));
+        await pob.load(String(input.buildXml || ""));
+        const base = await pob.calc(pobSlot, "");
+        const cands = [];
+        for (const e of fetched.result || []) {
+          const txt = pobItemFromTradeEntry(e);
+          if (!txt) continue;
+          let stats; try { stats = await pob.calc(pobSlot, txt); } catch { continue; }
+          const price = listingPriceFromEntry(e, rates) || {};
+          cands.push({
+            name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(),
+            priceDiv: price.divine || 0, priceEx: price.exalted || 0,
+            dDPS: dpsOfOut(stats) - dpsOfOut(base), dEHP: ehpOfOut(stats) - ehpOfOut(base),
+          });
+        }
+        cands.sort((a, b) => (b.dDPS - a.dDPS) || (b.dEHP - a.dEHP));
+        send(res, 200, JSON.stringify({ available: true, total: Number(search.total) || ids.length, baseDps: dpsOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
+      } catch (err) {
+        if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
+        send(res, 200, JSON.stringify({ available: true, error: String(err.message) }), "application/json; charset=utf-8");
+      }
       return;
     }
 
