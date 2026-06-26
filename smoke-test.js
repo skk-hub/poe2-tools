@@ -53,9 +53,9 @@ function chromiumExe() {
     // browser checks stay silent/background. Fall back to full chrome only if absent.
     const shellDirs = fs.readdirSync(base).filter(d => /^chromium_headless_shell-\d/.test(d)).sort().reverse();
     for (const d of shellDirs) for (const sub of ["chrome-headless-shell-win64/chrome-headless-shell.exe", "chrome-headless-shell-win/chrome-headless-shell.exe"]) { const e = path.join(base, d, sub); if (fs.existsSync(e)) return e; }
-    const dirs = fs.readdirSync(base).filter(d => /^chromium-\d/.test(d)).sort().reverse();
-    for (const d of dirs) for (const sub of ["chrome-win64/chrome.exe", "chrome-win/chrome.exe"]) { const e = path.join(base, d, sub); if (fs.existsSync(e)) return e; }
   } catch {}
+  // No full-chrome.exe fallback on purpose: full Chrome flashes a focus-stealing window
+  // even headless. If the windowless shell is missing, browserChecks skips entirely.
   return undefined;
 }
 
@@ -191,6 +191,7 @@ async function browserChecks() {
   const pw = loadPlaywright();
   if (!pw) { skip("Playwright not found; browser checks skipped"); return; }
   const exe = chromiumExe();
+  if (!exe) { skip("No windowless chrome-headless-shell found; browser checks skipped (won't launch full Chrome — it flashes a focus-stealing window)"); return; }
   let browser;
   try { browser = await pw.chromium.launch({ headless: true, executablePath: exe }); }
   catch (e) { skip("Chromium launch failed (" + e.message.split("\n")[0] + "); browser checks skipped"); return; }

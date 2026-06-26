@@ -135,7 +135,9 @@ window.__viewInit["gear-finder"] = function () {
   async function realRank() {
     if (!state.curSlot || !state.weights.length) { setStatus("Analyze the slot first.", true); return; }
     const cur = (state.slots[state.curSlot] && state.slots[state.curSlot].stats) || {};
-    const mods = state.weights.slice(0, 4).map((w) => ({ statId: w.statId, min: Math.floor(cur[w.key] || 1) }));
+    // Floor at 70% of current rolls, not 100% — a near-BIS item rarely beats itself on
+    // every top stat at once, so requiring ≥ current returns nothing. PoB ΔDPS sorts the rest.
+    const mods = state.weights.slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((cur[w.key] || 1) * 0.7)) }));
     els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
     const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, mods, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
     els.realRankBtn.disabled = false;
@@ -143,7 +145,7 @@ window.__viewInit["gear-finder"] = function () {
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
     const cands = d.candidates || [];
-    if (!cands.length) { setStatus("No in-budget candidates matched your current rolls — raise the budget.", false); return; }
+    if (!cands.length) { setStatus("No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot.", false); return; }
     const hasDps = d.baseDps > 0;
     els.realOut.innerHTML = cands.map((c) => {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
