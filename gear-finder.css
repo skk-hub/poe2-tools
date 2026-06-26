@@ -54,9 +54,13 @@
   .toolroot-gear .gf-scoreout{margin-top:10px;display:flex;flex-direction:column;gap:6px}
   .toolroot-gear .gf-srow{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-sm);padding:8px 11px;font:12px var(--ff-mono);color:var(--mu);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
   .toolroot-gear .gf-srow b{color:var(--tx);font:600 12px var(--ff-ui)}
-  .toolroot-gear a.gf-srow-link{text-decoration:none;cursor:pointer;transition:border-color .12s,background .12s}
-  .toolroot-gear a.gf-srow-link:hover{border-color:var(--border-gold);background:var(--surface-2)}
+  .toolroot-gear .gf-srow-link{text-decoration:none;cursor:pointer;transition:border-color .12s,background .12s}
+  .toolroot-gear .gf-srow-link:hover{border-color:var(--border-gold);background:var(--surface-2)}
   .toolroot-gear .gf-delta{font:700 13px var(--ff-mono)}
+  .toolroot-gear .gf-status{font:11px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em}
+  .toolroot-gear .gf-online{color:var(--gr)}
+  .toolroot-gear .gf-afk{color:var(--gold-deep)}
+  .toolroot-gear .gf-offline{color:var(--mu)}
   .toolroot-gear .gf-delta.up{color:var(--gr)}
   .toolroot-gear .gf-delta.down{color:var(--rd)}
   .toolroot-gear .gf-delta.flat{color:var(--mu)}

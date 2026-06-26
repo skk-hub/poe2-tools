@@ -5253,6 +5253,10 @@ const server = http.createServer(async (req, res) => {
               // item can be buried; this lands right on it).
               base: (e.item && (e.item.typeLine || e.item.baseType)) || "",
               account: (e.listing && e.listing.account && e.listing.account.name) || "",
+              // Seller live status — the real "can I buy this now" signal (AFK/offline
+              // sellers usually won't respond), more reliable than listing age.
+              online: (() => { const o = e.listing && e.listing.account && e.listing.account.online; return o ? (o.status === "afk" ? "afk" : "online") : "offline"; })(),
+              ageDays: (e.listing && e.listing.indexed) ? Math.floor((Date.now() - Date.parse(e.listing.indexed)) / 86400000) : null,
               priceDiv: price.divine || 0, priceEx: price.exalted || 0,
               dDPS: dpsOfOut(stats) - dpsOfOut(base), dEHP: ehpOfOut(stats) - ehpOfOut(base),
             });

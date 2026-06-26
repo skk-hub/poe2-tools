@@ -150,7 +150,10 @@ window.__viewInit["gear-finder"] = function () {
     state.realSearchUrl = d.searchUrl || "";   // fallback when an item lacks base/account
     els.realOut.innerHTML = cands.map((c) => {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
-      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>`;
+      const age = c.ageDays == null ? "" : (c.ageDays <= 0 ? "listed today" : "listed " + c.ageDays + "d ago");
+      const st = c.online || "";   // online | afk | offline — the real "will they respond" signal
+      const stHtml = st ? ` <span class="gf-status gf-${st}" title="seller status${age ? " · " + age : ""}">${st}</span>` : "";
+      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${stHtml}`;
       const canOpen = (c.base && c.account) || state.realSearchUrl;
       return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
     }).join("");
