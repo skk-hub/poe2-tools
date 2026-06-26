@@ -4420,7 +4420,8 @@ function pobWeaponSlot(raw) {
   if (/quiver/.test(t)) return "quiver";
   if (/crossbow/.test(t)) return "crossbow";
   if (/\bbow\b/.test(t)) return "bow";
-  if (/quarterstaff|staff/.test(t)) return "staff";
+  if (/quarterstaff|warstaff/.test(t)) return "quarterstaff";   // martial — must beat the bare-"staff" caster match below
+  if (/\bstaff\b|staves/.test(t)) return "staff";
   if (/sceptre/.test(t)) return "sceptre";
   if (/wand/.test(t)) return "wand";
   if (/spear/.test(t)) return "spear";
