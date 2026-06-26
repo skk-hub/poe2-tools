@@ -3018,6 +3018,18 @@ function gearStatId(key, slotId) {
   return UPGRADE_STAT_IDS[key];
 }
 
+// Build the top-2 Trade2 stat filters for a gear search from [{statId,min}].
+// Keep explicit AND pseudo ids — ES/life map to pseudo ids (pseudo.pseudo_total_*),
+// and dropping them left ES/life slots with no filters → an empty "and" group,
+// which PoE2 trade rejects as "Invalid query".
+function gearStatFilters(mods) {
+  return (Array.isArray(mods) ? mods : [])
+    .filter((m) => m && /^(explicit\.stat_\d+|pseudo\.[a-z0-9_]+)$/.test(m.statId)).slice(0, 2)
+    .map((m) => ({ id: m.statId, value: { min: Math.max(1, Math.floor(Number(m.min) || 1)) } }));
+}
+// PoE2 trade 400s on an empty "and" group, so omit the stats group when there are none.
+const gearStatGroup = (filters) => (filters.length ? [{ type: "and", filters }] : []);
+
 const GEAR_EQUIPMENT_FILTER_IDS = {
   dps: "dps",
   evasion: "ev",
@@ -5114,11 +5126,9 @@ const server = http.createServer(async (req, res) => {
       if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8"); return; }
       const league = sanitizeLeague(input.league || "Runes of Aldur");
       // Gate on the top 2 stats at your current rolls ("and" — count groups 400 on PoE2 trade).
-      const mods = (Array.isArray(input.mods) ? input.mods : (Array.isArray(input.statIds) ? input.statIds.map((id) => ({ statId: id, min: 1 })) : []))
-        .filter((m) => m && /^explicit\.stat_\d+$/.test(m.statId)).slice(0, 2)
-        .map((m) => ({ id: m.statId, value: { min: Math.max(1, Math.floor(Number(m.min) || 1)) } }));
+      const mods = gearStatFilters(Array.isArray(input.mods) ? input.mods : (Array.isArray(input.statIds) ? input.statIds.map((id) => ({ statId: id, min: 1 })) : []));
       const q = {
-        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: mods }] },
+        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) },
         sort: { price: "asc" },
       };
       if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
@@ -5173,10 +5183,9 @@ const server = http.createServer(async (req, res) => {
       if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
       const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
       const league = sanitizeLeague(input.league || "Runes of Aldur");
-      const mods = (Array.isArray(input.mods) ? input.mods : []).filter((m) => m && /^explicit\.stat_\d+$/.test(m.statId)).slice(0, 2)
-        .map((m) => ({ id: m.statId, value: { min: Math.max(1, Math.floor(Number(m.min) || 1)) } }));
+      const mods = gearStatFilters(input.mods);
       const q = {
-        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: mods }] },
+        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) },
         sort: { price: "asc" },
       };
       if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
