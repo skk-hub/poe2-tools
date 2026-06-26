@@ -5248,6 +5248,11 @@ const server = http.createServer(async (req, res) => {
             const price = listingPriceFromEntry(e, rates) || {};
             cands.push({
               name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(),
+              // base type + seller account → a precise "open this listing" search (PoE
+              // trade has no per-item permalink, and the linked search is sorted so the
+              // item can be buried; this lands right on it).
+              base: (e.item && (e.item.typeLine || e.item.baseType)) || "",
+              account: (e.listing && e.listing.account && e.listing.account.name) || "",
               priceDiv: price.divine || 0, priceEx: price.exalted || 0,
               dDPS: dpsOfOut(stats) - dpsOfOut(base), dEHP: ehpOfOut(stats) - ehpOfOut(base),
             });
@@ -5267,6 +5272,28 @@ const server = http.createServer(async (req, res) => {
         const dbg = msg.includes("HTTP 400") ? " | league=" + JSON.stringify(league) + " query=" + JSON.stringify(q) : "";
         if (dbg) console.error("[realrank] 400 from trade2; league:", league, "query:", JSON.stringify(q));
         send(res, 200, JSON.stringify({ available: true, error: msg + dbg, league, query: q }), "application/json; charset=utf-8");
+      }
+      return;
+    }
+
+    // Open a specific scored candidate on the trade site: one search by base type +
+    // seller account (PoE trade has no per-item permalink). Returns ~that listing so the
+    // user can whisper it. One search per click — user-initiated, gentle.
+    if (url.pathname === "/api/gear/item-link" && req.method === "POST") {
+      const input = await readJson(req, 256 * 1024);
+      if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true }), "application/json; charset=utf-8"); return; }
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
+      const base = String(input.base || "").trim();
+      const account = String(input.account || "").trim();
+      if (!base || !account) { send(res, 400, JSON.stringify({ error: "need base + account" }), "application/json; charset=utf-8"); return; }
+      const q = { query: { status: { option: "any" }, type: base, filters: { trade_filters: { filters: { account: { input: account } } } } }, sort: { price: "asc" } };
+      try {
+        const { search, league: used } = await gearTradeSearch(q, league);
+        const url2 = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(used) + "/" + search.id : "";
+        send(res, 200, JSON.stringify({ url: url2, total: search.total || 0 }), "application/json; charset=utf-8");
+      } catch (err) {
+        if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true }), "application/json; charset=utf-8"); return; }
+        send(res, 200, JSON.stringify({ error: String(err.message) }), "application/json; charset=utf-8");
       }
       return;
     }

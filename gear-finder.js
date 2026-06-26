@@ -22,7 +22,7 @@ window.__viewInit["gear-finder"] = function () {
   const dpsOf = (s) => (s && (s.FullDPS || s.CombinedDPS || s.TotalDPS)) || 0;
   const deltaSpan = (d, unit) => { const c = d > 0 ? "up" : d < 0 ? "down" : "flat"; return `<span class="gf-delta ${c}">${d > 0 ? "+" : ""}${fmt(d)} ${unit}</span>`; };
 
-  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], query: null, league: "Runes of Aldur" };
+  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], query: null, league: "Runes of Aldur", realSearchUrl: "" };
 
   async function api(path, body) {
     const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -147,13 +147,12 @@ window.__viewInit["gear-finder"] = function () {
     const cands = d.candidates || [];
     if (!cands.length) { setStatus("No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot.", false); return; }
     const hasDps = d.baseDps > 0;
-    const url = d.searchUrl || "";
+    state.realSearchUrl = d.searchUrl || "";   // fallback when an item lacks base/account
     els.realOut.innerHTML = cands.map((c) => {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
       const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>`;
-      return url
-        ? `<a class="gf-srow gf-srow-link" href="${esc(url)}" target="_blank" rel="noopener">${inner}</a>`
-        : `<div class="gf-srow">${inner}</div>`;
+      const canOpen = (c.base && c.account) || state.realSearchUrl;
+      return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
     }).join("");
     setStatus(`Scored ${d.scored || cands.length} candidates in PoB, showing the top ${cands.length}${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${d.partial ? " — stopped early on the rate limit" : ""}.`);
   }
@@ -194,6 +193,19 @@ window.__viewInit["gear-finder"] = function () {
   els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) selectSlot(b.dataset.slot); });
   els.analyze.addEventListener("click", analyzeSlot);
   els.realRankBtn.addEventListener("click", realRank);
+  // Click a scored row → open that exact listing on the trade site. Per-item search by
+  // base+account; falls back to the whole search if the item lacks those. Opens a blank
+  // tab synchronously (user gesture) so the popup isn't blocked, then redirects it.
+  els.realOut.addEventListener("click", async (ev) => {
+    const row = ev.target.closest(".gf-srow-link"); if (!row) return;
+    const base = row.dataset.base, account = row.dataset.account;
+    if (!base || !account) { if (state.realSearchUrl) window.open(state.realSearchUrl, "_blank", "noopener"); return; }
+    const w = window.open("about:blank", "_blank");   // sync open keeps it out of the popup blocker
+    const d = await api("/api/gear/item-link", { league: state.league, base, account }).catch(() => null);
+    const dest = d && d.url ? d.url : state.realSearchUrl;
+    if (dest && w) { try { w.opener = null; } catch {} w.location = dest; }
+    else { if (w) w.close(); setStatus(d && d.limited ? "Trade2 rate-limited — try again shortly." : "Couldn't open that listing.", true); }
+  });
   els.scoreBtn.addEventListener("click", scoreItems);
   els.copyQuery.addEventListener("click", () => {
     if (!state.query) { setStatus("Analyze a slot first.", true); return; }
