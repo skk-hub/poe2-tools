@@ -148,11 +148,17 @@ window.__viewInit["gear-finder"] = function () {
     if (!cands.length) { setStatus("No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot.", false); return; }
     const hasDps = d.baseDps > 0;
     state.realSearchUrl = d.searchUrl || "";   // fallback when an item lacks base/account
-    els.realOut.innerHTML = cands.map((c) => {
+    // Best value = most gain (DPS, else EHP) per exalted spent, among upgrades. Free —
+    // we already have real gain + price for every candidate, no extra trade call.
+    const gainOf = (c) => (hasDps ? c.dDPS : c.dEHP);
+    let bestIdx = -1, bestVal = 0;
+    cands.forEach((c, i) => { const g = gainOf(c); if (g > 0 && c.priceEx > 0 && g / c.priceEx > bestVal) { bestVal = g / c.priceEx; bestIdx = i; } });
+    els.realOut.innerHTML = cands.map((c, i) => {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
       // No seller-status badge: these are instant-buyout (async) listings, buyable even
       // when the seller is offline, so online/afk/offline would just mislead.
-      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>`;
+      const best = i === bestIdx ? ` <span class="gf-best" title="most ${hasDps ? "DPS" : "EHP"} per exalted of these upgrades">★ best value</span>` : "";
+      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${best}`;
       const canOpen = (c.base && c.account) || state.realSearchUrl;
       return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
     }).join("");
