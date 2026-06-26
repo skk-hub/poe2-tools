@@ -5206,6 +5206,36 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Score ALL pinned items TOGETHER: inject them into the build and recompute once,
+    // so the gain reflects compounding (the real "buy everything" number, vs the
+    // approximate per-item sum the pin board shows). One item per slot — last wins.
+    if (url.pathname === "/api/gear/score-combo" && req.method === "POST") {
+      const input = await readJson(req, 8 * 1024 * 1024);
+      if (!(await pob.ready())) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
+      // Keep one pin per slot (highest ΔDPS), and only pins carrying item text.
+      const bySlot = {};
+      for (const p of (Array.isArray(input.pins) ? input.pins : [])) {
+        if (!p || !p.raw || !p.pobSlot) continue;
+        const cur = bySlot[p.pobSlot];
+        if (!cur || (Number(p.dDPS) || 0) > (Number(cur.dDPS) || 0)) bySlot[p.pobSlot] = p;
+      }
+      const swaps = Object.values(bySlot).slice(0, 12);
+      const dropped = (Array.isArray(input.pins) ? input.pins.length : 0) - swaps.length;
+      if (!swaps.length) { send(res, 200, JSON.stringify({ available: true, error: "no scorable pins — re-pin items so they carry the item text" }), "application/json; charset=utf-8"); return; }
+      try {
+        const base = await pob.load(String(input.buildXml || ""));
+        // Equip them all through PoB's own item parser (same path as the per-item
+        // scores), so the combined gain is consistent + compounds correctly.
+        const combined = await pob.calcMulti(swaps.map((p) => ({ slot: p.pobSlot, itemText: p.raw })));
+        send(res, 200, JSON.stringify({
+          available: true, scored: swaps.length, dropped,
+          dDPS: dpsOfOut(combined) - dpsOfOut(base), dEHP: ehpOfOut(combined) - ehpOfOut(base),
+          baseDps: dpsOfOut(base),
+        }), "application/json; charset=utf-8");
+      } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
+      return;
+    }
+
     // Rank by REAL DPS: fetch a batch of in-budget candidates (one stat-min search
     // + fetch), score each through headless PoB, sort by actual ΔDPS. The accurate
     // answer the heuristic weighted search can't give.
@@ -5267,6 +5297,7 @@ const server = http.createServer(async (req, res) => {
               // item can be buried; this lands right on it).
               base: (e.item && (e.item.typeLine || e.item.baseType)) || "",
               account: (e.listing && e.listing.account && e.listing.account.name) || "",
+              raw: txt,                                  // PoB-ready item text → combined "score all pinned" can re-slot it
               mods: linkMods,
               stats: parseItemStats(txt, slot.baseId),   // new item's rolls, keyed like the equipped item → old-vs-new diff
               priceDiv: price.divine || 0, priceEx: price.exalted || 0,

@@ -107,6 +107,15 @@ function send(cmd, payload = "", timeoutMs = 20000) {
 // Local (spawn) public API
 async function localLoad(buildXml) { return send("LOAD", buildXml, 30000); }      // -> base stats
 async function localCalc(slot, itemText) { return send("CALC", String(slot) + "\n" + String(itemText)); } // -> swapped stats
+// Equip several items at once (one per slot) and recompute → combined stats. pairs:
+// [{slot, itemText}]. Each block is length-framed so item text newlines are safe.
+async function localCalcMulti(pairs) {
+  const parts = (Array.isArray(pairs) ? pairs : []).map((p) => {
+    const item = String(p.itemText || "").replace(/\r\n?/g, "\n");
+    return String(p.slot || "") + "\n" + Buffer.byteLength(item, "utf8") + "\n" + item;
+  });
+  return send("CALCM", parts.join("\n"), 30000);
+}
 function shutdown() { if (proc) { try { send("QUIT").catch(() => {}); } catch {} setTimeout(kill, 500); } }
 
 // ── Remote mode ────────────────────────────────────────────────────────────
@@ -139,5 +148,6 @@ async function ready() {
 }
 async function load(buildXml) { return REMOTE ? remoteCall("/pob/load", { xml: buildXml }, 30000) : localLoad(buildXml); }
 async function calc(slot, itemText) { return REMOTE ? remoteCall("/pob/calc", { slot, itemText }) : localCalc(slot, itemText); }
+async function calcMulti(pairs) { return REMOTE ? remoteCall("/pob/calcmulti", { pairs }, 30000) : localCalcMulti(pairs); }
 
-module.exports = { available, ready, load, calc, shutdown, localAvailable, luajitPath, POB_DIR, BRIDGE, REMOTE };
+module.exports = { available, ready, load, calc, calcMulti, shutdown, localAvailable, luajitPath, POB_DIR, BRIDGE, REMOTE };

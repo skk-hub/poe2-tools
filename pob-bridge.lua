@@ -165,6 +165,51 @@ local function calcWith(slotName, itemText)
 	return getStatsFrom(out)
 end
 
+-- Combined what-if: equip SEVERAL items at once (one per slot) and recompute the
+-- whole build, so the gain reflects compounding (the misc calculator only swaps one
+-- slot). We use the SAME item parser (new("Item", …)) as calcWith, so the combined
+-- number is consistent with the per-item scores. Items are equipped by id, stats
+-- read, then everything is RESTORED so the persistent process stays clean.
+-- payload: repeated "<slotName>\n<byteLen>\n<itemText>\n" blocks (byteLen frames the
+-- item text so its own newlines are unambiguous).
+local function calcMulti(payload)
+	local itemsTab = build.itemsTab
+	local saved, addedIds = {}, {}
+	local function restore()
+		for i = #saved, 1, -1 do saved[i].slot.selItemId = saved[i].prevId end
+		for _, id in ipairs(addedIds) do
+			local it = itemsTab.items[id]
+			if it then pcall(function() itemsTab:DeleteItem(it) end) end
+		end
+		build.buildFlag = true
+		runCallback("OnFrame")
+	end
+	local ok, res = pcall(function()
+		local pos, n = 1, #payload
+		while pos <= n do
+			local nl1 = payload:find("\n", pos, true); if not nl1 then break end
+			local slotName = payload:sub(pos, nl1 - 1); pos = nl1 + 1
+			local nl2 = payload:find("\n", pos, true); if not nl2 then break end
+			local len = tonumber(payload:sub(pos, nl2 - 1)); pos = nl2 + 1
+			if not len then error("bad multi frame") end
+			local itemText = payload:sub(pos, pos + len - 1); pos = pos + len + 1  -- +1 skips the trailing \n
+			local slot = itemsTab.slots[slotName]
+			if not slot then error("unknown slot: " .. slotName) end
+			local ok0, item = pcall(new, "Item", itemText)
+			if not ok0 or not item or not item.base then error("no base type in item for slot " .. slotName) end
+			itemsTab:AddItem(item, true)            -- assigns item.id + BuildModList
+			addedIds[#addedIds + 1] = item.id
+			saved[#saved + 1] = { slot = slot, prevId = slot.selItemId }
+			slot.selItemId = item.id
+		end
+		build.buildFlag = true
+		runCallback("OnFrame")
+		return getStats()
+	end)
+	restore()
+	if ok then return res else return nil, tostring(res) end
+end
+
 -- minimal flat-table JSON (numbers/strings only) — no dep
 local function jsonEncode(t)
 	local parts = {}
@@ -226,6 +271,9 @@ if mode == "--rpc" then
 			elseif cmd == "CALC" then
 				local slot, itemText = payload:match("^([^\n]*)\n(.*)$")
 				local stats, err = calcWith(slot or "", itemText or "")
+				if stats then reply("OK", jsonEncode(stats)) else reply("ERR", tostring(err)) end
+			elseif cmd == "CALCM" then
+				local stats, err = calcMulti(payload)
 				if stats then reply("OK", jsonEncode(stats)) else reply("ERR", tostring(err)) end
 			else reply("ERR", "unknown cmd " .. cmd) end
 		end

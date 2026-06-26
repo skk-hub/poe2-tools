@@ -94,7 +94,14 @@ window.__viewInit["gear-finder"] = function () {
     const totDps = pins.reduce((s, p) => s + (p.metricDps ? (p.dDPS || 0) : 0), 0);
     const totEhp = pins.reduce((s, p) => s + (p.dEHP || 0), 0);
     const totDiv = pins.reduce((s, p) => s + (p.priceDiv || 0), 0);
-    const summary = `<div class="gf-pinsum">Buy all ${pins.length}: ${anyDps ? deltaSpan(totDps, "DPS") + " · " : ""}${deltaSpan(totEhp, "EHP")} · <b>${fmt(totDiv)} div</b> total <span class="gf-note" title="Approximate — each item's gain was scored on its own against your current build, so buying several together usually does a bit better (stats compound). Includes every pin, even two for the same slot.">ⓘ</span></div>`;
+    // "Score together" = one real PoB calc with every pin slotted in (compounds correctly,
+    // and accounts for +skills etc. that the per-item sum can't). Only pins with item text
+    // (raw) can be re-slotted; older pins lack it.
+    const scorable = pins.filter((p) => p.raw && p.pobSlot).length;
+    const comboBtn = scorable >= 2 && state.headless
+      ? ` <button type="button" class="gf-btn-sm" id="gfComboBtn" title="one PoB calc with all pins equipped — the real combined gain">⚖ Score together</button><span id="gfComboOut" class="gf-combo-out"></span>`
+      : "";
+    const summary = `<div class="gf-pinsum">Buy all ${pins.length}: ${anyDps ? deltaSpan(totDps, "DPS") + " · " : ""}${deltaSpan(totEhp, "EHP")} · <b>${fmt(totDiv)} div</b> total <span class="gf-note" title="Approximate — each item's gain was scored on its own against your current build, so buying several together usually does a bit better (stats compound). Includes every pin, even two for the same slot.">ⓘ</span>${comboBtn}</div>`;
     els.pinBody.innerHTML = summary + pins.map((p, i) => {
       const price = p.priceDiv ? `${fmt(p.priceDiv)} div` : `${fmt(p.priceEx || 0)} ex`;
       const keys = Array.from(new Set([...Object.keys(p.oldStats || {}), ...Object.keys(p.newStats || {})])).sort();
@@ -249,6 +256,21 @@ window.__viewInit["gear-finder"] = function () {
   els.analyze.addEventListener("click", analyzeSlot);
   els.realRankBtn.addEventListener("click", realRank);
   if (els.pinBody) els.pinBody.addEventListener("click", async (ev) => {
+    // Score all pins together in one PoB calc (real compounded gain).
+    const combo = ev.target.closest("#gfComboBtn");
+    if (combo) {
+      const out = document.getElementById("gfComboOut");
+      combo.disabled = true; if (out) { out.className = "gf-combo-out"; out.textContent = " scoring all pins in PoB…"; }
+      const pins = (state.pinned || []).filter((p) => p.raw && p.pobSlot).map((p) => ({ pobSlot: p.pobSlot, raw: p.raw, dDPS: p.dDPS }));
+      const d = await api("/api/gear/score-combo", { buildXml: state.xml, pins }).catch(() => null);
+      combo.disabled = false;
+      if (!d || d.available === false || d.error) { if (out) out.textContent = " " + ((d && d.error) || (d && d.available === false ? "PoB unavailable" : "scoring failed")); return; }
+      if (out) {
+        const note = d.dropped ? ` (best ${d.scored} of ${d.scored + d.dropped} — one per slot)` : ` (all ${d.scored})`;
+        out.innerHTML = ` → equipped together${note}: ${deltaSpan(d.dDPS, "DPS")} · ${deltaSpan(d.dEHP, "EHP")}`;
+      }
+      return;
+    }
     const x = ev.target.closest(".gf-unpin");
     if (x) { state.pinned.splice(+x.dataset.i, 1); savePins(); renderPins(); return; }
     // Open a pinned item's listing on trade — same per-item search as the ranked rows,
@@ -277,7 +299,7 @@ window.__viewInit["gear-finder"] = function () {
       const c = state.realCands[+pinBtn.dataset.idx]; if (!c) return;
       const slot = state.curSlot, sl = state.slots[slot] || {};
       const key = (x) => `${x.slot}|${x.name}|${x.priceEx}`;
-      const entry = { slot, slotName: sl.name || slot, name: c.name, base: c.base, account: c.account, league: state.league, mods: c.mods, priceDiv: c.priceDiv, priceEx: c.priceEx, dDPS: c.dDPS, dEHP: c.dEHP, metricDps: !!state.realHasDps, oldStats: sl.stats || {}, newStats: c.stats || {} };
+      const entry = { slot, slotName: sl.name || slot, pobSlot: sl.pobSlot || "", raw: c.raw || "", name: c.name, base: c.base, account: c.account, league: state.league, mods: c.mods, priceDiv: c.priceDiv, priceEx: c.priceEx, dDPS: c.dDPS, dEHP: c.dEHP, metricDps: !!state.realHasDps, oldStats: sl.stats || {}, newStats: c.stats || {} };
       if (!state.pinned.some((p) => key(p) === key(entry))) { state.pinned.push(entry); savePins(); renderPins(); }
       pinBtn.textContent = "✓"; pinBtn.disabled = true; pinBtn.title = "pinned";
       return;

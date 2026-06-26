@@ -35,6 +35,7 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === "/pob/health") { send(res, 200, { ok: true, available: pob.available() }); return; }
     if (u.pathname === "/pob/load" && req.method === "POST") { const { xml } = await readJson(req); send(res, 200, await pob.load(String(xml || ""))); return; }
     if (u.pathname === "/pob/calc" && req.method === "POST") { const { slot, itemText } = await readJson(req); send(res, 200, await pob.calc(String(slot || ""), String(itemText || ""))); return; }
+    if (u.pathname === "/pob/calcmulti" && req.method === "POST") { const { pairs } = await readJson(req); send(res, 200, await pob.calcMulti(Array.isArray(pairs) ? pairs : [])); return; }
     send(res, 404, { error: "not found" });
   } catch (e) { send(res, 200, { error: String(e && e.message) }); }
 });

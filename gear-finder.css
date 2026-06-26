@@ -82,6 +82,10 @@
   .toolroot-gear .gf-pintable td:nth-child(4){text-align:right}
   .toolroot-gear .gf-check{font:11px var(--ff-ui);color:var(--mu);background:transparent;border:1px solid var(--bd);border-radius:var(--r-sm);padding:1px 7px;cursor:pointer}
   .toolroot-gear .gf-check:hover{border-color:var(--border-gold);color:var(--tx)}
+  .toolroot-gear .gf-btn-sm{font:11px var(--ff-ui);color:var(--tx);background:transparent;border:1px solid var(--border-gold);border-radius:var(--r-sm);padding:1px 8px;cursor:pointer}
+  .toolroot-gear .gf-btn-sm:hover{background:var(--surface-3)}
+  .toolroot-gear .gf-btn-sm:disabled{opacity:.6;cursor:default}
+  .toolroot-gear .gf-combo-out{font:12px var(--ff-mono);color:var(--mu)}
   .toolroot-gear .gf-verdict{font:11px var(--ff-mono);color:var(--mu)}
   .toolroot-gear .gf-verdict.good{color:var(--gr)}
   .toolroot-gear .gf-verdict.warn{color:var(--gold-deep)}
