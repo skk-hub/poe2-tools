@@ -104,8 +104,10 @@ window.__viewInit["gear-finder"] = function () {
         const d = n - o, cls = d > 0 ? "up" : d < 0 ? "down" : "flat";
         return `<tr><td>${esc(prettyStat(k))}</td><td>${o || "—"}</td><td>${n || "—"}</td><td class="gf-delta ${cls}">${d > 0 ? "+" : ""}${d || ""}</td></tr>`;
       }).join("");
+      const open = p.base && p.account;
+      const head = `<b>${esc(p.slotName || p.slot)}</b> ${esc(p.name || "Item")}`;
       return `<div class="gf-pincard">
-        <div class="gf-pinhead"><b>${esc(p.slotName || p.slot)}</b> ${esc(p.name || "Item")} <span class="gf-price">${price}</span> ${p.metricDps ? deltaSpan(p.dDPS, "DPS") : ""} ${deltaSpan(p.dEHP, "EHP")}<button type="button" class="gf-unpin" data-i="${i}" title="remove">✕</button></div>
+        <div class="gf-pinhead">${open ? `<span class="gf-pinopen" data-i="${i}" title="open this listing on the trade site to buy">${head}</span>` : head} <span class="gf-price">${price}</span> ${p.metricDps ? deltaSpan(p.dDPS, "DPS") : ""} ${deltaSpan(p.dEHP, "EHP")}<button type="button" class="gf-unpin" data-i="${i}" title="remove">✕</button></div>
         <table class="gf-pintable"><thead><tr><th>Stat</th><th>Was</th><th>Now</th><th>Δ</th></tr></thead><tbody>${rows}</tbody></table>
       </div>`;
     }).join("");
@@ -246,9 +248,19 @@ window.__viewInit["gear-finder"] = function () {
   els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) selectSlot(b.dataset.slot); });
   els.analyze.addEventListener("click", analyzeSlot);
   els.realRankBtn.addEventListener("click", realRank);
-  if (els.pinBody) els.pinBody.addEventListener("click", (ev) => {
-    const x = ev.target.closest(".gf-unpin"); if (!x) return;
-    state.pinned.splice(+x.dataset.i, 1); savePins(); renderPins();
+  if (els.pinBody) els.pinBody.addEventListener("click", async (ev) => {
+    const x = ev.target.closest(".gf-unpin");
+    if (x) { state.pinned.splice(+x.dataset.i, 1); savePins(); renderPins(); return; }
+    // Open a pinned item's listing on trade — same per-item search as the ranked rows,
+    // so you can buy it after moving away from that slot.
+    const op = ev.target.closest(".gf-pinopen");
+    if (op) {
+      const p = state.pinned[+op.dataset.i]; if (!p || !p.base || !p.account) return;
+      const w = window.open("about:blank", "_blank");
+      const d = await api("/api/gear/item-link", { league: p.league || state.league, base: p.base, account: p.account }).catch(() => null);
+      if (d && d.url && w) { try { w.opener = null; } catch {} w.location = d.url; }
+      else { if (w) w.close(); setStatus(d && d.limited ? "Trade2 rate-limited — try again shortly." : "Couldn't open that listing.", true); }
+    }
   });
   renderPins();   // restore persisted pins on load
   // Click a scored row → open that exact listing on the trade site. Per-item search by
@@ -265,7 +277,7 @@ window.__viewInit["gear-finder"] = function () {
       const c = state.realCands[+pinBtn.dataset.idx]; if (!c) return;
       const slot = state.curSlot, sl = state.slots[slot] || {};
       const key = (x) => `${x.slot}|${x.name}|${x.priceEx}`;
-      const entry = { slot, slotName: sl.name || slot, name: c.name, base: c.base, account: c.account, mods: c.mods, priceDiv: c.priceDiv, priceEx: c.priceEx, dDPS: c.dDPS, dEHP: c.dEHP, metricDps: !!state.realHasDps, oldStats: sl.stats || {}, newStats: c.stats || {} };
+      const entry = { slot, slotName: sl.name || slot, name: c.name, base: c.base, account: c.account, league: state.league, mods: c.mods, priceDiv: c.priceDiv, priceEx: c.priceEx, dDPS: c.dDPS, dEHP: c.dEHP, metricDps: !!state.realHasDps, oldStats: sl.stats || {}, newStats: c.stats || {} };
       if (!state.pinned.some((p) => key(p) === key(entry))) { state.pinned.push(entry); savePins(); renderPins(); }
       pinBtn.textContent = "✓"; pinBtn.disabled = true; pinBtn.title = "pinned";
       return;

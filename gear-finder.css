@@ -70,6 +70,8 @@
   .toolroot-gear .gf-pincard{border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--surface-2);padding:10px}
   .toolroot-gear .gf-pinhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font:13px var(--ff-ui);margin-bottom:8px}
   .toolroot-gear .gf-pinhead b{color:var(--gold-bright);text-transform:capitalize}
+  .toolroot-gear .gf-pinopen{cursor:pointer;border-radius:var(--r-sm)}
+  .toolroot-gear .gf-pinopen:hover{text-decoration:underline;text-decoration-color:var(--border-gold)}
   .toolroot-gear .gf-unpin{margin-left:auto;background:transparent;border:1px solid var(--bd);border-radius:var(--r-sm);color:var(--mu);cursor:pointer;padding:0 7px}
   .toolroot-gear .gf-unpin:hover{border-color:var(--rd);color:var(--rd)}
   .toolroot-gear .gf-pintable{width:100%;border-collapse:collapse;font:12px var(--ff-mono)}
