@@ -57,6 +57,11 @@
   .toolroot-gear .gf-srow-link{text-decoration:none;cursor:pointer;transition:border-color .12s,background .12s}
   .toolroot-gear .gf-srow-link:hover{border-color:var(--border-gold);background:var(--surface-2)}
   .toolroot-gear .gf-best{font:700 11px var(--ff-ui);color:var(--gold-bright);border:1px solid var(--border-gold);border-radius:var(--r-sm);padding:1px 6px}
+  .toolroot-gear .gf-check{font:11px var(--ff-ui);color:var(--mu);background:transparent;border:1px solid var(--bd);border-radius:var(--r-sm);padding:1px 7px;cursor:pointer}
+  .toolroot-gear .gf-check:hover{border-color:var(--border-gold);color:var(--tx)}
+  .toolroot-gear .gf-verdict{font:11px var(--ff-mono);color:var(--mu)}
+  .toolroot-gear .gf-verdict.good{color:var(--gr)}
+  .toolroot-gear .gf-verdict.warn{color:var(--gold-deep)}
   .toolroot-gear .gf-delta{font:700 13px var(--ff-mono)}
   .toolroot-gear .gf-delta.up{color:var(--gr)}
   .toolroot-gear .gf-delta.down{color:var(--rd)}

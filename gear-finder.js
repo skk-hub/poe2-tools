@@ -22,7 +22,7 @@ window.__viewInit["gear-finder"] = function () {
   const dpsOf = (s) => (s && (s.FullDPS || s.CombinedDPS || s.TotalDPS)) || 0;
   const deltaSpan = (d, unit) => { const c = d > 0 ? "up" : d < 0 ? "down" : "flat"; return `<span class="gf-delta ${c}">${d > 0 ? "+" : ""}${fmt(d)} ${unit}</span>`; };
 
-  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], query: null, league: "Runes of Aldur", realSearchUrl: "" };
+  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [] };
 
   async function api(path, body) {
     const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -148,6 +148,7 @@ window.__viewInit["gear-finder"] = function () {
     if (!cands.length) { setStatus("No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot.", false); return; }
     const hasDps = d.baseDps > 0;
     state.realSearchUrl = d.searchUrl || "";   // fallback when an item lacks base/account
+    state.realCands = cands;                   // referenced by the value-check handler
     // Best value = most gain (DPS, else EHP) per exalted spent, among upgrades. Free —
     // we already have real gain + price for every candidate, no extra trade call.
     const gainOf = (c) => (hasDps ? c.dDPS : c.dEHP);
@@ -158,7 +159,9 @@ window.__viewInit["gear-finder"] = function () {
       // No seller-status badge: these are instant-buyout (async) listings, buyable even
       // when the seller is offline, so online/afk/offline would just mislead.
       const best = i === bestIdx ? ` <span class="gf-best" title="most ${hasDps ? "DPS" : "EHP"} per exalted of these upgrades">★ best value</span>` : "";
-      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${best}`;
+      // "Check price" runs a 2nd search: is this the cheapest at this power level?
+      const check = (c.mods && c.mods.length) ? ` <button type="button" class="gf-check" data-idx="${i}" title="floor price for this item's top rolls — how much of the price is core stats vs extras">price floor</button><span class="gf-verdict"></span>` : "";
+      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${best}${check}`;
       const canOpen = (c.base && c.account) || state.realSearchUrl;
       return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
     }).join("");
@@ -205,6 +208,27 @@ window.__viewInit["gear-finder"] = function () {
   // base+account; falls back to the whole search if the item lacks those. Opens a blank
   // tab synchronously (user gesture) so the popup isn't blocked, then redirects it.
   els.realOut.addEventListener("click", async (ev) => {
+    // "Check price" → is this the cheapest at its power? (one search + fetch). Handle
+    // first so it doesn't also trigger the row's open-listing click.
+    const chk = ev.target.closest(".gf-check");
+    if (chk) {
+      ev.stopPropagation(); ev.preventDefault();
+      const c = state.realCands[+chk.dataset.idx]; if (!c) return;
+      const out = chk.parentElement.querySelector(".gf-verdict");
+      chk.disabled = true; out.className = "gf-verdict"; out.textContent = "checking…";
+      const d = await api("/api/gear/value-check", { league: state.league, slot: state.curSlot, mods: c.mods }).catch(() => null);
+      if (!d || d.error || d.limited) { chk.disabled = false; out.textContent = d && d.limited ? "rate-limited — retry" : "check failed"; return; }
+      // Honest framing: this is the FLOOR price for the item's top weighted rolls — it
+      // can't capture the whole item (life/res/etc aren't in the weighted stats), so it
+      // says how much of the price is "core stats" vs premium, not "identical, cheaper".
+      const cheapStr = d.cheapestDiv ? `${fmt(d.cheapestDiv)} div` : `${fmt(d.cheapestEx || 0)} ex`;
+      const mine = c.priceEx || 0, cheap = d.cheapestEx || 0;
+      if (d.total <= 1) { out.textContent = "✓ only listing with your top rolls"; out.classList.add("good"); }
+      else if (mine > 0 && cheap > 0 && mine <= cheap * 1.3) { out.textContent = `✓ near the floor — top rolls start at ${cheapStr} (${d.total} listed)`; out.classList.add("good"); }
+      else { out.textContent = `top rolls from ${cheapStr} (${d.total} listed) — you're paying extra for the other mods`; out.classList.add("warn"); }
+      chk.remove();
+      return;
+    }
     const row = ev.target.closest(".gf-srow-link"); if (!row) return;
     const base = row.dataset.base, account = row.dataset.account;
     if (!base || !account) { if (state.realSearchUrl) window.open(state.realSearchUrl, "_blank", "noopener"); return; }

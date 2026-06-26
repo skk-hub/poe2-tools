@@ -3028,9 +3028,9 @@ function gearStatId(key, slotId) {
 // Keep explicit AND pseudo ids — ES/life map to pseudo ids (pseudo.pseudo_total_*),
 // and dropping them left ES/life slots with no filters → an empty "and" group,
 // which PoE2 trade rejects as "Invalid query".
-function gearStatFilters(mods) {
+function gearStatFilters(mods, limit = 2) {
   return (Array.isArray(mods) ? mods : [])
-    .filter((m) => m && /^(explicit\.stat_\d+|pseudo\.[a-z0-9_]+)$/.test(m.statId)).slice(0, 2)
+    .filter((m) => m && /^(explicit\.stat_\d+|pseudo\.[a-z0-9_]+)$/.test(m.statId)).slice(0, limit)
     .map((m) => ({ id: m.statId, value: { min: Math.max(1, Math.floor(Number(m.min) || 1)) } }));
 }
 // PoE2 trade 400s on an empty "and" group, so omit the stats group when there are none.
@@ -5252,6 +5252,13 @@ const server = http.createServer(async (req, res) => {
             if (!txt) continue;
             let stats; try { stats = await pob.calc(pobSlot, txt); } catch { continue; }
             const price = listingPriceFromEntry(e, rates) || {};
+            // The item's top-weighted rolled mods → lets the value-check search "items at
+            // least this good on these stats" and tell you if this listing is the cheapest
+            // at that power. Parse the roll from each explicit mod's description.
+            const expl = (e.item && e.item.explicitMods) || [];
+            const valOf = (statId) => { const md = expl.find((x) => (x && x.hash) === "stat." + statId); if (!md) return null; const n = parseFloat(String(md.description || "").replace(/[^\d.\-]+/g, " ").trim().split(" ")[0]); return Number.isFinite(n) ? n : null; };
+            const linkMods = [];
+            for (const w of weights) { const v = valOf(w.statId); if (v != null) linkMods.push({ statId: w.statId, min: Math.floor(v) }); if (linkMods.length >= 3) break; }
             cands.push({
               name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(),
               // base type + seller account → a precise "open this listing" search (PoE
@@ -5259,6 +5266,7 @@ const server = http.createServer(async (req, res) => {
               // item can be buried; this lands right on it).
               base: (e.item && (e.item.typeLine || e.item.baseType)) || "",
               account: (e.listing && e.listing.account && e.listing.account.name) || "",
+              mods: linkMods,
               priceDiv: price.divine || 0, priceEx: price.exalted || 0,
               dDPS: dpsOfOut(stats) - dpsOfOut(base), dEHP: ehpOfOut(stats) - ehpOfOut(base),
             });
@@ -5297,6 +5305,40 @@ const server = http.createServer(async (req, res) => {
         const { search, league: used } = await gearTradeSearch(q, league);
         const url2 = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(used) + "/" + search.id : "";
         send(res, 200, JSON.stringify({ url: url2, total: search.total || 0 }), "application/json; charset=utf-8");
+      } catch (err) {
+        if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true }), "application/json; charset=utf-8"); return; }
+        send(res, 200, JSON.stringify({ error: String(err.message) }), "application/json; charset=utf-8");
+      }
+      return;
+    }
+
+    // Value check: is this candidate the cheapest at its power? Search instant-buyout
+    // items of the same slot with AT LEAST its top rolled mods, sorted price asc, and
+    // return how many there are + the cheapest price. One search + one fetch per click.
+    if (url.pathname === "/api/gear/value-check" && req.method === "POST") {
+      const input = await readJson(req, 256 * 1024);
+      if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true }), "application/json; charset=utf-8"); return; }
+      const slot = gearSearchSlots()[String(input.slot || "")];
+      if (!slot) { send(res, 400, JSON.stringify({ error: "Unknown slot" }), "application/json; charset=utf-8"); return; }
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
+      const mods = gearStatFilters(input.mods, 3);   // up to 3 of the item's rolls → tighter "this good"
+      if (!mods.length) { send(res, 400, JSON.stringify({ error: "no comparable rolls on this item" }), "application/json; charset=utf-8"); return; }
+      const q = {
+        query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) },
+        sort: { price: "asc" },
+      };
+      try {
+        const { search } = await gearTradeSearch(q, league);
+        const total = Number(search.total) || (search.result || []).length;
+        const firstId = (search.result || [])[0];
+        let cheapestDiv = 0, cheapestEx = 0;
+        if (firstId) {
+          const rates = await getExchangeRates(league).catch(() => ({}));
+          const f = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + firstId + "?query=" + encodeURIComponent(search.id));
+          const p = listingPriceFromEntry((f.result || [])[0] || {}, rates) || {};
+          cheapestDiv = p.divine || 0; cheapestEx = p.exalted || 0;
+        }
+        send(res, 200, JSON.stringify({ total, cheapestDiv, cheapestEx }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true }), "application/json; charset=utf-8"); return; }
         send(res, 200, JSON.stringify({ error: String(err.message) }), "application/json; charset=utf-8");
