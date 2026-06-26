@@ -361,6 +361,12 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
           <button class="btn" id="gfBasic" type="button">Open basic search</button>
           <div id="gfSnippetBox" class="gf-snippet" hidden></div>
         </div>
+        <div class="gf-score">
+          <p class="sub">Eyeing a specific item? Paste it (Ctrl+C from the trade site or in-game) to see the <b>exact gain</b> for your build — no rate limit:</p>
+          <textarea id="gfItem" spellcheck="false" placeholder="Paste a copied item here…"></textarea>
+          <button class="btn btn-primary" id="gfScoreBtn" type="button">Check gain</button>
+          <div id="gfScoreOut" class="gf-scoreout"></div>
+        </div>
       </div>
       <p class="gf-foot">Path of Building works out which stats actually help <i>your</i> build, then hands you a <b>build-weighted trade search</b>. The snippet runs in your own logged-in browser (no rate limit, and it unlocks the weighted search the API can't do anonymously); the basic search is a one-call fallback. Headless weighting needs PoB + LuaJIT installed locally.</p>
     </div>

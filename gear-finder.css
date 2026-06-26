@@ -40,4 +40,16 @@
   .toolroot-gear .gf-snippet .sub{margin:0 0 6px}
   .toolroot-gear .gf-snippet code{display:block;background:var(--bg-deep);border:1px solid var(--bd);border-radius:var(--r-sm);padding:10px;font:11px var(--ff-mono);color:var(--gr);word-break:break-all;max-height:140px;overflow:auto}
 
+  /* paste-an-item → exact gain */
+  .toolroot-gear .gf-score{margin-top:16px;border-top:1px solid var(--bd);padding-top:12px}
+  .toolroot-gear .gf-score .sub{margin:0 0 8px}
+  .toolroot-gear .gf-score textarea{min-height:90px;margin-bottom:8px}
+  .toolroot-gear .gf-scoreout{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+  .toolroot-gear .gf-srow{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-sm);padding:8px 11px;font:12px var(--ff-mono);color:var(--mu);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .toolroot-gear .gf-srow b{color:var(--tx);font:600 12px var(--ff-ui)}
+  .toolroot-gear .gf-delta{font:700 13px var(--ff-mono)}
+  .toolroot-gear .gf-delta.up{color:var(--gr)}
+  .toolroot-gear .gf-delta.down{color:var(--rd)}
+  .toolroot-gear .gf-delta.flat{color:var(--mu)}
+
   .toolroot-gear .gf-foot{margin-top:16px;color:var(--mu);font:11px var(--ff-mono);line-height:1.6}

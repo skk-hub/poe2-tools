@@ -105,6 +105,7 @@ function staticChecks() {
     check(/async function computeGearWeights/.test(srvG) && /GEAR_PROBE_TEMPLATES/.test(srvG) && /type: "weight"/.test(srvG), "server computes PoB stat-weights + builds the weighted query");
     check(fs.existsSync("pob.js") && fs.existsSync("pob-bridge.lua") && /GetMiscCalculator/.test(read("pob-bridge.lua")), "headless bridge present (pob.js + pob-bridge.lua)");
     check(/snippetText/.test(read("gear-finder.js")) && idx.includes('id="gfSnippet"') && idx.includes('id="gfWeights"'), "gear-finder builds the logged-in search snippet + weight breakdown");
+    check(/\/api\/gear\/score/.test(srvG) && /scoreItems/.test(read("gear-finder.js")) && idx.includes('id="gfItem"'), "gear-finder has paste-an-item exact DPS/EHP gain (headless, no trade)");
     check(/POB_BRIDGE_URL/.test(read("pob.js")) && /async function ready/.test(read("pob.js")) && fs.existsSync("pob-agent.js"), "pob.js remote mode + pob-agent.js (VM→PC headless bridge)");
     check(fs.existsSync("ecosystem.config.js") && /pob-agent/.test(read("ecosystem.config.js")), "pm2 ecosystem config for the pob-agent");
     const zlib = require("zlib");

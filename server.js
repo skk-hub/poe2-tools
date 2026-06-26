@@ -5056,17 +5056,23 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // On-demand basic (non-weighted) shareable search — ONE anonymous Trade2 call,
-    // stat-min query from the top weighted stats. Works without logging in.
+    // On-demand basic (non-weighted) shareable search — ONE anonymous Trade2 call.
+    // Mins come from your CURRENT item's rolls (`mods:[{statId,min}]`) so it only
+    // surfaces equal-or-better, not "has the stat at all". Match a subset (count)
+    // so requiring every top stat at once doesn't return zero.
     if (url.pathname === "/api/gear/basic-link" && req.method === "POST") {
       const input = await readJson(req, 1 * 1024 * 1024);
       const slot = gearSearchSlots()[String(input.slot || "")];
       if (!slot) { send(res, 400, JSON.stringify({ error: "Unknown slot" }), "application/json; charset=utf-8"); return; }
       if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8"); return; }
       const league = sanitizeLeague(input.league || "Runes of Aldur");
-      const ids = (Array.isArray(input.statIds) ? input.statIds : []).filter((s) => /^explicit\.stat_\d+$/.test(s)).slice(0, 4);
+      const mods = (Array.isArray(input.mods) ? input.mods : (Array.isArray(input.statIds) ? input.statIds.map((id) => ({ statId: id, min: 1 })) : []))
+        .filter((m) => m && /^explicit\.stat_\d+$/.test(m.statId)).slice(0, 4)
+        .map((m) => ({ id: m.statId, value: { min: Math.max(1, Math.floor(Number(m.min) || 1)) } }));
+      // count-mode: must match at least (n-1) of the top stats at your current rolls.
+      const minMatch = mods.length >= 3 ? mods.length - 1 : mods.length;
       const q = {
-        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: ids.map((id) => ({ id, value: { min: 1 } })) }] },
+        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "count", filters: mods, value: { min: minMatch } }] },
         sort: { price: "asc" },
       };
       if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
@@ -5078,6 +5084,25 @@ const server = http.createServer(async (req, res) => {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8"); return; }
         send(res, 200, JSON.stringify({ error: String(err.message) }), "application/json; charset=utf-8");
       }
+      return;
+    }
+
+    // Paste-to-score: exact build impact of specific item(s) via headless PoB. NO
+    // Trade2 — you copy an item off the trade site / in-game and get the real gain.
+    if (url.pathname === "/api/gear/score" && req.method === "POST") {
+      const input = await readJson(req, 4 * 1024 * 1024);
+      if (!(await pob.ready())) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
+      const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
+      try {
+        await pob.load(String(input.buildXml || ""));
+        const base = await pob.calc(pobSlot, "");
+        const results = [];
+        for (const it of (Array.isArray(input.items) ? input.items : []).slice(0, 5)) {
+          try { results.push({ name: String(it.name || ""), stats: await pob.calc(pobSlot, String(it.raw || "")) }); }
+          catch (e) { results.push({ name: String(it.name || ""), error: String(e.message) }); }
+        }
+        send(res, 200, JSON.stringify({ available: true, base, results }), "application/json; charset=utf-8");
+      } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
       return;
     }
 
