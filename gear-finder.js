@@ -147,9 +147,13 @@ window.__viewInit["gear-finder"] = function () {
     const cands = d.candidates || [];
     if (!cands.length) { setStatus("No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot.", false); return; }
     const hasDps = d.baseDps > 0;
+    const url = d.searchUrl || "";
     els.realOut.innerHTML = cands.map((c) => {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
-      return `<div class="gf-srow"><b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span></div>`;
+      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>`;
+      return url
+        ? `<a class="gf-srow gf-srow-link" href="${esc(url)}" target="_blank" rel="noopener">${inner}</a>`
+        : `<div class="gf-srow">${inner}</div>`;
     }).join("");
     setStatus(`Scored ${cands.length} candidates by real PoB DPS (of ${d.total} matching)${d.weighted ? " — fetched the best for your build" : " — price spread (set POESESSID for build-ranked results)"}.`);
   }

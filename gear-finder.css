@@ -54,6 +54,8 @@
   .toolroot-gear .gf-scoreout{margin-top:10px;display:flex;flex-direction:column;gap:6px}
   .toolroot-gear .gf-srow{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-sm);padding:8px 11px;font:12px var(--ff-mono);color:var(--mu);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
   .toolroot-gear .gf-srow b{color:var(--tx);font:600 12px var(--ff-ui)}
+  .toolroot-gear a.gf-srow-link{text-decoration:none;cursor:pointer;transition:border-color .12s,background .12s}
+  .toolroot-gear a.gf-srow-link:hover{border-color:var(--border-gold);background:var(--surface-2)}
   .toolroot-gear .gf-delta{font:700 13px var(--ff-mono)}
   .toolroot-gear .gf-delta.up{color:var(--gr)}
   .toolroot-gear .gf-delta.down{color:var(--rd)}

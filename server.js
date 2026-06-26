@@ -5221,7 +5221,7 @@ const server = http.createServer(async (req, res) => {
         : { query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) }, sort: { price: "asc" } };
       if (!weighted && Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
       try {
-        const { search } = await gearTradeSearch(q, league);
+        const { search, league: usedLeague } = await gearTradeSearch(q, league);
         const all = search.result || [];
         if (!all.length) { send(res, 200, JSON.stringify({ available: true, candidates: [], total: 0 }), "application/json; charset=utf-8"); return; }
         // Weighted search is already ranked best-first → take the top 10. The price-sorted
@@ -5248,7 +5248,10 @@ const server = http.createServer(async (req, res) => {
           });
         }
         cands.sort((a, b) => (b.dDPS - a.dDPS) || (b.dEHP - a.dEHP));
-        send(res, 200, JSON.stringify({ available: true, weighted, total: Number(search.total) || ids.length, baseDps: dpsOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
+        // The build-weighted/price search this came from — opening it lands on these
+        // candidates (no per-item permalink exists on PoE trade). Each row links here.
+        const searchUrl = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(usedLeague) + "/" + search.id : "";
+        send(res, 200, JSON.stringify({ available: true, weighted, searchUrl, total: Number(search.total) || ids.length, baseDps: dpsOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         const msg = String(err.message);
