@@ -5235,7 +5235,7 @@ const server = http.createServer(async (req, res) => {
         // multiplicative. Weighted search is best-first so take the top SCORE_CAP; the
         // price fallback samples a spread. Capped at SCORE_CAP to bound fetch calls
         // (≤10 ids/call, shared-IP rate limit) and PoB time; bail to partial on a limit.
-        const SCORE_CAP = 30;
+        const SCORE_CAP = 50;   // 5 fetch calls — deeper coverage of the weight-ranked tail
         const m = Math.min(all.length, SCORE_CAP);
         const pick = weighted ? all.slice(0, m) : Array.from({ length: m }, (_, i) => all[Math.floor((i * all.length) / m)]);
         const rates = await getExchangeRates(league).catch(() => ({}));

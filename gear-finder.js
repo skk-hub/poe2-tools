@@ -152,17 +152,22 @@ window.__viewInit["gear-finder"] = function () {
     // Best value = most gain (DPS, else EHP) per exalted spent, among upgrades. Free —
     // we already have real gain + price for every candidate, no extra trade call.
     const gainOf = (c) => (hasDps ? c.dDPS : c.dEHP);
+    // ROI = gain per divine spent. Compact (k/M) since cheap items give huge ratios.
+    const roi = (c) => (gainOf(c) > 0 && c.priceDiv > 0 ? gainOf(c) / c.priceDiv : 0);
+    const fmtRoi = (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(1) + "k" : Math.round(v);
     let bestIdx = -1, bestVal = 0;
     cands.forEach((c, i) => { const g = gainOf(c); if (g > 0 && c.priceEx > 0 && g / c.priceEx > bestVal) { bestVal = g / c.priceEx; bestIdx = i; } });
     els.realOut.innerHTML = cands.map((c, i) => {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
       // No seller-status badge: these are instant-buyout (async) listings, buyable even
       // when the seller is offline, so online/afk/offline would just mislead.
+      const r = roi(c);
+      const roiHtml = r > 0 ? ` <span class="gf-roi" title="${hasDps ? "DPS" : "EHP"} gained per divine — your ROI">${fmtRoi(r)}/div</span>` : "";
       const best = i === bestIdx ? ` <span class="gf-best" title="most ${hasDps ? "DPS" : "EHP"} per exalted of these upgrades">★ best value</span>` : "";
       // "Best price?" scores cheaper instant-buyout items in PoB — is any as good for less?
       // Only worth it for items costing ≥1 div (cheap ones aren't worth a price hunt).
       const check = (c.mods && c.mods.length && c.priceDiv >= 1 && c.dDPS > 0) ? ` <button type="button" class="gf-check" data-idx="${i}" title="score cheaper instant-buyout items in PoB — is any as good for less?">best price?</button><span class="gf-verdict"></span>` : "";
-      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${best}${check}`;
+      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${roiHtml}${best}${check}`;
       const canOpen = (c.base && c.account) || state.realSearchUrl;
       return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
     }).join("");
