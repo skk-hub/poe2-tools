@@ -39,6 +39,12 @@ services:
       - HOST=0.0.0.0
       - POE_CONTACT=REDACTED-USER
       - DATA_DIR=/app/data
+      # Gear Finder: point at the pob-agent.js running on the Main PC (where Path
+      # of Building + LuaJIT live) so the VM app can do headless build-weighting.
+      # Set POB_BRIDGE_URL in .env to the PC's Tailscale IP, e.g.
+      # http://REDACTED-TAILNET-IP-B:17778 — it's inside FIREWALL_OUTBOUND_SUBNETS
+      # (REDACTED-CGNAT-RANGE/10) so the gluetun killswitch lets it through. Empty = off.
+      - POB_BRIDGE_URL=${POB_BRIDGE_URL:-}
     # CODE: no bind mounts on purpose. The image (Dockerfile `COPY . .`) is the
     # single source of truth, so `docker compose up -d --build` always serves a
     # fully consistent file set. The old partial mounts (only server.js +
