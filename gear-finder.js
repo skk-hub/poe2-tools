@@ -10,7 +10,12 @@ window.__viewInit["gear-finder"] = function () {
     status: $("gfStatus"), weights: $("gfWeights"),
     actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
     item: $("gfItem"), scoreBtn: $("gfScoreBtn"), scoreOut: $("gfScoreOut"),
+    pins: $("gfPins"), pinCount: $("gfPinCount"), pinBody: $("gfPinBody"),
   };
+  const PINS_KEY = "poe2.gearFinder.pins";
+  const loadPins = () => { try { return JSON.parse(localStorage.getItem(PINS_KEY)) || []; } catch { return []; } };
+  const savePins = () => { try { localStorage.setItem(PINS_KEY, JSON.stringify(state.pinned)); } catch {} };
+  const prettyStat = (k) => k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
   // One-time bookmarklet: reads the {league,query} you copied and runs the
   // weighted search in your logged-in pathofexile.com session. Static, so it's
   // dragged to the bookmarks bar once; "Copy search" supplies the per-slot query.
@@ -22,7 +27,8 @@ window.__viewInit["gear-finder"] = function () {
   const dpsOf = (s) => (s && (s.FullDPS || s.CombinedDPS || s.TotalDPS)) || 0;
   const deltaSpan = (d, unit) => { const c = d > 0 ? "up" : d < 0 ? "down" : "flat"; return `<span class="gf-delta ${c}">${d > 0 ? "+" : ""}${fmt(d)} ${unit}</span>`; };
 
-  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [] };
+  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], pinned: [] };
+  state.pinned = loadPins();
 
   async function api(path, body) {
     const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -74,6 +80,28 @@ window.__viewInit["gear-finder"] = function () {
     els.slots.innerHTML = Object.entries(state.slots).map(([id, s]) =>
       `<button class="gf-slot" type="button" data-slot="${esc(id)}">${esc(id)}<span class="gf-slot-name">${esc(s.name || "—")}</span></button>`).join("");
     els.panel.hidden = true; setStatus("");
+  }
+
+  // Comparison board: pinned candidates (persisted), each with an old-vs-new stat diff.
+  function renderPins() {
+    const pins = state.pinned || [];
+    if (els.pinCount) els.pinCount.textContent = pins.length;
+    if (els.pins) els.pins.hidden = !pins.length;
+    if (!els.pinBody) return;
+    els.pinBody.innerHTML = pins.map((p, i) => {
+      const price = p.priceDiv ? `${fmt(p.priceDiv)} div` : `${fmt(p.priceEx || 0)} ex`;
+      const keys = Array.from(new Set([...Object.keys(p.oldStats || {}), ...Object.keys(p.newStats || {})])).sort();
+      const rows = keys.map((k) => {
+        const o = Math.round(Number((p.oldStats || {})[k]) || 0), n = Math.round(Number((p.newStats || {})[k]) || 0);
+        if (!o && !n) return "";
+        const d = n - o, cls = d > 0 ? "up" : d < 0 ? "down" : "flat";
+        return `<tr><td>${esc(prettyStat(k))}</td><td>${o || "—"}</td><td>${n || "—"}</td><td class="gf-delta ${cls}">${d > 0 ? "+" : ""}${d || ""}</td></tr>`;
+      }).join("");
+      return `<div class="gf-pincard">
+        <div class="gf-pinhead"><b>${esc(p.slotName || p.slot)}</b> ${esc(p.name || "Item")} <span class="gf-price">${price}</span> ${p.metricDps ? deltaSpan(p.dDPS, "DPS") : ""} ${deltaSpan(p.dEHP, "EHP")}<button type="button" class="gf-unpin" data-i="${i}" title="remove">✕</button></div>
+        <table class="gf-pintable"><thead><tr><th>Stat</th><th>Was</th><th>Now</th><th>Δ</th></tr></thead><tbody>${rows}</tbody></table>
+      </div>`;
+    }).join("");
   }
 
   function selectSlot(id) {
@@ -147,8 +175,9 @@ window.__viewInit["gear-finder"] = function () {
     const cands = d.candidates || [];
     if (!cands.length) { setStatus("No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot.", false); return; }
     const hasDps = d.baseDps > 0;
+    state.realHasDps = hasDps;
     state.realSearchUrl = d.searchUrl || "";   // fallback when an item lacks base/account
-    state.realCands = cands;                   // referenced by the value-check handler
+    state.realCands = cands;                   // referenced by the value-check + pin handlers
     // Best value = most gain (DPS, else EHP) per exalted spent, among upgrades. Free —
     // we already have real gain + price for every candidate, no extra trade call.
     const gainOf = (c) => (hasDps ? c.dDPS : c.dEHP);
@@ -167,7 +196,7 @@ window.__viewInit["gear-finder"] = function () {
       // "Best price?" scores cheaper instant-buyout items in PoB — is any as good for less?
       // Only worth it for items costing ≥1 div (cheap ones aren't worth a price hunt).
       const check = (c.mods && c.mods.length && c.priceDiv >= 1 && c.dDPS > 0) ? ` <button type="button" class="gf-check" data-idx="${i}" title="score cheaper instant-buyout items in PoB — is any as good for less?">best price?</button><span class="gf-verdict"></span>` : "";
-      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${roiHtml}${best}${check}`;
+      const inner = `<button type="button" class="gf-pin" data-idx="${i}" title="pin to the comparison board">📌</button> <b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${roiHtml}${best}${check}`;
       const canOpen = (c.base && c.account) || state.realSearchUrl;
       return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
     }).join("");
@@ -210,12 +239,30 @@ window.__viewInit["gear-finder"] = function () {
   els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) selectSlot(b.dataset.slot); });
   els.analyze.addEventListener("click", analyzeSlot);
   els.realRankBtn.addEventListener("click", realRank);
+  if (els.pinBody) els.pinBody.addEventListener("click", (ev) => {
+    const x = ev.target.closest(".gf-unpin"); if (!x) return;
+    state.pinned.splice(+x.dataset.i, 1); savePins(); renderPins();
+  });
+  renderPins();   // restore persisted pins on load
   // Click a scored row → open that exact listing on the trade site. Per-item search by
   // base+account; falls back to the whole search if the item lacks those. Opens a blank
   // tab synchronously (user gesture) so the popup isn't blocked, then redirects it.
   els.realOut.addEventListener("click", async (ev) => {
     // "Check price" → is this the cheapest at its power? (one search + fetch). Handle
     // first so it doesn't also trigger the row's open-listing click.
+    // Pin → add to the comparison board (with old-vs-new stats). First, so it doesn't
+    // also open the listing.
+    const pinBtn = ev.target.closest(".gf-pin");
+    if (pinBtn) {
+      ev.stopPropagation(); ev.preventDefault();
+      const c = state.realCands[+pinBtn.dataset.idx]; if (!c) return;
+      const slot = state.curSlot, sl = state.slots[slot] || {};
+      const key = (x) => `${x.slot}|${x.name}|${x.priceEx}`;
+      const entry = { slot, slotName: sl.name || slot, name: c.name, base: c.base, account: c.account, mods: c.mods, priceDiv: c.priceDiv, priceEx: c.priceEx, dDPS: c.dDPS, dEHP: c.dEHP, metricDps: !!state.realHasDps, oldStats: sl.stats || {}, newStats: c.stats || {} };
+      if (!state.pinned.some((p) => key(p) === key(entry))) { state.pinned.push(entry); savePins(); renderPins(); }
+      pinBtn.textContent = "✓"; pinBtn.disabled = true; pinBtn.title = "pinned";
+      return;
+    }
     const chk = ev.target.closest(".gf-check");
     if (chk) {
       ev.stopPropagation(); ev.preventDefault();

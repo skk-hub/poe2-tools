@@ -58,6 +58,23 @@
   .toolroot-gear .gf-srow-link:hover{border-color:var(--border-gold);background:var(--surface-2)}
   .toolroot-gear .gf-roi{font:11px var(--ff-mono);color:var(--mu)}
   .toolroot-gear .gf-best{font:700 11px var(--ff-ui);color:var(--gold-bright);border:1px solid var(--border-gold);border-radius:var(--r-sm);padding:1px 6px}
+  .toolroot-gear .gf-pin{font-size:12px;background:transparent;border:1px solid var(--bd);border-radius:var(--r-sm);padding:0 5px;cursor:pointer;line-height:1.7}
+  .toolroot-gear .gf-pin:hover{border-color:var(--border-gold)}
+  .toolroot-gear .gf-pin:disabled{opacity:.7;cursor:default;color:var(--gr)}
+  .toolroot-gear .gf-pins{margin-top:12px;border:1px solid var(--border-gold);border-radius:var(--r-sm);background:var(--surface-1)}
+  .toolroot-gear .gf-pins>summary{cursor:pointer;padding:9px 12px;font:600 13px var(--ff-ui);color:var(--gold-bright);user-select:none}
+  .toolroot-gear #gfPinBody{padding:4px 12px 12px;display:flex;flex-direction:column;gap:12px}
+  .toolroot-gear .gf-pincard{border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--surface-2);padding:10px}
+  .toolroot-gear .gf-pinhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font:13px var(--ff-ui);margin-bottom:8px}
+  .toolroot-gear .gf-pinhead b{color:var(--gold-bright);text-transform:capitalize}
+  .toolroot-gear .gf-unpin{margin-left:auto;background:transparent;border:1px solid var(--bd);border-radius:var(--r-sm);color:var(--mu);cursor:pointer;padding:0 7px}
+  .toolroot-gear .gf-unpin:hover{border-color:var(--rd);color:var(--rd)}
+  .toolroot-gear .gf-pintable{width:100%;border-collapse:collapse;font:12px var(--ff-mono)}
+  .toolroot-gear .gf-pintable th{text-align:left;color:var(--mu);font:600 11px var(--ff-ui);text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-bottom:1px solid var(--bd)}
+  .toolroot-gear .gf-pintable td{padding:3px 8px;border-bottom:1px solid var(--surface-1)}
+  .toolroot-gear .gf-pintable td:first-child{color:var(--mu)}
+  .toolroot-gear .gf-pintable td:nth-child(2),.toolroot-gear .gf-pintable td:nth-child(3){text-align:right;color:var(--tx)}
+  .toolroot-gear .gf-pintable td:nth-child(4){text-align:right}
   .toolroot-gear .gf-check{font:11px var(--ff-ui);color:var(--mu);background:transparent;border:1px solid var(--bd);border-radius:var(--r-sm);padding:1px 7px;cursor:pointer}
   .toolroot-gear .gf-check:hover{border-color:var(--border-gold);color:var(--tx)}
   .toolroot-gear .gf-verdict{font:11px var(--ff-mono);color:var(--mu)}

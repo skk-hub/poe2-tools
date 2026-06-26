@@ -369,6 +369,10 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
           <button class="btn btn-primary" id="gfRealRank" type="button">Rank by real DPS</button>
           <span class="sub">fetches in-budget candidates and scores each in Path of Building — accurate, uses a Trade2 search</span>
           <div id="gfRealOut" class="gf-realout"></div>
+          <details id="gfPins" class="gf-pins" hidden>
+            <summary>📌 Pinned to compare (<span id="gfPinCount">0</span>) — across slots</summary>
+            <div id="gfPinBody"></div>
+          </details>
           <details class="gf-weighted">
             <summary>Or build a weighted trade search to browse yourself (heuristic, no rate limit)</summary>
             <div class="gf-row">

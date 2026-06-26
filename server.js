@@ -5267,6 +5267,7 @@ const server = http.createServer(async (req, res) => {
               base: (e.item && (e.item.typeLine || e.item.baseType)) || "",
               account: (e.listing && e.listing.account && e.listing.account.name) || "",
               mods: linkMods,
+              stats: parseItemStats(txt, slot.baseId),   // new item's rolls, keyed like the equipped item → old-vs-new diff
               priceDiv: price.divine || 0, priceEx: price.exalted || 0,
               dDPS: dpsOfOut(stats) - dpsOfOut(base), dEHP: ehpOfOut(stats) - ehpOfOut(base),
             });
