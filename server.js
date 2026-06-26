@@ -2989,6 +2989,8 @@ const UPGRADE_STAT_IDS = {
   castSpeed: "explicit.stat_2891184298",          // #% increased Cast Speed
   levelAllSpellSkills: "explicit.stat_124131830", // # to Level of all Spell Skills
   levelAllMinionSkills: "explicit.stat_2162097452", // # to Level of all Minion Skills
+  levelAllMeleeSkills: "explicit.stat_9187492",   // # to Level of all Melee Skills (martial melee weapons)
+  levelAllAttackSkills: "explicit.stat_3035140377", // # to Level of all Attack Skills (martial weapons + amulet)
   mana: "explicit.stat_1050105434",               // # to maximum Mana
   manaRegen: "explicit.stat_789117908",           // #% increased Mana Regeneration Rate
   spiritPct: "explicit.stat_3984865854",          // #% increased Spirit (sceptre)
@@ -3136,9 +3138,9 @@ const PRESERVE_CONTROL_STATS_BY_SLOT = {
   // The add-filter dropdown shows EXACTLY this set per slot (no global append).
   // Martial weapons (bow + injected melee/ranged) share `bow`; casters use the
   // injected CASTER/SCEPTRE key sets.
-  bow: ["dps", "critChance", "critDamage", "localPhysDamage", "localAttackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos", "str", "dex", "int"],
+  bow: ["dps", "critChance", "critDamage", "localPhysDamage", "localAttackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos", "levelAllAttackSkills", "levelAllMeleeSkills", "str", "dex", "int"],
   quiver: ["attackCrit", "critDamage", "bowDamage", "projectileSpeed", "projectileLevels", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "manaOnKill", "str", "dex", "int", "rarity"],
-  amulet: ["life", "energyShield", "mana", "spirit", "critChance", "critDamage", "spellDamage", "castSpeed", "levelAllSpellSkills", "projectileLevels", "manaRegen", "str", "dex", "int", "totalAllAttributes", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
+  amulet: ["life", "energyShield", "mana", "spirit", "critChance", "critDamage", "spellDamage", "castSpeed", "levelAllSpellSkills", "levelAllAttackSkills", "projectileLevels", "manaRegen", "str", "dex", "int", "totalAllAttributes", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   helmet: ["energyShield", "evasion", "armour", "life", "mana", "critChance", "levelAllMinionSkills", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   chest: ["energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   boots: ["movementSpeed", "energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
@@ -3359,6 +3361,8 @@ function parseItemStats(text, slotHint) {
   for (const match of source.matchAll(/\+?(\d+) to maximum Mana/gi)) addStat(stats, "mana", match[1]);
   for (const match of source.matchAll(/\+?(\d+) to Level of all Spell Skills/gi)) addStat(stats, "levelAllSpellSkills", match[1]);
   for (const match of source.matchAll(/\+?(\d+) to Level of all Minion Skills/gi)) addStat(stats, "levelAllMinionSkills", match[1]);
+  for (const match of source.matchAll(/\+?(\d+) to Level of all Melee Skills/gi)) addStat(stats, "levelAllMeleeSkills", match[1]);
+  for (const match of source.matchAll(/\+?(\d+) to Level of all Attack Skills/gi)) addStat(stats, "levelAllAttackSkills", match[1]);
   // Caster crit (folded into critChance/critDamage; slot override picks the
   // spell-variant trade id on caster slots).
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance for Spells/gi)) addStat(stats, "critChance", match[1]);
@@ -4102,6 +4106,8 @@ function statLabel(key) {
     castSpeed: "Cast speed",
     levelAllSpellSkills: "+Level of all Spell skills",
     levelAllMinionSkills: "+Level of all Minion skills",
+    levelAllMeleeSkills: "+Level of all Melee skills",
+    levelAllAttackSkills: "+Level of all Attack skills",
     mana: "Maximum mana",
     manaRegen: "Mana regeneration",
     rarity: "Rarity",
@@ -4507,6 +4513,14 @@ const GEAR_PROBE_TEMPLATES = {
   flatFireAttack: [20, (n) => `Adds ${n} to ${n} Fire Damage to Attacks`],
   flatColdAttack: [20, (n) => `Adds ${n} to ${n} Cold Damage to Attacks`],
   flatLightningAttack: [20, (n) => `Adds ${n} to ${n} Lightning Damage to Attacks`],
+  // Skill-level mods — small increment (a single level is a big jump), so PoB measures
+  // the real per-level DPS. These were in the filter lists but had NO probe template,
+  // so +skills never got a weight and were never searched for. Now they are.
+  levelAllSpellSkills: [2, (n) => `+${n} to Level of all Spell Skills`],
+  levelAllMinionSkills: [2, (n) => `+${n} to Level of all Minion Skills`],
+  levelAllMeleeSkills: [2, (n) => `+${n} to Level of all Melee Skills`],
+  levelAllAttackSkills: [2, (n) => `+${n} to Level of all Attack Skills`],
+  projectileLevels: [2, (n) => `+${n} to Level of all Projectile Skills`],
 };
 const dpsOfOut = (o) => (o && (o.FullDPS || o.CombinedDPS || o.TotalDPS)) || 0;
 const ehpOfOut = (o) => (o && o.TotalEHP) || 0;
