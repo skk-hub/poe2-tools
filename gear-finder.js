@@ -159,8 +159,9 @@ window.__viewInit["gear-finder"] = function () {
       // No seller-status badge: these are instant-buyout (async) listings, buyable even
       // when the seller is offline, so online/afk/offline would just mislead.
       const best = i === bestIdx ? ` <span class="gf-best" title="most ${hasDps ? "DPS" : "EHP"} per exalted of these upgrades">★ best value</span>` : "";
-      // "Check price" runs a 2nd search: is this the cheapest at this power level?
-      const check = (c.mods && c.mods.length) ? ` <button type="button" class="gf-check" data-idx="${i}" title="floor price for this item's top rolls — how much of the price is core stats vs extras">price floor</button><span class="gf-verdict"></span>` : "";
+      // "Best price?" scores cheaper instant-buyout items in PoB — is any as good for less?
+      // Only worth it for items costing ≥1 div (cheap ones aren't worth a price hunt).
+      const check = (c.mods && c.mods.length && c.priceDiv >= 1 && c.dDPS > 0) ? ` <button type="button" class="gf-check" data-idx="${i}" title="score cheaper instant-buyout items in PoB — is any as good for less?">best price?</button><span class="gf-verdict"></span>` : "";
       const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${best}${check}`;
       const canOpen = (c.base && c.account) || state.realSearchUrl;
       return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
@@ -215,17 +216,14 @@ window.__viewInit["gear-finder"] = function () {
       ev.stopPropagation(); ev.preventDefault();
       const c = state.realCands[+chk.dataset.idx]; if (!c) return;
       const out = chk.parentElement.querySelector(".gf-verdict");
-      chk.disabled = true; out.className = "gf-verdict"; out.textContent = "checking…";
-      const d = await api("/api/gear/value-check", { league: state.league, slot: state.curSlot, mods: c.mods }).catch(() => null);
-      if (!d || d.error || d.limited) { chk.disabled = false; out.textContent = d && d.limited ? "rate-limited — retry" : "check failed"; return; }
-      // Honest framing: this is the FLOOR price for the item's top weighted rolls — it
-      // can't capture the whole item (life/res/etc aren't in the weighted stats), so it
-      // says how much of the price is "core stats" vs premium, not "identical, cheaper".
-      const cheapStr = d.cheapestDiv ? `${fmt(d.cheapestDiv)} div` : `${fmt(d.cheapestEx || 0)} ex`;
-      const mine = c.priceEx || 0, cheap = d.cheapestEx || 0;
-      if (d.total <= 1) { out.textContent = "✓ only listing with your top rolls"; out.classList.add("good"); }
-      else if (mine > 0 && cheap > 0 && mine <= cheap * 1.3) { out.textContent = `✓ near the floor — top rolls start at ${cheapStr} (${d.total} listed)`; out.classList.add("good"); }
-      else { out.textContent = `top rolls from ${cheapStr} (${d.total} listed) — you're paying extra for the other mods`; out.classList.add("warn"); }
+      chk.disabled = true; out.className = "gf-verdict"; out.textContent = "scoring cheaper options in PoB…";
+      const slot = state.curSlot, pobSlot = state.slots[slot] && state.slots[slot].pobSlot;
+      // PoB-based: are any CHEAPER instant-buyout items actually this good (real ΔDPS)?
+      const d = await api("/api/gear/value-check", { league: state.league, slot, pobSlot, buildXml: state.xml, mods: c.mods, maxPriceDiv: c.priceDiv, targetDDPS: c.dDPS }).catch(() => null);
+      if (!d || d.error || d.limited || d.available === false) { chk.disabled = false; out.textContent = d && d.limited ? "rate-limited — retry" : d && d.available === false ? "PoB unavailable" : "check failed"; return; }
+      if (d.cheaper) { const cp = d.cheaper.priceDiv ? `${fmt(d.cheaper.priceDiv)} div` : `${fmt(d.cheaper.priceEx || 0)} ex`; out.textContent = `↓ same DPS for ${cp}: ${esc(d.cheaper.name)} — you'd overpay`; out.classList.add("warn"); }
+      else if (d.scanned > 0) { out.textContent = `✓ best price — none of ${d.scanned} cheaper items match this DPS`; out.classList.add("good"); }
+      else { out.textContent = "✓ nothing cheaper to compare — best price"; out.classList.add("good"); }
       chk.remove();
       return;
     }

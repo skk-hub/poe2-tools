@@ -5312,33 +5312,51 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Value check: is this candidate the cheapest at its power? Search instant-buyout
-    // items of the same slot with AT LEAST its top rolled mods, sorted price asc, and
-    // return how many there are + the cheapest price. One search + one fetch per click.
+    // Value check (PoB, not stat-thresholds): is there a CHEAPER item that gives the same
+    // real DPS? Search instant-buyout items of the slot priced UNDER this one (gated on its
+    // top rolls so we don't score junk), cheapest first, SCORE each in PoB, and return the
+    // cheapest whose ΔDPS matches. Stat-floor matching was useless (1000s of junk clear a
+    // couple thresholds); only PoB tells you an item is actually as good.
     if (url.pathname === "/api/gear/value-check" && req.method === "POST") {
-      const input = await readJson(req, 256 * 1024);
+      const input = await readJson(req, 8 * 1024 * 1024);
+      if (!(await pob.ready())) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
       if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true }), "application/json; charset=utf-8"); return; }
       const slot = gearSearchSlots()[String(input.slot || "")];
       if (!slot) { send(res, 400, JSON.stringify({ error: "Unknown slot" }), "application/json; charset=utf-8"); return; }
+      const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
       const league = sanitizeLeague(input.league || "Runes of Aldur");
-      const mods = gearStatFilters(input.mods, 3);   // up to 3 of the item's rolls → tighter "this good"
-      if (!mods.length) { send(res, 400, JSON.stringify({ error: "no comparable rolls on this item" }), "application/json; charset=utf-8"); return; }
+      const mods = gearStatFilters(input.mods, 2);   // gate on the item's top 2 rolls (relevance, not equivalence)
+      const maxDiv = Number(input.maxPriceDiv) || 0;  // this candidate's price — look strictly cheaper
+      const targetDDPS = Number(input.targetDDPS) || 0;
+      if (!mods.length || maxDiv <= 0 || targetDDPS <= 0) { send(res, 400, JSON.stringify({ error: "need rolls, price and target DPS" }), "application/json; charset=utf-8"); return; }
       const q = {
-        query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) },
+        query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } }, trade_filters: { filters: { price: { option: "divine", max: maxDiv } } } }, stats: gearStatGroup(mods) },
         sort: { price: "asc" },
       };
       try {
         const { search } = await gearTradeSearch(q, league);
-        const total = Number(search.total) || (search.result || []).length;
-        const firstId = (search.result || [])[0];
-        let cheapestDiv = 0, cheapestEx = 0;
-        if (firstId) {
-          const rates = await getExchangeRates(league).catch(() => ({}));
-          const f = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + firstId + "?query=" + encodeURIComponent(search.id));
-          const p = listingPriceFromEntry((f.result || [])[0] || {}, rates) || {};
-          cheapestDiv = p.divine || 0; cheapestEx = p.exalted || 0;
+        const ids = (search.result || []).slice(0, 20);   // cheapest 20 under this price, 2 fetch calls
+        if (!ids.length) { send(res, 200, JSON.stringify({ best: false, scanned: 0 }), "application/json; charset=utf-8"); return; }
+        const rates = await getExchangeRates(league).catch(() => ({}));
+        await pob.load(String(input.buildXml || ""));
+        const baseDps = dpsOfOut(await pob.calc(pobSlot, ""));
+        let cheaper = null, scanned = 0;
+        for (let i = 0; i < ids.length && !cheaper; i += 10) {
+          let fetched;
+          try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id)); }
+          catch (e) { break; }
+          for (const e of fetched.result || []) {   // already price-asc → first match IS the cheapest
+            const txt = pobItemFromTradeEntry(e); if (!txt) continue;
+            let st; try { st = await pob.calc(pobSlot, txt); } catch { continue; }
+            scanned++;
+            if (dpsOfOut(st) - baseDps >= targetDDPS * 0.9) {
+              const p = listingPriceFromEntry(e, rates) || {};
+              cheaper = { name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), priceDiv: p.divine || 0, priceEx: p.exalted || 0 };
+              break;
+            }
+          }
         }
-        send(res, 200, JSON.stringify({ total, cheapestDiv, cheapestEx }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ best: !cheaper, cheaper, scanned }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true }), "application/json; charset=utf-8"); return; }
         send(res, 200, JSON.stringify({ error: String(err.message) }), "application/json; charset=utf-8");
