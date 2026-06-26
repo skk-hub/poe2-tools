@@ -2,8 +2,9 @@ window.__viewInit = window.__viewInit || {};
 window.__viewInit["gear-finder"] = function () {
   const $ = (id) => document.getElementById(id);
   const els = {
-    mode: $("gfMode"), builds: $("gfBuilds"), load: $("gfLoad"),
-    code: $("gfCode"), importBtn: $("gfImport"),
+    mode: $("gfMode"), builds: $("gfBuilds"), load: $("gfLoad"), folderRow: $("gfFolderRow"),
+    saved: $("gfSaved"), savedRow: $("gfSavedRow"), loadSaved: $("gfLoadSaved"), delSaved: $("gfDelSaved"),
+    code: $("gfCode"), importBtn: $("gfImport"), paste: $("gfPaste"), saveName: $("gfSaveName"), saveBuild: $("gfSaveBuild"), saveRow: $("gfSaveRow"),
     build: $("gfBuild"), slots: $("gfSlots"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), analyze: $("gfAnalyze"),
     status: $("gfStatus"), weights: $("gfWeights"),
@@ -43,13 +44,28 @@ window.__viewInit["gear-finder"] = function () {
     state.headless = !!d.headless;
     els.mode.className = "gf-badge " + (d.headless ? "live" : "fallback");
     els.mode.textContent = d.headless ? "Headless DPS" : "Stat-only (no PoB)";
-    els.builds.innerHTML = (d.builds || []).map((b) => `<option value="${esc(b.file)}">${esc(b.name)}</option>`).join("")
-      || `<option value="">(no saved builds found)</option>`;
+    els.builds.innerHTML = (d.builds || []).map((b) => `<option value="${esc(b.file)}">${esc(b.name)}</option>`).join("");
+    els.folderRow.hidden = !(d.builds || []).length;   // PoB-folder picker only useful where the server sees the Builds dir
+    refreshSaved();
+  }
+
+  // Named build saves in this browser (localStorage) — so you don't re-paste the
+  // PoB code every visit. Stores the parsed build XML under a name.
+  const SAVES_KEY = "poe2.gearFinder.builds";
+  const loadSaves = () => { try { return JSON.parse(localStorage.getItem(SAVES_KEY) || "{}"); } catch { return {}; } };
+  const persistSaves = (o) => { try { localStorage.setItem(SAVES_KEY, JSON.stringify(o)); } catch {} };
+  function refreshSaved() {
+    const saves = loadSaves();
+    const names = Object.keys(saves).sort((a, b) => a.localeCompare(b));
+    els.saved.innerHTML = names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+    els.savedRow.hidden = !names.length;
+    if (els.paste) els.paste.open = !names.length && els.folderRow.hidden;  // first visit → open the paste box
   }
 
   function renderBuild(d) {
     if (d.error) { setStatus(d.error, true); return; }
     state.xml = d.xml; state.slots = d.slots || {};
+    els.saveRow.hidden = false;
     const b = (d.headless && d.headless.stats) || d.build || {};
     const tiles = [["Life", b.Life], ["Energy Shield", b.EnergyShield], ["EHP", ehpOf(b) || b.TotalEHP],
       ["DPS", (b.FullDPS || b.CombinedDPS || b.TotalDPS)], ["Fire", b.FireResist], ["Cold", b.ColdResist],
@@ -126,6 +142,26 @@ window.__viewInit["gear-finder"] = function () {
     const code = (els.code.value || "").trim(); if (!code) { setStatus("Paste a PoB code first.", true); return; }
     setStatus("Importing…"); renderBuild(await api("/api/gear/import", { code }));
   });
+  els.saveBuild.addEventListener("click", () => {
+    const name = (els.saveName.value || "").trim();
+    if (!name) { setStatus("Type a name to save this build.", true); return; }
+    if (!state.xml) { setStatus("Import a build first, then save it.", true); return; }
+    const saves = loadSaves(); saves[name] = state.xml; persistSaves(saves);
+    els.saveName.value = ""; refreshSaved(); els.saved.value = name;
+    setStatus(`Saved "${name}" in this browser — pick it from My builds next time.`);
+  });
+  els.loadSaved.addEventListener("click", async () => {
+    const name = els.saved.value, saves = loadSaves();
+    if (!name || !saves[name]) { setStatus("No saved build selected.", true); return; }
+    setStatus(`Loading "${name}"…`);
+    renderBuild(await api("/api/gear/import", { xml: saves[name] }));
+  });
+  els.delSaved.addEventListener("click", () => {
+    const name = els.saved.value, saves = loadSaves();
+    if (!name || !saves[name]) return;
+    delete saves[name]; persistSaves(saves); refreshSaved();
+    setStatus(`Deleted "${name}".`);
+  });
   els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) selectSlot(b.dataset.slot); });
   els.analyze.addEventListener("click", analyzeSlot);
   els.scoreBtn.addEventListener("click", scoreItems);
@@ -157,5 +193,6 @@ window.__viewInit["gear-finder"] = function () {
     else { setStatus("Couldn't build a basic search: " + (d.error || "no results"), true); }
   });
 
+  refreshSaved();
   loadBuildsList();
 };

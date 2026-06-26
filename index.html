@@ -337,16 +337,25 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <h1>Gear Upgrade Finder</h1>
         <p class="sub">Import your Path of Building build, then find trade upgrades ranked by real DPS/EHP gain. <span id="gfMode" class="gf-badge"></span></p>
       </div>
-      <div class="gf-row">
-        <label>Saved build <select id="gfBuilds"></select></label>
-        <button class="btn btn-primary" id="gfLoad" type="button">Load build</button>
+      <div class="gf-row" id="gfSavedRow" hidden>
+        <label>My builds <select id="gfSaved"></select></label>
+        <button class="btn btn-primary" id="gfLoadSaved" type="button">Load</button>
+        <button class="btn" id="gfDelSaved" type="button">Delete</button>
       </div>
-      <details class="gf-paste">
-        <summary>…or paste a Path of Building export code</summary>
+      <div class="gf-row" id="gfFolderRow" hidden>
+        <label>PoB folder <select id="gfBuilds"></select></label>
+        <button class="btn" id="gfLoad" type="button">Load build</button>
+      </div>
+      <details class="gf-paste" id="gfPaste">
+        <summary>Paste a Path of Building export code</summary>
         <textarea id="gfCode" spellcheck="false" placeholder="Paste a PoB export code (Import/Export → Generate) here…"></textarea>
-        <button class="btn" id="gfImport" type="button">Import code</button>
+        <button class="btn btn-primary" id="gfImport" type="button">Import code</button>
       </details>
       <div id="gfBuild" class="gf-build"></div>
+      <div class="gf-row" id="gfSaveRow" hidden>
+        <label>Save this build as <input id="gfSaveName" placeholder="name it (e.g. Lightning Spear)" style="width:18em"></label>
+        <button class="btn" id="gfSaveBuild" type="button">Save</button>
+      </div>
       <div id="gfSlots" class="gf-slots"></div>
       <div class="gf-search" id="gfSearchPanel" hidden>
         <div class="gf-row">

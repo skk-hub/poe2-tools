@@ -5036,6 +5036,8 @@ const server = http.createServer(async (req, res) => {
           xml = fs.readFileSync(path.join(POB_BUILDS_DIR, path.basename(String(input.buildFile))), "utf8"); // basename = traversal guard
         } else if (input.code) {
           xml = decodePobCode(input.code);
+        } else if (input.xml) {
+          xml = String(input.xml); // a build saved in the browser (localStorage)
         } else {
           send(res, 400, JSON.stringify({ error: "Provide a PoB code or buildFile" }), "application/json; charset=utf-8"); return;
         }

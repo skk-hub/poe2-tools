@@ -106,6 +106,7 @@ function staticChecks() {
     check(fs.existsSync("pob.js") && fs.existsSync("pob-bridge.lua") && /GetMiscCalculator/.test(read("pob-bridge.lua")), "headless bridge present (pob.js + pob-bridge.lua)");
     check(/snippetText/.test(read("gear-finder.js")) && /BOOKMARKLET/.test(read("gear-finder.js")) && idx.includes('id="gfBookmarklet"') && idx.includes('id="gfCopyQuery"') && idx.includes('id="gfWeights"'), "gear-finder: weight breakdown + bookmarklet/copy-search (+ console fallback)");
     check(/\/api\/gear\/score/.test(srvG) && /scoreItems/.test(read("gear-finder.js")) && idx.includes('id="gfItem"'), "gear-finder has paste-an-item exact DPS/EHP gain (headless, no trade)");
+    check(/poe2\.gearFinder\.builds/.test(read("gear-finder.js")) && idx.includes('id="gfSaved"') && /else if \(input\.xml\)/.test(srvG), "gear-finder has named localStorage build saves (+ import accepts xml)");
     check(/POB_BRIDGE_URL/.test(read("pob.js")) && /async function ready/.test(read("pob.js")) && fs.existsSync("pob-agent.js"), "pob.js remote mode + pob-agent.js (VM→PC headless bridge)");
     check(fs.existsSync("ecosystem.config.js") && /pob-agent/.test(read("ecosystem.config.js")), "pm2 ecosystem config for the pob-agent");
     const zlib = require("zlib");
