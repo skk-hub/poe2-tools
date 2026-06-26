@@ -7,6 +7,10 @@ const zlib = require("zlib");
 const { exec } = require("child_process");
 const { createTradeQueue } = require("./trade-queue");
 const pob = require("./pob.js");   // headless Path of Building bridge (Gear Finder)
+// base type name -> { slot, implicit? } from PoB's bundled GGG item data (gen-pob-bases.js).
+// Optional: a missing file just falls the weapon-slot detection back to keyword sniffing.
+let POB_BASES = {};
+try { POB_BASES = require("./pob-bases.js"); } catch { /* not generated → keyword fallback */ }
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = 17777;
@@ -4419,18 +4423,30 @@ function unescapeXml(s) {
   return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'").replace(/&amp;/g, "&");
 }
 
-// Best-effort weapon-slot id from a PoB item's text (no "Item Class:" line, so
-// match the base-type word; crossbow/quiver before bow).
+// Weapon-slot id from a PoB item's text (no "Item Class:" line). PRIMARY: match the
+// base-type line against PoB's base list — authoritative, handles melee bases whose
+// name lacks the class word (e.g. "Gladius"→onesword) and quarterstaves (PoB types
+// them "Staff"/subType Warstaff). FALLBACK: keyword sniff for magic items (base is
+// buried in the name) or bases not in the list.
+const WEAPON_SLOT_IDS = new Set(["bow", "crossbow", "quarterstaff", "spear", "claw", "dagger",
+  "onesword", "twosword", "oneaxe", "twoaxe", "onemace", "twomace", "flail", "wand", "staff", "sceptre", "quiver"]);
 function pobWeaponSlot(raw) {
-  const t = raw.toLowerCase();
+  for (const line of String(raw).split(/\r?\n/, 6)) {
+    const b = POB_BASES[line.trim()];
+    if (b && WEAPON_SLOT_IDS.has(b.slot)) return b.slot;
+  }
+  const t = String(raw).toLowerCase();
   if (/quiver/.test(t)) return "quiver";
   if (/crossbow/.test(t)) return "crossbow";
   if (/\bbow\b/.test(t)) return "bow";
   if (/quarterstaff|warstaff/.test(t)) return "quarterstaff";   // martial — must beat the bare-"staff" caster match below
   if (/\bstaff\b|staves/.test(t)) return "staff";
   if (/sceptre/.test(t)) return "sceptre";
-  if (/wand/.test(t)) return "wand";
-  if (/spear/.test(t)) return "spear";
+  if (/\bwand\b/.test(t)) return "wand";
+  if (/\bspear\b/.test(t)) return "spear";
+  if (/\bclaw\b/.test(t)) return "claw";
+  if (/\bdagger\b/.test(t)) return "dagger";
+  if (/\bflail\b/.test(t)) return "flail";
   return null;
 }
 
@@ -4587,7 +4603,11 @@ function reconstructItem(currentRaw, candidateRaw) {
     mods.push(line.replace(/\{[^}]*\}/g, "").trim());
   }
   if (!mods.length) return null;
-  return `Rarity: RARE\nPasted Candidate\n${base}\nItem Level: ${ilvl}\nImplicits: 0\n${mods.join("\n")}`;
+  // Graft the base's real implicit (from PoB data) at mid-roll, so a baseless paste
+  // scores closer to the truth. Ranges "(20-30)" → midpoint; non-ranged left as-is.
+  const baseImpl = (POB_BASES[base] && POB_BASES[base].implicit) || null;
+  const implLine = baseImpl ? baseImpl.replace(/\((\d+)-(\d+)\)/g, (_, a, b) => Math.round((+a + +b) / 2)) : null;
+  return `Rarity: RARE\nPasted Candidate\n${base}\nItem Level: ${ilvl}\nImplicits: ${implLine ? 1 : 0}\n${implLine ? implLine + "\n" : ""}${mods.join("\n")}`;
 }
 
 // GGG's listing.account.online is null when offline, otherwise an object that
