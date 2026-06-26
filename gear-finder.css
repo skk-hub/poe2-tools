@@ -54,5 +54,6 @@
   .toolroot-gear .gf-delta.up{color:var(--gr)}
   .toolroot-gear .gf-delta.down{color:var(--rd)}
   .toolroot-gear .gf-delta.flat{color:var(--mu)}
+  .toolroot-gear .gf-approx{color:var(--gd);font:11px var(--ff-mono)}
 
   .toolroot-gear .gf-foot{margin-top:16px;color:var(--mu);font:11px var(--ff-mono);line-height:1.6}

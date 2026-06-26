@@ -4493,6 +4493,28 @@ function buildWeightedGearQuery(slot, weights, league, maxPriceDiv) {
   return q;
 }
 
+// Trade-site copies usually OMIT the item name + base type (they start at the
+// item class), and PoB can't read an item with no base. Fallback: graft the
+// pasted item's MOD lines onto the user's CURRENT item's base — the DPS impact
+// (mod-driven) is accurate; defences use the current base (approximate). Returns
+// a PoB-parseable item string, or null if it can't.
+function reconstructItem(currentRaw, candidateRaw) {
+  const cl = String(currentRaw || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const rarity = ((cl[0] || "").match(/Rarity:\s*(\w+)/i) || [])[1] || "";
+  const base = /RARE|UNIQUE|RELIC/i.test(rarity) ? cl[2] : cl[1]; // rarity,name,base (rare) | rarity,base (magic/normal)
+  if (!base) return null;
+  const ilvl = (String(candidateRaw).match(/Item Level:\s*(\d+)/i) || [])[1] || "81";
+  const mods = [];
+  for (const line of String(candidateRaw).split("\n").map((l) => l.trim())) {
+    if (!line) continue;
+    if (/^[A-Za-z][A-Za-z '/]*:\s/.test(line)) continue;   // "Label: value" property/meta line (Evasion Rating: 94, Requires:, Item Level:, Sum:)
+    if (!/\d/.test(line)) continue;                        // mods carry a number; bare class/base words and flavour don't
+    mods.push(line.replace(/\{[^}]*\}/g, "").trim());
+  }
+  if (!mods.length) return null;
+  return `Rarity: RARE\nPasted Candidate\n${base}\nItem Level: ${ilvl}\nImplicits: 0\n${mods.join("\n")}`;
+}
+
 // GGG's listing.account.online is null when offline, otherwise an object that
 // may carry status "afk"/"dnd" (absent = plain online). Note: this reflects the
 // seller, not whether the item is still in their stash.
@@ -5103,13 +5125,23 @@ const server = http.createServer(async (req, res) => {
       const input = await readJson(req, 4 * 1024 * 1024);
       if (!(await pob.ready())) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
       const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
+      const currentRaw = String((input.current && input.current.raw) || "");
       try {
         await pob.load(String(input.buildXml || ""));
         const base = await pob.calc(pobSlot, "");
         const results = [];
         for (const it of (Array.isArray(input.items) ? input.items : []).slice(0, 5)) {
-          try { results.push({ name: String(it.name || ""), stats: await pob.calc(pobSlot, String(it.raw || "")) }); }
-          catch (e) { results.push({ name: String(it.name || ""), error: String(e.message) }); }
+          const name = String(it.name || "");
+          try {
+            results.push({ name, stats: await pob.calc(pobSlot, String(it.raw || "")) });
+          } catch (e1) {
+            // No readable base in the paste → graft its mods onto the current base.
+            const synth = currentRaw ? reconstructItem(currentRaw, String(it.raw || "")) : null;
+            if (synth) {
+              try { results.push({ name, stats: await pob.calc(pobSlot, synth), approx: true }); }
+              catch (e2) { results.push({ name, error: String(e2.message) }); }
+            } else { results.push({ name, error: String(e1.message) }); }
+          }
         }
         send(res, 200, JSON.stringify({ available: true, base, results }), "application/json; charset=utf-8");
       } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }

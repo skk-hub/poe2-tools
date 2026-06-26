@@ -93,7 +93,8 @@ window.__viewInit["gear-finder"] = function () {
     const blocks = text.split(/(?=Item Class:)/i).map((b) => b.trim()).filter(Boolean);
     const items = (blocks.length ? blocks : [text]).slice(0, 5).map((b) => ({ raw: b, name: ((b.match(/Rarity:[^\n]*\n([^\n]+)/i) || [])[1] || "Pasted item").trim() }));
     els.scoreBtn.disabled = true; els.scoreOut.textContent = "Checking with Path of Building…";
-    const d = await api("/api/gear/score", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, items }).catch((e) => ({ error: String(e) }));
+    const sl = state.slots[state.curSlot] || {};
+    const d = await api("/api/gear/score", { buildXml: state.xml, slot: state.curSlot, pobSlot: sl.pobSlot, current: { raw: sl.raw }, items }).catch((e) => ({ error: String(e) }));
     els.scoreBtn.disabled = false;
     if (d.available === false) { els.scoreOut.textContent = "Headless Path of Building isn't available."; return; }
     if (d.error) { els.scoreOut.textContent = "Failed: " + d.error; return; }
@@ -101,7 +102,8 @@ window.__viewInit["gear-finder"] = function () {
     els.scoreOut.innerHTML = (d.results || []).map((r) => {
       if (r.error || !r.stats) return `<div class="gf-srow">${esc(r.name)} — <span class="gf-delta down">${esc((r.error || "couldn't read this item").replace(/^pob:\s*/, ""))}</span></div>`;
       const dD = dpsOf(r.stats) - dpsOf(d.base), dE = ehpOf(r.stats) - ehpOf(d.base);
-      return `<div class="gf-srow"><b>${esc(r.name)}</b> ${hasDps ? deltaSpan(dD, "DPS") : ""} ${deltaSpan(dE, "EHP")}</div>`;
+      const note = r.approx ? ` <span class="gf-approx">≈ base assumed (copy had no base type) — DPS accurate, EHP rough</span>` : "";
+      return `<div class="gf-srow"><b>${esc(r.name)}</b> ${hasDps ? deltaSpan(dD, "DPS") : ""} ${deltaSpan(dE, "EHP")}${note}</div>`;
     }).join("") || "No items parsed.";
   }
 
