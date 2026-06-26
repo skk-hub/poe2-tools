@@ -3036,6 +3036,12 @@ function gearStatFilters(mods) {
 // PoE2 trade 400s on an empty "and" group, so omit the stats group when there are none.
 const gearStatGroup = (filters) => (filters.length ? [{ type: "and", filters }] : []);
 
+// Gear searches use status "securable" = INSTANT BUYOUT only (async Merchant-Tab
+// listings). These are the actually-buyable items — no whisper, the seller can be
+// offline, the buyer teleports and buys. The old "online" pool is whisper/in-person
+// listings (method:psapi) that are largely stale now that trading moved in-game.
+const GEAR_TRADE_STATUS = "securable";
+
 // Run a gear trade2 SEARCH. The league lives in the URL (not the query body), and a
 // stale/wrong client league makes GGG reject a perfectly valid body as "Invalid query"
 // (code 2). So if a 400 comes back on a non-default league, retry ONCE on DEFAULT_LEAGUE
@@ -4537,7 +4543,7 @@ function buildWeightedGearQuery(slot, weights, league, maxPriceDiv) {
   if (top && top.cur > 0) stats.push({ type: "and", filters: [{ id: top.statId, value: { min: Math.floor(top.cur * 0.6) } }] });
   const q = {
     query: {
-      status: { option: "online" },
+      status: { option: GEAR_TRADE_STATUS },
       filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } },
       stats,
     },
@@ -5155,7 +5161,7 @@ const server = http.createServer(async (req, res) => {
       // Gate on the top 2 stats at your current rolls ("and" — count groups 400 on PoE2 trade).
       const mods = gearStatFilters(Array.isArray(input.mods) ? input.mods : (Array.isArray(input.statIds) ? input.statIds.map((id) => ({ statId: id, min: 1 })) : []));
       const q = {
-        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) },
+        query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) },
         sort: { price: "asc" },
       };
       if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
@@ -5218,7 +5224,7 @@ const server = http.createServer(async (req, res) => {
       const weighted = !!POESESSID && weights.length > 0;
       const q = weighted
         ? buildWeightedGearQuery(slot, weights, league, Number(input.maxPriceDiv) || 0)
-        : { query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) }, sort: { price: "asc" } };
+        : { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) }, sort: { price: "asc" } };
       if (!weighted && Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
       try {
         const { search, league: usedLeague } = await gearTradeSearch(q, league);
@@ -5253,10 +5259,6 @@ const server = http.createServer(async (req, res) => {
               // item can be buried; this lands right on it).
               base: (e.item && (e.item.typeLine || e.item.baseType)) || "",
               account: (e.listing && e.listing.account && e.listing.account.name) || "",
-              // Seller live status — the real "can I buy this now" signal (AFK/offline
-              // sellers usually won't respond), more reliable than listing age.
-              online: (() => { const o = e.listing && e.listing.account && e.listing.account.online; return o ? (o.status === "afk" ? "afk" : "online") : "offline"; })(),
-              ageDays: (e.listing && e.listing.indexed) ? Math.floor((Date.now() - Date.parse(e.listing.indexed)) / 86400000) : null,
               priceDiv: price.divine || 0, priceEx: price.exalted || 0,
               dDPS: dpsOfOut(stats) - dpsOfOut(base), dEHP: ehpOfOut(stats) - ehpOfOut(base),
             });
@@ -5290,7 +5292,7 @@ const server = http.createServer(async (req, res) => {
       const base = String(input.base || "").trim();
       const account = String(input.account || "").trim();
       if (!base || !account) { send(res, 400, JSON.stringify({ error: "need base + account" }), "application/json; charset=utf-8"); return; }
-      const q = { query: { status: { option: "any" }, type: base, filters: { trade_filters: { filters: { account: { input: account } } } } }, sort: { price: "asc" } };
+      const q = { query: { status: { option: GEAR_TRADE_STATUS }, type: base, filters: { trade_filters: { filters: { account: { input: account } } } } }, sort: { price: "asc" } };
       try {
         const { search, league: used } = await gearTradeSearch(q, league);
         const url2 = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(used) + "/" + search.id : "";

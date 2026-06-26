@@ -57,10 +57,6 @@
   .toolroot-gear .gf-srow-link{text-decoration:none;cursor:pointer;transition:border-color .12s,background .12s}
   .toolroot-gear .gf-srow-link:hover{border-color:var(--border-gold);background:var(--surface-2)}
   .toolroot-gear .gf-delta{font:700 13px var(--ff-mono)}
-  .toolroot-gear .gf-status{font:11px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em}
-  .toolroot-gear .gf-online{color:var(--gr)}
-  .toolroot-gear .gf-afk{color:var(--gold-deep)}
-  .toolroot-gear .gf-offline{color:var(--mu)}
   .toolroot-gear .gf-delta.up{color:var(--gr)}
   .toolroot-gear .gf-delta.down{color:var(--rd)}
   .toolroot-gear .gf-delta.flat{color:var(--mu)}

@@ -150,14 +150,13 @@ window.__viewInit["gear-finder"] = function () {
     state.realSearchUrl = d.searchUrl || "";   // fallback when an item lacks base/account
     els.realOut.innerHTML = cands.map((c) => {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
-      const age = c.ageDays == null ? "" : (c.ageDays <= 0 ? "listed today" : "listed " + c.ageDays + "d ago");
-      const st = c.online || "";   // online | afk | offline — the real "will they respond" signal
-      const stHtml = st ? ` <span class="gf-status gf-${st}" title="seller status${age ? " · " + age : ""}">${st}</span>` : "";
-      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${stHtml}`;
+      // No seller-status badge: these are instant-buyout (async) listings, buyable even
+      // when the seller is offline, so online/afk/offline would just mislead.
+      const inner = `<b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>`;
       const canOpen = (c.base && c.account) || state.realSearchUrl;
       return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
     }).join("");
-    setStatus(`Scored ${d.scored || cands.length} candidates in PoB, showing the top ${cands.length}${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${d.partial ? " — stopped early on the rate limit" : ""}.`);
+    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB, showing the top ${cands.length}${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${d.partial ? " — stopped early on the rate limit" : ""}.`);
   }
 
   function snippetText() {
