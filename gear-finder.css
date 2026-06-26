@@ -1,0 +1,41 @@
+/* .toolroot-gear — Gear Upgrade Finder (prefixed scope) */
+  .toolroot-gear{display:block;max-width:1100px}
+  .toolroot-gear h1{margin:0;color:var(--gd);font:700 22px/1.1 var(--ff-display);letter-spacing:.04em}
+  .toolroot-gear .sub{color:var(--mu);font:12px var(--ff-mono);margin:6px 0 0}
+  .toolroot-gear .gf-badge{display:inline-block;font:700 10px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:var(--r-pill);border:1px solid var(--bd);margin-left:6px}
+  .toolroot-gear .gf-badge.live{color:var(--gr);border-color:oklch(67% 0.14 148 / .5)}
+  .toolroot-gear .gf-badge.fallback{color:var(--gd);border-color:var(--bd-gold,var(--bd))}
+
+  .toolroot-gear .gf-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
+  .toolroot-gear select,.toolroot-gear input[type=number]{height:38px;background:var(--bg-deep);border:1px solid var(--bd);color:var(--tx);border-radius:var(--r-sm);padding:0 10px;font:13px var(--ff-ui)}
+  .toolroot-gear textarea{width:100%;min-height:80px;background:var(--bg-deep);border:1px solid var(--bd);color:var(--tx);padding:12px;font:12px var(--ff-mono);border-radius:var(--r-sm);resize:vertical;margin:8px 0}
+  .toolroot-gear details.gf-paste{margin:6px 0}
+  .toolroot-gear details.gf-paste summary{cursor:pointer;color:var(--mu);font:12px var(--ff-mono)}
+
+  .toolroot-gear .gf-build{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .toolroot-gear .gf-stat{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-sm);padding:6px 11px;font:12px var(--ff-mono);color:var(--mu)}
+  .toolroot-gear .gf-stat b{color:var(--tx);font-size:13px}
+
+  .toolroot-gear .gf-slots{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .toolroot-gear .gf-slot{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-sm);padding:8px 12px;cursor:pointer;font:600 12px var(--ff-ui);color:var(--tx);text-align:left}
+  .toolroot-gear .gf-slot:hover{border-color:var(--gd)}
+  .toolroot-gear .gf-slot.on{border-color:var(--gd);color:var(--gd);background:var(--gold-soft)}
+  .toolroot-gear .gf-slot .gf-slot-name{display:block;color:var(--mu);font:11px var(--ff-mono);margin-top:2px;font-weight:400}
+
+  .toolroot-gear .gf-search{margin-top:14px;border-top:1px solid var(--bd);padding-top:12px}
+  .toolroot-gear .gf-search label{color:var(--mu);font:12px var(--ff-mono)}
+  .toolroot-gear .status{margin:8px 0;color:var(--mu);font:12px var(--ff-mono)}
+  .toolroot-gear .status.err{color:var(--rd)}
+
+  .toolroot-gear .gf-card{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-md);padding:11px 13px;margin-top:8px}
+  .toolroot-gear .gf-card-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
+  .toolroot-gear .gf-name{font:600 13px var(--ff-ui);color:var(--tx)}
+  .toolroot-gear .gf-price{font:600 13px var(--ff-mono);color:var(--gd)}
+  .toolroot-gear .gf-delta{font:700 13px var(--ff-mono)}
+  .toolroot-gear .gf-delta.up{color:var(--gr)}
+  .toolroot-gear .gf-delta.down{color:var(--rd)}
+  .toolroot-gear .gf-delta.flat{color:var(--mu)}
+  .toolroot-gear .gf-cmp{margin:7px 0 0;color:var(--mu);font:11px var(--ff-mono);display:flex;flex-wrap:wrap;gap:4px 12px}
+  .toolroot-gear .gf-cmp .up{color:var(--gr)}
+  .toolroot-gear .gf-cmp .down{color:var(--rd)}
+  .toolroot-gear .gf-foot{margin-top:16px;color:var(--mu);font:11px var(--ff-mono);line-height:1.6}
