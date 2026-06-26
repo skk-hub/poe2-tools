@@ -5212,10 +5212,14 @@ const server = http.createServer(async (req, res) => {
       if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
       try {
         const { search } = await gearTradeSearch(q, league);
-        // Trade2 fetch accepts at most 10 ids per call — 11+ returns HTTP 400
-        // "Invalid query" (same as readOneBand's 10-chunking). We score ≤10 anyway.
-        const ids = (search.result || []).slice(0, 10);
-        if (!ids.length) { send(res, 200, JSON.stringify({ available: true, candidates: [], total: 0 }), "application/json; charset=utf-8"); return; }
+        const all = search.result || [];
+        if (!all.length) { send(res, 200, JSON.stringify({ available: true, candidates: [], total: 0 }), "application/json; charset=utf-8"); return; }
+        // Score a SPREAD across the price-sorted results, not the 10 cheapest — the
+        // cheapest in-budget items are the weakest and almost never upgrades, so scoring
+        // only them shows all downgrades. Sampling cheapest→priciest surfaces a real
+        // upgrade if one exists at any price. Trade2 fetch caps at 10 ids per call.
+        const n = Math.min(all.length, 10);
+        const ids = Array.from({ length: n }, (_, i) => all[Math.floor((i * all.length) / n)]);
         let fetched;
         try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id)); }
         catch (e) { throw new Error("fetch (" + ids.length + " ids) failed: " + e.message); }  // distinguish fetch from the search query logged below
