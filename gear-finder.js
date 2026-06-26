@@ -88,7 +88,14 @@ window.__viewInit["gear-finder"] = function () {
     if (els.pinCount) els.pinCount.textContent = pins.length;
     if (els.pins) els.pins.hidden = !pins.length;
     if (!els.pinBody) return;
-    els.pinBody.innerHTML = pins.map((p, i) => {
+    // Net total if you bought everything pinned. Sum is APPROXIMATE: each item's gain was
+    // scored alone vs your current build, so combined gain differs (stats compound).
+    const anyDps = pins.some((p) => p.metricDps);
+    const totDps = pins.reduce((s, p) => s + (p.metricDps ? (p.dDPS || 0) : 0), 0);
+    const totEhp = pins.reduce((s, p) => s + (p.dEHP || 0), 0);
+    const totDiv = pins.reduce((s, p) => s + (p.priceDiv || 0), 0);
+    const summary = `<div class="gf-pinsum">Buy all ${pins.length}: ${anyDps ? deltaSpan(totDps, "DPS") + " · " : ""}${deltaSpan(totEhp, "EHP")} · <b>${fmt(totDiv)} div</b> total <span class="gf-note" title="Approximate — each item's gain was scored on its own against your current build, so buying several together usually does a bit better (stats compound). Includes every pin, even two for the same slot.">ⓘ</span></div>`;
+    els.pinBody.innerHTML = summary + pins.map((p, i) => {
       const price = p.priceDiv ? `${fmt(p.priceDiv)} div` : `${fmt(p.priceEx || 0)} ex`;
       const keys = Array.from(new Set([...Object.keys(p.oldStats || {}), ...Object.keys(p.newStats || {})])).sort();
       const rows = keys.map((k) => {

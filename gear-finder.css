@@ -64,6 +64,9 @@
   .toolroot-gear .gf-pins{margin-top:12px;border:1px solid var(--border-gold);border-radius:var(--r-sm);background:var(--surface-1)}
   .toolroot-gear .gf-pins>summary{cursor:pointer;padding:9px 12px;font:600 13px var(--ff-ui);color:var(--gold-bright);user-select:none}
   .toolroot-gear #gfPinBody{padding:4px 12px 12px;display:flex;flex-direction:column;gap:12px}
+  .toolroot-gear .gf-pinsum{font:13px var(--ff-ui);color:var(--tx);padding:6px 10px;border:1px dashed var(--border-gold);border-radius:var(--r-sm);background:var(--surface-2);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .toolroot-gear .gf-pinsum b{color:var(--gold-bright)}
+  .toolroot-gear .gf-note{color:var(--mu);cursor:help;font-size:12px}
   .toolroot-gear .gf-pincard{border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--surface-2);padding:10px}
   .toolroot-gear .gf-pinhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font:13px var(--ff-ui);margin-bottom:8px}
   .toolroot-gear .gf-pinhead b{color:var(--gold-bright);text-transform:capitalize}
