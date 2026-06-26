@@ -45,6 +45,11 @@ services:
       # http://REDACTED-TAILNET-IP-B:17778 — it's inside FIREWALL_OUTBOUND_SUBNETS
       # (REDACTED-CGNAT-RANGE/10) so the gluetun killswitch lets it through. Empty = off.
       - POB_BRIDGE_URL=${POB_BRIDGE_URL:-}
+      # A logged-in pathofexile.com session cookie (use a THROWAWAY account — it's full
+      # account access). Unlocks the build-weighted trade sort so Gear Finder's "Rank by
+      # real DPS" fetches the best candidates for your build, not a price spread. Put
+      # POESESSID=<value> in .env (gitignored). Empty = price-spread fallback.
+      - POESESSID=${POESESSID:-}
     # CODE: no bind mounts on purpose. The image (Dockerfile `COPY . .`) is the
     # single source of truth, so `docker compose up -d --build` always serves a
     # fully consistent file set. The old partial mounts (only server.js +

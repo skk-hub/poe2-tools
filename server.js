@@ -22,9 +22,15 @@ const POE_OAUTH_STATE_FILE = path.join(DATA_DIR, ".poe-oauth-state.json");
 const TYPES = ["Currency", "Essences", "Ritual", "Abyss", "Breach"];
 const MIN_NINJA_VOLUME = 10;
 const TRADE_MIN_GAP_MS = 3000;
+// POESESSID (a logged-in pathofexile.com session cookie, set in .env — NEVER committed)
+// unlocks the build-weighted `statgroup` sort that 400s anonymously, so realrank can
+// fetch the BEST candidates for the build instead of a price spread. Use a throwaway
+// account: this cookie = full account access.
+const POESESSID = (process.env.POESESSID || "").trim();
 const TRADE_HEADERS = {
   "Content-Type": "application/json",
   "User-Agent": "poe-tools-local/0.1 (contact: " + (process.env.POE_CONTACT || "unset") + ")",
+  ...(POESESSID ? { "Cookie": "POESESSID=" + POESESSID } : {}),
 };
 const TRADE_TIMEOUT_MS = 3500;
 // Record/replay Trade2 traffic so the tool develops + tests with zero live GGG
@@ -5205,21 +5211,24 @@ const server = http.createServer(async (req, res) => {
       const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
       const league = sanitizeLeague(input.league || "Runes of Aldur");
       const mods = gearStatFilters(input.mods);
-      const q = {
-        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) },
-        sort: { price: "asc" },
-      };
-      if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
+      // With a POESESSID session we can sort the search by BUILD VALUE (weighted statgroup)
+      // and score the genuinely-best candidates. Logged-out that sort 400s, so fall back to
+      // a stat-floor + price-spread. Weights come from the client's /api/gear/weights result.
+      const weights = (Array.isArray(input.weights) ? input.weights : []).filter((w) => w && /^(explicit\.stat_\d+|pseudo\.[a-z0-9_]+)$/.test(w.statId) && Number(w.weight) > 0);
+      const weighted = !!POESESSID && weights.length > 0;
+      const q = weighted
+        ? buildWeightedGearQuery(slot, weights, league, Number(input.maxPriceDiv) || 0)
+        : { query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) }, sort: { price: "asc" } };
+      if (!weighted && Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
       try {
         const { search } = await gearTradeSearch(q, league);
         const all = search.result || [];
         if (!all.length) { send(res, 200, JSON.stringify({ available: true, candidates: [], total: 0 }), "application/json; charset=utf-8"); return; }
-        // Score a SPREAD across the price-sorted results, not the 10 cheapest — the
-        // cheapest in-budget items are the weakest and almost never upgrades, so scoring
-        // only them shows all downgrades. Sampling cheapest→priciest surfaces a real
-        // upgrade if one exists at any price. Trade2 fetch caps at 10 ids per call.
+        // Weighted search is already ranked best-first → take the top 10. The price-sorted
+        // fallback samples a SPREAD (cheapest→priciest) so we don't only score the cheapest
+        // (weakest) items. Trade2 fetch caps at 10 ids per call either way.
         const n = Math.min(all.length, 10);
-        const ids = Array.from({ length: n }, (_, i) => all[Math.floor((i * all.length) / n)]);
+        const ids = weighted ? all.slice(0, n) : Array.from({ length: n }, (_, i) => all[Math.floor((i * all.length) / n)]);
         let fetched;
         try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id)); }
         catch (e) { throw new Error("fetch (" + ids.length + " ids) failed: " + e.message); }  // distinguish fetch from the search query logged below
@@ -5239,7 +5248,7 @@ const server = http.createServer(async (req, res) => {
           });
         }
         cands.sort((a, b) => (b.dDPS - a.dDPS) || (b.dEHP - a.dEHP));
-        send(res, 200, JSON.stringify({ available: true, total: Number(search.total) || ids.length, baseDps: dpsOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, weighted, total: Number(search.total) || ids.length, baseDps: dpsOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         const msg = String(err.message);

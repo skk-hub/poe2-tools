@@ -139,7 +139,7 @@ window.__viewInit["gear-finder"] = function () {
     // every top stat at once, so requiring ≥ current returns nothing. PoB ΔDPS sorts the rest.
     const mods = state.weights.slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((cur[w.key] || 1) * 0.7)) }));
     els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
-    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, mods, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, mods, weights: state.weights.slice(0, 8), maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
     els.realRankBtn.disabled = false;
     if (d.available === false) { setStatus("Headless PoB isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
@@ -151,7 +151,7 @@ window.__viewInit["gear-finder"] = function () {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
       return `<div class="gf-srow"><b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span></div>`;
     }).join("");
-    setStatus(`Scored ${cands.length} candidates by real PoB DPS (of ${d.total} matching).`);
+    setStatus(`Scored ${cands.length} candidates by real PoB DPS (of ${d.total} matching)${d.weighted ? " — fetched the best for your build" : " — price spread (set POESESSID for build-ranked results)"}.`);
   }
 
   function snippetText() {
