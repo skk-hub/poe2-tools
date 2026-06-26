@@ -27,15 +27,17 @@
   .toolroot-gear .status{margin:8px 0;color:var(--mu);font:12px var(--ff-mono)}
   .toolroot-gear .status.err{color:var(--rd)}
 
-  .toolroot-gear .gf-card{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-md);padding:11px 13px;margin-top:8px}
-  .toolroot-gear .gf-card-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
-  .toolroot-gear .gf-name{font:600 13px var(--ff-ui);color:var(--tx)}
-  .toolroot-gear .gf-price{font:600 13px var(--ff-mono);color:var(--gd)}
-  .toolroot-gear .gf-delta{font:700 13px var(--ff-mono)}
-  .toolroot-gear .gf-delta.up{color:var(--gr)}
-  .toolroot-gear .gf-delta.down{color:var(--rd)}
-  .toolroot-gear .gf-delta.flat{color:var(--mu)}
-  .toolroot-gear .gf-cmp{margin:7px 0 0;color:var(--mu);font:11px var(--ff-mono);display:flex;flex-wrap:wrap;gap:4px 12px}
-  .toolroot-gear .gf-cmp .up{color:var(--gr)}
-  .toolroot-gear .gf-cmp .down{color:var(--rd)}
+  /* stat-weight breakdown */
+  .toolroot-gear .gf-metric{color:var(--mu);font:12px var(--ff-mono);margin:4px 0 10px}
+  .toolroot-gear .gf-wrow{display:flex;align-items:center;gap:10px;margin:4px 0}
+  .toolroot-gear .gf-wlabel{flex:0 0 200px;font:12px var(--ff-mono);color:var(--tx)}
+  .toolroot-gear .gf-wbar{flex:1;height:10px;background:var(--bg-deep);border:1px solid var(--bd);border-radius:var(--r-pill);overflow:hidden}
+  .toolroot-gear .gf-wbar span{display:block;height:100%;background:linear-gradient(90deg,var(--gold-deep),var(--gold-bright))}
+  .toolroot-gear .gf-wval{flex:0 0 44px;text-align:right;font:700 12px var(--ff-mono);color:var(--gd)}
+
+  .toolroot-gear .gf-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
+  .toolroot-gear .gf-snippet{flex-basis:100%;margin-top:8px}
+  .toolroot-gear .gf-snippet .sub{margin:0 0 6px}
+  .toolroot-gear .gf-snippet code{display:block;background:var(--bg-deep);border:1px solid var(--bd);border-radius:var(--r-sm);padding:10px;font:11px var(--ff-mono);color:var(--gr);word-break:break-all;max-height:140px;overflow:auto}
+
   .toolroot-gear .gf-foot{margin-top:16px;color:var(--mu);font:11px var(--ff-mono);line-height:1.6}

@@ -5,24 +5,29 @@ window.__viewInit["gear-finder"] = function () {
     mode: $("gfMode"), builds: $("gfBuilds"), load: $("gfLoad"),
     code: $("gfCode"), importBtn: $("gfImport"),
     build: $("gfBuild"), slots: $("gfSlots"),
-    panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"),
-    find: $("gfFind"), status: $("gfStatus"), results: $("gfResults"),
+    panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), analyze: $("gfAnalyze"),
+    status: $("gfStatus"), weights: $("gfWeights"),
+    actions: $("gfActions"), snippetBtn: $("gfSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
   };
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmt = (n) => Math.abs(n) >= 1000 ? Math.round(n).toLocaleString() : Math.round(n * 10) / 10;
-  const dpsOf = (s) => (s && (s.FullDPS || s.CombinedDPS || s.TotalDPS)) || 0;
   const ehpOf = (s) => (s && s.TotalEHP) || 0;
 
-  const state = { xml: null, slots: {}, build: {}, headless: false, base: null, curSlot: null };
-  let LEAGUE = "Runes of Aldur";
+  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], query: null, league: "Runes of Aldur" };
 
   async function api(path, body) {
-    const opt = body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {};
-    const r = await fetch(path, opt);
+    const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
     return r.json();
   }
+  function setStatus(t, err) { els.status.className = "status" + (err ? " err" : ""); els.status.textContent = t || ""; }
 
-  function setStatus(t, err) { els.status.className = "status" + (err ? " err" : ""); els.status.textContent = t; }
+  async function copyText(txt) {
+    if (navigator.clipboard && window.isSecureContext) { try { await navigator.clipboard.writeText(txt); return true; } catch {} }
+    const ta = document.createElement("textarea"); ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch {}
+    document.body.removeChild(ta); return ok;
+  }
 
   async function loadBuildsList() {
     const d = await api("/api/gear/builds").catch(() => null);
@@ -36,110 +41,80 @@ window.__viewInit["gear-finder"] = function () {
 
   function renderBuild(d) {
     if (d.error) { setStatus(d.error, true); return; }
-    state.xml = d.xml; state.slots = d.slots || {}; state.build = d.build || {};
-    const hs = d.headless && d.headless.stats;
-    state.base = hs || null;
-    const b = hs || state.build;
-    const tiles = [
-      ["Life", b.Life], ["Energy Shield", b.EnergyShield], ["EHP", ehpOf(b) || b.TotalEHP],
-      ["DPS", dpsOf(b)], ["Fire", b.FireResist], ["Cold", b.ColdResist], ["Light", b.LightningResist], ["Chaos", b.ChaosResist],
-    ].filter(([, v]) => v != null);
+    state.xml = d.xml; state.slots = d.slots || {};
+    const b = (d.headless && d.headless.stats) || d.build || {};
+    const tiles = [["Life", b.Life], ["Energy Shield", b.EnergyShield], ["EHP", ehpOf(b) || b.TotalEHP],
+      ["DPS", (b.FullDPS || b.CombinedDPS || b.TotalDPS)], ["Fire", b.FireResist], ["Cold", b.ColdResist],
+      ["Light", b.LightningResist], ["Chaos", b.ChaosResist]].filter(([, v]) => v != null);
     els.build.innerHTML = tiles.map(([k, v]) => `<span class="gf-stat">${k} <b>${fmt(v)}</b></span>`).join("");
     els.slots.innerHTML = Object.entries(state.slots).map(([id, s]) =>
       `<button class="gf-slot" type="button" data-slot="${esc(id)}">${esc(id)}<span class="gf-slot-name">${esc(s.name || "—")}</span></button>`).join("");
-    els.panel.hidden = true;
-    setStatus("");
+    els.panel.hidden = true; setStatus("");
   }
 
   function selectSlot(id) {
-    state.curSlot = id;
+    state.curSlot = id; state.weights = []; state.query = null;
     els.slots.querySelectorAll(".gf-slot").forEach((b) => b.classList.toggle("on", b.dataset.slot === id));
-    els.slot.textContent = id + " — " + (state.slots[id] && state.slots[id].name || "");
-    els.panel.hidden = false;
-    els.results.innerHTML = "";
-    setStatus("Set a budget and Find upgrades.");
+    els.slot.textContent = id + " — " + ((state.slots[id] && state.slots[id].name) || "");
+    els.panel.hidden = false; els.weights.innerHTML = ""; els.actions.hidden = true; els.snippetBox.hidden = true;
+    setStatus("Set a budget and analyze this slot.");
   }
 
-  // Derive light search filters from the current item's strongest stats so we get
-  // comparable-or-better candidates (then headless ranks them by real impact).
-  function filtersForSlot(id) {
-    const stats = (state.slots[id] && state.slots[id].stats) || {};
-    return Object.entries(stats)
-      .filter(([k, v]) => typeof v === "number" && v > 0 && !/^total/i.test(k))
-      .sort((a, b) => b[1] - a[1]).slice(0, 3)
-      .map(([k, v]) => ({ key: k, value: { min: Math.floor(v * 0.7) } }));
-  }
-
-  async function findUpgrades() {
+  async function analyzeSlot() {
     const id = state.curSlot; if (!id) return;
-    els.find.disabled = true;
-    setStatus("Searching Trade2…");
-    const search = await api("/api/gear/search", {
-      league: LEAGUE, slot: id,
-      current: { raw: state.slots[id] && state.slots[id].raw },
-      filters: filtersForSlot(id), matchMode: "count",
-      maxPriceDiv: Number(els.budget.value) || 0,
+    els.analyze.disabled = true; setStatus("Asking Path of Building what this slot is worth…");
+    const d = await api("/api/gear/weights", {
+      buildXml: state.xml, slot: id, pobSlot: state.slots[id] && state.slots[id].pobSlot,
+      current: { raw: state.slots[id] && state.slots[id].raw }, maxPriceDiv: Number(els.budget.value) || 0, league: state.league,
     }).catch((e) => ({ error: String(e) }));
-    els.find.disabled = false;
-    if (search.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
-    if (search.error) { setStatus("Search failed: " + search.error, true); return; }
-    const listings = search.listings || [];
-    if (!listings.length) { setStatus("No listings under that budget — raise it or loosen the slot."); return; }
-
-    // Headless ranking by real ΔDPS/ΔEHP (falls back to price order if unavailable).
-    let base = state.base, byId = {};
-    if (state.headless && state.xml) {
-      setStatus(`Ranking ${listings.length} candidates in Path of Building…`);
-      const rank = await api("/api/gear/rank", {
-        buildXml: state.xml, pobSlot: state.slots[id] && state.slots[id].pobSlot, slot: id,
-        items: listings.map((l) => ({ id: l.id, raw: l.raw })),
-      }).catch(() => ({ available: false }));
-      if (rank.available && rank.results) {
-        base = rank.base || base;
-        for (const r of rank.results) byId[r.id] = r.stats;
-      }
-    }
-    for (const l of listings) {
-      const cand = byId[l.id];
-      l._dDPS = cand ? dpsOf(cand) - dpsOf(base) : 0;
-      l._dEHP = cand ? ehpOf(cand) - ehpOf(base) : 0;
-      l._primary = l._dDPS || l._dEHP;
-    }
-    listings.sort((a, b) => (b._primary - a._primary) || (a.priceDiv || 0) - (b.priceDiv || 0));
-    renderResults(listings, !!Object.keys(byId).length);
-    setStatus(`${listings.length} candidates` + (Object.keys(byId).length ? " — ranked by real build impact." : " — ranked by price (headless unavailable)."));
+    els.analyze.disabled = false;
+    if (d.error) { setStatus("Failed: " + d.error, true); return; }
+    if (d.available === false) { setStatus("Headless Path of Building isn't available — install PoB + LuaJIT for build-weighted search.", true); return; }
+    state.weights = d.weights || []; state.query = d.query; state.league = d.league || state.league;
+    renderWeights(d);
   }
 
-  function deltaTag(d, unit) {
-    if (!d) return `<span class="gf-delta flat">±0 ${unit}</span>`;
-    const cls = d > 0 ? "up" : "down";
-    return `<span class="gf-delta ${cls}">${d > 0 ? "+" : ""}${fmt(d)} ${unit}</span>`;
+  function renderWeights(d) {
+    if (!state.weights.length) { setStatus("Nothing improves this build's " + (d.metric || "stats") + " on this slot.", true); els.actions.hidden = true; return; }
+    const max = state.weights[0].weight || 1;
+    const metricTxt = d.metric === "dps" ? "DPS" : "survivability (EHP — this build has no active skill set)";
+    els.weights.innerHTML = `<p class="gf-metric">For your build, a better <b>${esc(state.curSlot)}</b> is ranked by <b>${metricTxt}</b>. Highest-value stats:</p>` +
+      state.weights.map((w) => `<div class="gf-wrow"><span class="gf-wlabel">${esc(w.label || w.key)}</span><span class="gf-wbar"><span style="width:${Math.round((w.weight / max) * 100)}%"></span></span><span class="gf-wval">×${w.weight}</span></div>`).join("");
+    els.actions.hidden = false; els.snippetBox.hidden = true;
+    setStatus("");
   }
 
-  function renderResults(listings, headless) {
-    els.results.innerHTML = listings.map((l) => {
-      const price = l.priceDiv ? `${fmt(l.priceDiv)} div` : `${fmt(l.priceEx || 0)} ex`;
-      const delta = headless
-        ? (dpsOf(state.base) ? deltaTag(l._dDPS, "DPS") : "") + deltaTag(l._dEHP, "EHP")
-        : "";
-      const cmp = (l.comparison || []).filter((c) => c.delta).slice(0, 6)
-        .map((c) => `<span class="${c.delta > 0 ? "up" : "down"}">${esc(c.label || c.key)} ${c.delta > 0 ? "+" : ""}${fmt(c.delta)}</span>`).join("");
-      return `<div class="gf-card"><div class="gf-card-head"><span class="gf-name">${esc(l.name || l.typeLine || "Item")}</span><span>${delta} <span class="gf-price">${price}</span></span></div>${cmp ? `<div class="gf-cmp">${cmp}</div>` : ""}</div>`;
-    }).join("");
+  function snippetText() {
+    const league = state.league, q = JSON.stringify(state.query);
+    return `fetch("/api/trade2/search/poe2/${encodeURIComponent(league)}",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(${q})}).then(r=>r.json()).then(d=>{if(d.id){location.href="/trade2/search/poe2/${encodeURIComponent(league)}/"+d.id}else{alert("Search failed: "+JSON.stringify(d))}}).catch(e=>alert(e));`;
   }
 
   els.load.addEventListener("click", async () => {
     const file = els.builds.value; if (!file) { setStatus("No build selected.", true); return; }
-    setStatus("Loading build…");
-    renderBuild(await api("/api/gear/import", { buildFile: file }));
+    setStatus("Loading build…"); renderBuild(await api("/api/gear/import", { buildFile: file }));
   });
   els.importBtn.addEventListener("click", async () => {
     const code = (els.code.value || "").trim(); if (!code) { setStatus("Paste a PoB code first.", true); return; }
-    setStatus("Importing…");
-    renderBuild(await api("/api/gear/import", { code }));
+    setStatus("Importing…"); renderBuild(await api("/api/gear/import", { code }));
   });
   els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) selectSlot(b.dataset.slot); });
-  els.find.addEventListener("click", findUpgrades);
+  els.analyze.addEventListener("click", analyzeSlot);
+  els.snippetBtn.addEventListener("click", () => {
+    if (!state.query) return;
+    const txt = snippetText();
+    els.snippetBox.hidden = false;
+    els.snippetBox.innerHTML = `<p class="sub">Open <b>pathofexile.com</b> (logged in), press F12 → Console, paste this, Enter — it opens a search ranked for your build:</p><code>${esc(txt)}</code>`;
+    copyText(txt).then((ok) => { els.snippetBtn.textContent = ok ? "Copied ✓" : "Copy failed"; setTimeout(() => { els.snippetBtn.textContent = "Copy logged-in search snippet"; }, 1400); });
+  });
+  els.basicBtn.addEventListener("click", async () => {
+    if (!state.curSlot || !state.weights.length) return;
+    els.basicBtn.disabled = true; setStatus("Building a basic search (one Trade2 call)…");
+    const d = await api("/api/gear/basic-link", { slot: state.curSlot, league: state.league, statIds: state.weights.map((w) => w.statId), maxPriceDiv: Number(els.budget.value) || 0 }).catch((e) => ({ error: String(e) }));
+    els.basicBtn.disabled = false;
+    if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
+    if (d.url) { setStatus("Opened a basic search (" + (d.total || 0) + " hits) — sort it yourself."); window.open(d.url, "_blank", "noopener"); }
+    else { setStatus("Couldn't build a basic search: " + (d.error || "no results"), true); }
+  });
 
   loadBuildsList();
 };

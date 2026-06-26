@@ -99,9 +99,12 @@ function staticChecks() {
   // Gear Upgrade Finder: PoB import endpoints + headless engine wiring + zero-dep decode.
   {
     const srvG = read("server.js");
-    check(["/api/gear/import", "/api/gear/builds", "/api/gear/search", "/api/gear/rank"].every(p => srvG.includes(p)), "server has the gear-finder endpoints");
+    check(["/api/gear/import", "/api/gear/builds", "/api/gear/weights", "/api/gear/basic-link"].every(p => srvG.includes(p)), "server has the gear-finder endpoints");
+    check(!srvG.includes('"/api/gear/search"') && !srvG.includes('"/api/gear/rank"'), "old fetch-and-score endpoints retired");
     check(/require\("\.\/pob\.js"\)/.test(srvG) && /function parsePobBuild/.test(srvG) && /zlib\.inflate/.test(srvG), "server wires pob.js + PoB decode/parse (zlib)");
+    check(/async function computeGearWeights/.test(srvG) && /GEAR_PROBE_TEMPLATES/.test(srvG) && /type: "weight"/.test(srvG), "server computes PoB stat-weights + builds the weighted query");
     check(fs.existsSync("pob.js") && fs.existsSync("pob-bridge.lua") && /GetMiscCalculator/.test(read("pob-bridge.lua")), "headless bridge present (pob.js + pob-bridge.lua)");
+    check(/snippetText/.test(read("gear-finder.js")) && idx.includes('id="gfSnippet"') && idx.includes('id="gfWeights"'), "gear-finder builds the logged-in search snippet + weight breakdown");
     const zlib = require("zlib");
     const sample = "<PathOfBuilding2><Build/></PathOfBuilding2>";
     const code = zlib.deflateSync(Buffer.from(sample)).toString("base64").replace(/\+/g, "-").replace(/\//g, "_");

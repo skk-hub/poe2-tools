@@ -4413,6 +4413,78 @@ function listPobBuilds() {
   } catch { return []; }
 }
 
+// ── Per-slot stat weights via headless perturbation ────────────────────────
+// For each rollable stat of a slot, add a known increment to the CURRENT item
+// and recompute the build — the change in DPS (or EHP, for a 0-DPS build) per
+// unit is that stat's marginal value FOR THIS BUILD. The killer feature: a
+// capped resist scores ~0 (no marginal EHP), an under-cap one scores high.
+// Each value is a PoB-parseable mod line + a sensible probe increment.
+const GEAR_PROBE_TEMPLATES = {
+  life: [50, (n) => `+${n} to maximum Life`],
+  mana: [60, (n) => `+${n} to maximum Mana`],
+  energyShield: [50, (n) => `+${n} to maximum Energy Shield`],
+  evasion: [120, (n) => `+${n} to Evasion Rating`],
+  armour: [120, (n) => `+${n} to Armour`],
+  fireRes: [20, (n) => `+${n}% to Fire Resistance`],
+  coldRes: [20, (n) => `+${n}% to Cold Resistance`],
+  lightningRes: [20, (n) => `+${n}% to Lightning Resistance`],
+  chaosRes: [15, (n) => `+${n}% to Chaos Resistance`],
+  str: [30, (n) => `+${n} to Strength`],
+  dex: [30, (n) => `+${n} to Dexterity`],
+  int: [30, (n) => `+${n} to Intelligence`],
+  spirit: [20, (n) => `+${n} to Spirit`],
+  manaRegen: [30, (n) => `${n}% increased Mana Regeneration Rate`],
+  movementSpeed: [15, (n) => `${n}% increased Movement Speed`],
+  critChance: [40, (n) => `${n}% increased Critical Hit Chance`],
+  critDamage: [40, (n) => `${n}% increased Critical Damage Bonus`],
+  attackSpeed: [15, (n) => `${n}% increased Attack Speed`],
+  castSpeed: [15, (n) => `${n}% increased Cast Speed`],
+  spellDamage: [40, (n) => `${n}% increased Spell Damage`],
+  projectileDamage: [40, (n) => `${n}% increased Projectile Damage`],
+  manaOnKill: [10, (n) => `Recover ${n} Mana on Kill`],
+  flatPhysAttack: [20, (n) => `Adds ${n} to ${n} Physical Damage to Attacks`],
+  flatFireAttack: [20, (n) => `Adds ${n} to ${n} Fire Damage to Attacks`],
+  flatColdAttack: [20, (n) => `Adds ${n} to ${n} Cold Damage to Attacks`],
+  flatLightningAttack: [20, (n) => `Adds ${n} to ${n} Lightning Damage to Attacks`],
+};
+const dpsOfOut = (o) => (o && (o.FullDPS || o.CombinedDPS || o.TotalDPS)) || 0;
+const ehpOfOut = (o) => (o && o.TotalEHP) || 0;
+
+async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
+  await pob.load(buildXml);
+  const base = await pob.calc(pobSlot, "");
+  const metric = dpsOfOut(base) > 0 ? "dps" : "ehp";
+  const mf = metric === "dps" ? dpsOfOut : ehpOfOut;
+  const baseVal = mf(base);
+  const keys = (PRESERVE_CONTROL_STATS_BY_SLOT[baseSlot] || []).filter((k) => GEAR_PROBE_TEMPLATES[k] && gearStatId(k, baseSlot));
+  const raw = [];
+  for (const k of keys) {
+    const [inc, line] = GEAR_PROBE_TEMPLATES[k];
+    let per = 0;
+    try { per = (mf(await pob.calc(pobSlot, currentRaw + "\n" + line(inc))) - baseVal) / inc; } catch {}
+    if (per > 1e-4) raw.push({ key: k, statId: gearStatId(k, baseSlot), label: statLabel(k), perUnit: Math.round(per * 100) / 100 });
+  }
+  const max = raw.reduce((m, w) => Math.max(m, w.perUnit), 0) || 1;
+  const weights = raw.map((w) => ({ ...w, weight: Math.max(1, Math.round((w.perUnit / max) * 20)) })).sort((a, b) => b.weight - a.weight);
+  return { metric, base: { Life: base.Life, EnergyShield: base.EnergyShield, TotalEHP: base.TotalEHP, dps: dpsOfOut(base) }, weights };
+}
+
+// A build-weighted Trade2 query: the `weight` stat group ranks items by the
+// weighted sum of their stats. Anonymous POST of a weight group 400s ("log in")
+// — so this is meant to be POSTed by the user's logged-in browser (the snippet).
+function buildWeightedGearQuery(slot, weights, league, maxPriceDiv) {
+  const q = {
+    query: {
+      status: { option: "online" },
+      filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } },
+      stats: [{ type: "weight", filters: weights.map((w) => ({ id: w.statId, value: { weight: w.weight } })), value: {} }],
+    },
+    sort: { "statgroup.0": "desc" },
+  };
+  if (Number(maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(maxPriceDiv) } } };
+  return q;
+}
+
 // GGG's listing.account.online is null when offline, otherwise an object that
 // may carry status "afk"/"dnd" (absent = plain online). Note: this reflects the
 // seller, not whether the item is still in their stash.
@@ -4478,13 +4550,11 @@ async function searchGear(input) {
     if (!price || price.exalted <= 0) continue;
     if (budgetEx > 0 && price.exalted > budgetEx) continue;
     const item = entry.item || {};
-    const candidateRaw = itemTextFromTradeEntry(entry);
-    const candidateStats = parseItemStats(candidateRaw, slotId);
+    const candidateStats = parseItemStats(itemTextFromTradeEntry(entry), slotId);
     if (!compositeStatsSatisfied(candidateStats, compositeFilters).ok) continue;
     listings.push({
       id: entry.id,
       slot: slotId,
-      raw: candidateRaw,   // candidate item text → fed to headless PoB for ΔDPS ranking
       name: [item.name, item.typeLine].filter(Boolean).join(" ").trim() || slot.label,
       typeLine: item.typeLine || "",
       priceEx: price.exalted,
@@ -4970,31 +5040,44 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (url.pathname === "/api/gear/search" && req.method === "POST") {
-      const input = await readJson(req, 2 * 1024 * 1024);
+    if (url.pathname === "/api/gear/weights" && req.method === "POST") {
+      const input = await readJson(req, 8 * 1024 * 1024);
+      if (!pob.available()) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
+      const slotId = String(input.slot || "");
+      const slot = gearSearchSlots()[slotId];
+      if (!slot) { send(res, 400, JSON.stringify({ error: "Unknown slot" }), "application/json; charset=utf-8"); return; }
+      const pobSlot = String(input.pobSlot || toolSlotToPob(slotId));
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
       try {
-        send(res, 200, JSON.stringify(await searchGear(input)), "application/json; charset=utf-8");
-      } catch (err) {
-        if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8"); return; }
-        throw err;
-      }
+        const w = await computeGearWeights(String(input.buildXml || ""), pobSlot, slot.baseId || slotId, String((input.current && input.current.raw) || ""));
+        const query = w.weights.length ? buildWeightedGearQuery(slot, w.weights, league, input.maxPriceDiv) : null;
+        send(res, 200, JSON.stringify({ available: true, slot: slotId, metric: w.metric, base: w.base, weights: w.weights, league, query }), "application/json; charset=utf-8");
+      } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
       return;
     }
 
-    if (url.pathname === "/api/gear/rank" && req.method === "POST") {
-      const input = await readJson(req, 8 * 1024 * 1024);
-      if (!pob.available()) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
-      const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
+    // On-demand basic (non-weighted) shareable search — ONE anonymous Trade2 call,
+    // stat-min query from the top weighted stats. Works without logging in.
+    if (url.pathname === "/api/gear/basic-link" && req.method === "POST") {
+      const input = await readJson(req, 1 * 1024 * 1024);
+      const slot = gearSearchSlots()[String(input.slot || "")];
+      if (!slot) { send(res, 400, JSON.stringify({ error: "Unknown slot" }), "application/json; charset=utf-8"); return; }
+      if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8"); return; }
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
+      const ids = (Array.isArray(input.statIds) ? input.statIds : []).filter((s) => /^explicit\.stat_\d+$/.test(s)).slice(0, 4);
+      const q = {
+        query: { status: { option: "online" }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: ids.map((id) => ({ id, value: { min: 1 } })) }] },
+        sort: { price: "asc" },
+      };
+      if (Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
       try {
-        await pob.load(String(input.buildXml || ""));
-        const base = await pob.calc(pobSlot, "");
-        const results = [];
-        for (const it of (Array.isArray(input.items) ? input.items : []).slice(0, 20)) {
-          try { results.push({ id: it.id, stats: await pob.calc(pobSlot, String(it.raw || "")) }); }
-          catch (e) { results.push({ id: it.id, error: String(e.message) }); }
-        }
-        send(res, 200, JSON.stringify({ available: true, base, results }), "application/json; charset=utf-8");
-      } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
+        const search = await fetchTrade("https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league), { method: "POST", body: JSON.stringify(q) });
+        const url2 = search && search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(league) + "/" + search.id : null;
+        send(res, 200, JSON.stringify({ url: url2, total: (search && search.total) || 0 }), "application/json; charset=utf-8");
+      } catch (err) {
+        if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8"); return; }
+        send(res, 200, JSON.stringify({ error: String(err.message) }), "application/json; charset=utf-8");
+      }
       return;
     }
 
@@ -5291,5 +5374,7 @@ module.exports = {
   decodePobCode,
   parsePobBuild,
   listPobBuilds,
+  computeGearWeights,
+  buildWeightedGearQuery,
   __setExchangeRawImpl(fn) { exchangeRawImpl = fn; },
 };

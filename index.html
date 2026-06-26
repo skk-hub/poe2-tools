@@ -352,12 +352,17 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div class="gf-row">
           <label>Slot <b id="gfSlot"></b></label>
           <label>Budget (div) <input id="gfBudget" type="number" value="5" min="0" step="0.5" style="width:7em"></label>
-          <button class="btn btn-primary" id="gfFind" type="button">Find upgrades</button>
+          <button class="btn btn-primary" id="gfAnalyze" type="button">Analyze slot</button>
         </div>
         <div id="gfStatus" class="status"></div>
-        <div id="gfResults"></div>
+        <div id="gfWeights"></div>
+        <div id="gfActions" class="gf-actions" hidden>
+          <button class="btn" id="gfSnippet" type="button">Copy logged-in search snippet</button>
+          <button class="btn" id="gfBasic" type="button">Open basic search</button>
+          <div id="gfSnippetBox" class="gf-snippet" hidden></div>
+        </div>
       </div>
-      <p class="gf-foot">Headless ranking needs Path of Building + LuaJIT installed locally; without them the tool ranks by stat comparison. Trade2 searches are rate-limited — one slot at a time.</p>
+      <p class="gf-foot">Path of Building works out which stats actually help <i>your</i> build, then hands you a <b>build-weighted trade search</b>. The snippet runs in your own logged-in browser (no rate limit, and it unlocks the weighted search the API can't do anonymously); the basic search is a one-call fallback. Headless weighting needs PoB + LuaJIT installed locally.</p>
     </div>
   </section>
   <section id="jewel-pricer" class="view" data-view="jewel-pricer">
