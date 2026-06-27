@@ -185,7 +185,7 @@ window.__viewInit["gear-finder"] = function () {
     els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
     const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, mods, weights: state.weights.slice(0, 8), maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
     els.realRankBtn.disabled = false;
-    if (d.available === false) { setStatus("Headless PoB isn't available.", true); return; }
+    if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
     const cands = d.candidates || [];
@@ -281,7 +281,7 @@ window.__viewInit["gear-finder"] = function () {
       const w = window.open("about:blank", "_blank");
       const d = await api("/api/gear/item-link", { league: p.league || state.league, base: p.base, account: p.account }).catch(() => null);
       if (d && d.url && w) { try { w.opener = null; } catch {} w.location = d.url; }
-      else { if (w) w.close(); setStatus(d && d.limited ? "Trade2 rate-limited — try again shortly." : "Couldn't open that listing.", true); }
+      else { if (w) w.close(); setStatus(d && d.limited ? "Trade2 is rate-limited — try again shortly." : "Couldn't open that listing.", true); }
     }
   });
   renderPins();   // restore persisted pins on load
@@ -327,13 +327,13 @@ window.__viewInit["gear-finder"] = function () {
     const d = await api("/api/gear/item-link", { league: state.league, base, account }).catch(() => null);
     const dest = d && d.url ? d.url : state.realSearchUrl;
     if (dest && w) { try { w.opener = null; } catch {} w.location = dest; }
-    else { if (w) w.close(); setStatus(d && d.limited ? "Trade2 rate-limited — try again shortly." : "Couldn't open that listing.", true); }
+    else { if (w) w.close(); setStatus(d && d.limited ? "Trade2 is rate-limited — try again shortly." : "Couldn't open that listing.", true); }
   });
   els.scoreBtn.addEventListener("click", scoreItems);
   els.copyQuery.addEventListener("click", () => {
     if (!state.query) { setStatus("Analyze a slot first.", true); return; }
     copyText(JSON.stringify({ league: state.league, query: state.query })).then((ok) => {
-      els.copyQuery.textContent = ok ? "Copied ✓" : "Copy failed";
+      els.copyQuery.textContent = ok ? "Copied" : "Copy failed";
       setStatus(ok ? "Copied — now switch to a logged-in pathofexile.com tab and click your ⚡ PoB Trade Search bookmark." : "Copy failed — try the console snippet.");
       setTimeout(() => { els.copyQuery.textContent = "Copy search"; }, 1600);
     });

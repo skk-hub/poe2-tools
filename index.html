@@ -281,7 +281,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <div class="controls">
         <label>League <input id="runeLeague" value="Runes of Aldur"></label>
         <button id="pasteRunes" type="button" class="btn">Paste clipboard</button>
-        <button id="checkRunes" type="button" class="btn btn-primary">Check picks</button>
+        <button id="checkRunes" type="button" class="btn btn-primary">Evaluate</button>
         <button id="freshRunes" type="button" title="Force a live Trade2 exchange refresh for the pasted items, then re-price (slower, ~15s)" class="btn">Fetch fresh prices</button>
         <div id="runeStatus" class="status">Paste item names to begin.</div>
       </div>
@@ -423,7 +423,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div class="gf-score">
           <p class="sub">Eyeing a specific item? Paste it (Ctrl+C from the trade site or in-game) to see the <b>exact gain</b> for your build — no rate limit:</p>
           <textarea id="gfItem" spellcheck="false" placeholder="Paste a copied item here…"></textarea>
-          <button class="btn btn-primary" id="gfScoreBtn" type="button">Check gain</button>
+          <button class="btn btn-primary" id="gfScoreBtn" type="button">Evaluate</button>
           <div id="gfScoreOut" class="gf-scoreout"></div>
         </div>
       </div>
@@ -580,7 +580,7 @@ window.__bg=(function(){
     body.innerHTML=pins.map(p=>`<button class="rxdock-chip" type="button" data-rx="${esc(p.rx)}" title="${esc(p.rx)}">${esc(p.label)}</button>`).join("");
     body.querySelectorAll("[data-rx]").forEach(b=>b.addEventListener("click",async()=>{
       const orig=b.textContent; let ok=false; try{ ok=await copyText(b.getAttribute("data-rx")); }catch{ ok=false; }
-      b.classList.add(ok?"copied":"failed"); b.textContent=ok?"Copied ✓":"Copy failed";
+      b.classList.add(ok?"copied":"failed"); b.textContent=ok?"Copied":"Copy failed";
       setTimeout(()=>{ b.textContent=orig; b.classList.remove("copied","failed"); },1100);
     }));
   }

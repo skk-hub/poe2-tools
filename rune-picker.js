@@ -112,7 +112,7 @@ window.__viewInit["rune-picker"] = function () {
 
   function renderRows(){
     if(!runeResultData.length){
-      runeRows.innerHTML='<tr><td colspan="8" class="muted">No results. Check the pasted text.</td></tr>';
+      runeRows.innerHTML='<tr><td colspan="8" class="muted">No results yet — check the pasted text and Evaluate again.</td></tr>';
       updateSortIndicators();
       return;
     }
@@ -136,7 +136,7 @@ window.__viewInit["rune-picker"] = function () {
     runeResultData=data.results||[];
     if(!runeResultData.length){
       runeBest.className="bestbox empty";
-      runeBest.textContent="No priced picks yet — paste reward lines or item choices above, then Check picks.";
+      runeBest.textContent="No priced picks yet — paste reward lines or item choices above, then Evaluate.";
       renderRows();
       return;
     }
@@ -147,7 +147,7 @@ window.__viewInit["rune-picker"] = function () {
       runeBest.innerHTML='<b>Best pick: '+esc(best.qty)+'x '+esc(best.name)+'</b><span>'+fx(best.total)+' total / '+fx(best.each)+' each - '+esc(best.category)+' via '+esc(best.source)+'</span>'+(best.rawPrice?'<div class="muted">Raw listing: '+esc(best.rawPrice)+'</div>':'');
     }else{
       runeBest.className="bestbox empty";
-      runeBest.textContent="No priced picks yet — paste reward lines or item choices above, then Check picks.";
+      runeBest.textContent="No priced picks yet — paste reward lines or item choices above, then Evaluate.";
     }
 
     renderRows();
@@ -216,7 +216,7 @@ window.__viewInit["rune-picker"] = function () {
       autoPollTimer=0; autoPolls=0; return;
     }
     if(autoPolls>=AUTO_POLL_MAX){
-      setRuneStatus(pending+" still pricing — Trade2 is slow; click Check picks to keep filling.","");
+      setRuneStatus(pending+" still pricing — Trade2 is slow; click Evaluate to keep filling.","");
       if(window.__bg) window.__bg.clear("rune-picker"); autoPollTimer=0; autoPolls=0; return;
     }
     setRuneStatus("Pricing "+pending+" item"+(pending>1?"s":"")+" from Trade2 — auto-updating… ("+done+"/"+total+" priced)","");
@@ -310,8 +310,8 @@ window.__viewInit["rune-picker"] = function () {
       const data=await r.json();
       if(!data.text) throw new Error("No text found in image");
       runeInput.value=data.text;
-      setPasteZoneState("ocr-ok","OCR done — review text then hit Check picks");
-      setRuneStatus("Text extracted. Review the lines and click Check picks.", "ok");
+      setPasteZoneState("ocr-ok","OCR done — review text then hit Evaluate");
+      setRuneStatus("Text extracted. Review the lines and click Evaluate.", "ok");
     }catch(err){
       setPasteZoneState("ocr-err","OCR failed: "+err.message);
       setRuneStatus("OCR failed: "+err.message, "err");

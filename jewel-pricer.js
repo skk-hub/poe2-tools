@@ -116,7 +116,7 @@ window.__viewInit["jewel-pricer"] = function () {
     const outEl = document.getElementById("jpPc" + idx);
     if (!entry || !outEl) return;
     const mods = topQueryMods(entry.parsed);
-    if (!mods.length) { outEl.textContent = "No priceable mods (none have a verified trade id)."; return; }
+    if (!mods.length) { outEl.textContent = "No priceable mods — none of this jewel's mods have a verified trade id yet."; return; }
     btn.disabled = true; outEl.textContent = "Pricing… (one Trade2 search)";
     try {
       const r = await fetch("/api/jewel/price", {

@@ -1,43 +1,43 @@
 /* .toolroot-jewel — Jewel Pricer (prefixed scope, no @scope dependency) */
   .toolroot-jewel{display:block;max-width:1000px}
-  .toolroot-jewel h1{margin:0;color:var(--gd);font:700 22px/1.1 var(--ff-display);letter-spacing:.04em}
-  .toolroot-jewel .sub{color:var(--mu);font:12px var(--ff-mono);margin:6px 0 0}
+  .toolroot-jewel h1{margin:0;color:var(--gold);font:700 22px/1.1 var(--font-ui);letter-spacing:.04em}
+  .toolroot-jewel .sub{color:var(--text-muted);font:12px var(--font-mono);margin:6px 0 0}
   .toolroot-jewel .jp-head{margin:0 0 14px}
 
-  .toolroot-jewel textarea{width:100%;min-height:160px;background:var(--bg-deep);border:1px solid var(--bd);color:var(--tx);padding:12px;font:12px var(--ff-mono);border-radius:var(--r-sm);resize:vertical}
+  .toolroot-jewel textarea{width:100%;min-height:160px;background:var(--bg-deep);border:1px solid var(--border);color:var(--text);padding:12px;font:12px var(--font-mono);border-radius:var(--r-sm);resize:vertical}
   .toolroot-jewel .jp-actions{margin:10px 0 0}
 
   /* one card per pasted jewel */
-  .toolroot-jewel .verdict{margin-top:12px;border:1px solid var(--bd);background:var(--surface-1);padding:12px;border-radius:var(--r-md)}
-  .toolroot-jewel .verdict .head{font:700 14px var(--ff)}
-  .toolroot-jewel .verdict.good .head{color:var(--gr)}
-  .toolroot-jewel .verdict.warn .head{color:var(--gd)}
-  .toolroot-jewel .verdict.bad .head{color:var(--rd)}
-  .toolroot-jewel .verdict ul{margin:8px 0 0;padding-left:18px;color:var(--mu);font:12px var(--ff-mono)}
+  .toolroot-jewel .verdict{margin-top:12px;border:1px solid var(--border);background:var(--surface-1);padding:12px;border-radius:var(--r-md)}
+  .toolroot-jewel .verdict .head{font:700 14px var(--font-ui)}
+  .toolroot-jewel .verdict.good .head{color:var(--green)}
+  .toolroot-jewel .verdict.warn .head{color:var(--gold)}
+  .toolroot-jewel .verdict.bad .head{color:var(--red)}
+  .toolroot-jewel .verdict ul{margin:8px 0 0;padding-left:18px;color:var(--text-muted);font:12px var(--font-mono)}
   .toolroot-jewel .verdict li{margin:2px 0}
-  .toolroot-jewel .scoreline{display:flex;align-items:baseline;gap:8px;margin:6px 0 2px;color:var(--mu);font:12px var(--ff-mono)}
-  .toolroot-jewel .scoreline b{color:var(--gd);font-size:14px}
+  .toolroot-jewel .scoreline{display:flex;align-items:baseline;gap:8px;margin:6px 0 2px;color:var(--text-muted);font:12px var(--font-mono)}
+  .toolroot-jewel .scoreline b{color:var(--gold);font-size:14px}
 
-  .toolroot-jewel .tag{display:inline-block;font:700 10px var(--ff-mono);text-transform:uppercase;padding:1px 6px;border:1px solid var(--bd);border-radius:var(--r-sm);margin-right:6px}
-  .toolroot-jewel .tag.s{color:var(--gd);border-color:oklch(80% 0.15 74 / .6);background:oklch(80% 0.15 74 / .08)}
-  .toolroot-jewel .tag.a{color:var(--gr);border-color:oklch(67% 0.14 148 / .5)}
-  .toolroot-jewel .tag.b{color:var(--mu)}
-  .toolroot-jewel .tag.junk{color:var(--rd);border-color:oklch(62% 0.14 20 / .4)}
+  .toolroot-jewel .tag{display:inline-block;font:700 10px var(--font-mono);text-transform:uppercase;padding:1px 6px;border:1px solid var(--border);border-radius:var(--r-sm);margin-right:6px}
+  .toolroot-jewel .tag.s{color:var(--gold);border-color:oklch(80% 0.15 74 / .6);background:oklch(80% 0.15 74 / .08)}
+  .toolroot-jewel .tag.a{color:var(--green);border-color:oklch(67% 0.14 148 / .5)}
+  .toolroot-jewel .tag.b{color:var(--text-muted)}
+  .toolroot-jewel .tag.junk{color:var(--red);border-color:oklch(62% 0.14 20 / .4)}
 
   /* price-check button + result, inside a verdict card */
   .toolroot-jewel .jp-pc{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
-  .toolroot-jewel .jp-pcout{font:12px var(--ff-mono);color:var(--mu)}
-  .toolroot-jewel .jp-pcout b{color:var(--gd);font-size:14px}
-  .toolroot-jewel .jp-pcout.thin b{color:var(--rd)}
+  .toolroot-jewel .jp-pcout{font:12px var(--font-mono);color:var(--text-muted)}
+  .toolroot-jewel .jp-pcout b{color:var(--gold);font-size:14px}
+  .toolroot-jewel .jp-pcout.thin b{color:var(--red)}
 
   /* stash-regex presets */
-  .toolroot-jewel .jp-regex{margin-top:22px;border-top:1px solid var(--bd);padding-top:16px}
-  .toolroot-jewel .jp-h2{font:700 14px var(--ff);color:var(--gd);margin:0 0 4px}
+  .toolroot-jewel .jp-regex{margin-top:22px;border-top:1px solid var(--border);padding-top:16px}
+  .toolroot-jewel .jp-h2{font:700 14px var(--font-ui);color:var(--gold);margin:0 0 4px}
   .toolroot-jewel #jpPresets{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-  .toolroot-jewel .jp-preset{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-sm);padding:9px 11px}
+  .toolroot-jewel .jp-preset{border:1px solid var(--border);background:var(--surface-1);border-radius:var(--r-sm);padding:9px 11px}
   .toolroot-jewel .jp-preset-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px}
-  .toolroot-jewel .jp-preset-label{font:600 12px var(--ff);color:var(--tx)}
-  .toolroot-jewel .jp-preset code{display:block;font:12px var(--ff-mono);color:var(--gr);word-break:break-all}
-  .toolroot-jewel .jp-preset-note{display:block;font:11px var(--ff-mono);color:var(--mu);margin-top:4px}
+  .toolroot-jewel .jp-preset-label{font:600 12px var(--font-ui);color:var(--text)}
+  .toolroot-jewel .jp-preset code{display:block;font:12px var(--font-mono);color:var(--green);word-break:break-all}
+  .toolroot-jewel .jp-preset-note{display:block;font:11px var(--font-mono);color:var(--text-muted);margin-top:4px}
 
-  .toolroot-jewel .foot{margin-top:16px;color:var(--mu);font:11px var(--ff-mono);line-height:1.6}
+  .toolroot-jewel .foot{margin-top:16px;color:var(--text-muted);font:11px var(--font-mono);line-height:1.6}
