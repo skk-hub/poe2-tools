@@ -2072,9 +2072,10 @@ function extractAnoint(raw) {
   return out;
 }
 
-// extraImplicits: enchant-section lines to graft on (e.g. an anoint transferred from your
-// current item). Added to the implicit block + count so PoB reads them as enchants — skipped
-// if the candidate already carries an "Allocates" line (don't double-anoint).
+// extraImplicits: enchant-section lines to graft on (your anoint, transferred from your
+// current amulet). Added to the implicit block + count so PoB reads them as enchants. Any
+// anoint the candidate ALREADY has is REPLACED with yours — you can only run one anoint and
+// you'd re-anoint whatever you buy with your own notable, so its existing one is irrelevant.
 function pobItemFromTradeEntry(entry, extraImplicits) {
   const item = (entry && entry.item) || {};
   const base = item.typeLine || item.baseType || "";
@@ -2086,7 +2087,7 @@ function pobItemFromTradeEntry(entry, extraImplicits) {
   // (mods dropped) → every candidate scores identically. Pull the actual text.
   const modText = (m) => normalizePoeMarkup(typeof m === "string" ? m : (m && m.description) || "");
   let impl = [].concat(item.enchantMods || [], item.runeMods || [], item.implicitMods || []).map(modText).filter(Boolean);
-  if (extraImplicits && extraImplicits.length && !impl.some((l) => /Allocates\s/i.test(l))) impl = impl.concat(extraImplicits);
+  if (extraImplicits && extraImplicits.length) impl = impl.filter((l) => !/Allocates\s/i.test(l)).concat(extraImplicits);
   const expl = [].concat(item.explicitMods || [], item.fracturedMods || [], item.craftedMods || [], item.desecratedMods || []).map(modText).filter(Boolean);
   const head = name ? `Rarity: Rare\n${name}\n${base}` : `Rarity: Normal\n${base}`;
   return [head, `Item Level: ${ilvl}`, `Implicits: ${impl.length}`].concat(impl, expl).join("\n");
