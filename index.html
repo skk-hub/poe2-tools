@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="theme.css">
 <link rel="stylesheet" href="map-juicer.css">
 <link rel="stylesheet" href="rune-picker.css">
-<link rel="stylesheet" href="filter-helper.css"><link rel="stylesheet" href="jewel-pricer.css">
+<link rel="stylesheet" href="filter-helper.css">
 <link rel="stylesheet" href="gear-finder.css">
 <style>
 /* ===== Hub: modern dashboard, built on theme.css tokens ===== */
@@ -212,7 +212,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <a class="navbtn" href="#home" data-view-link="home">Home</a>
       <a class="navbtn" href="#rune-picker" data-view-link="rune-picker">Rune Picker</a>
       <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Regex Cheat Sheet</a>
-      <a class="navbtn" href="#filter-helper" data-view-link="filter-helper">Filter Helper</a>      <a class="navbtn" href="#jewel-pricer" data-view-link="jewel-pricer">Jewel Pricer</a>
+      <a class="navbtn" href="#filter-helper" data-view-link="filter-helper">Filter Helper</a>
       <a class="navbtn" href="#gear-finder" data-view-link="gear-finder">Gear Finder</a>
     </nav>
   </div>
@@ -418,27 +418,6 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <p class="gf-foot">Path of Building works out which stats actually help <i>your</i> build, then hands you a <b>build-weighted trade search</b>. The snippet runs in your own logged-in browser (no rate limit, and it unlocks the weighted search the API can't do anonymously); the basic search is a one-call fallback. Headless weighting needs PoB + LuaJIT installed locally.</p>
     </div>
   </section>
-  <section id="jewel-pricer" class="view" data-view="jewel-pricer">
-    <div class="toolroot toolroot-jewel">
-      <div class="pagehead jp-head">
-        <div>
-          <h1>Jewel Pricer</h1>
-          <p class="sub">Paste 1+ rare jewels — instant keep/junk triage, then an opt-in live floor check. <span id="jpPatch"></span></p>
-        </div>
-      </div>
-      <textarea id="jpInput" spellcheck="false" placeholder="Paste copied jewel text here (Ctrl+C in-game).&#10;Multiple jewels at once is fine — paste them one after another.&#10;Each must include its 'Item Class: Jewels' and 'Rarity:' lines."></textarea>
-      <div class="jp-actions"><button class="btn btn-primary" id="jpEval" type="button">Evaluate</button></div>
-      <div id="jpOut"></div>
-      <div class="jp-regex">
-        <h2 class="jp-h2">Stash search regex — find keepers</h2>
-        <p class="sub">Paste into the in-game stash search (Ctrl+F). Each highlights jewels with a chase <b>combo</b> — quoted blocks are AND, <code>|</code> is OR. Single mods aren't here on purpose: almost every jewel has one, so they don't filter.</p>
-        <div id="jpPresets"></div>
-      </div>
-      <p class="foot">
-        Triage is offline (zero trade calls) — a whole stash sorts instantly. <b>Price check</b> runs ONE rate-limited Trade2 search that ANDs the jewel's top mods, so the floor is "cheapest <i>good</i> jewel like this", not the junk floor. Rare jewels only; uniques (Timeless / Megalomaniac / Cluster) are a later pass.
-      </p>
-    </div>
-  </section>
   <section id="filter-helper" class="view" data-view="filter-helper">
    <div class="toolroot toolroot-fh">
     <div class="pagehead">
@@ -564,8 +543,7 @@ window.addEventListener("DOMContentLoaded",()=>runViewInit(currentView()));
 <script src="home.js"></script>
 <script src="rune-picker.js"></script>
 <script src="map-juicer.js"></script>
-<script src="filter-helper.js"></script><script src="jewel-data.js"></script>
-<script src="jewel-pricer.js"></script>
+<script src="filter-helper.js"></script>
 <script src="gear-finder.js"></script>
 </body>
 </html>

@@ -10,7 +10,7 @@ Path of Exile 2 players, primarily during an active league session. They are mid
 
 ## Product Purpose
 
-A local browser tool suite for PoE2 economy/crafting decisions, all priced off **GGG's Trade2 API (poe.ninja is not used)**: live currency/economy prices, a Rune Picker (paste reward choices → ranked sell value), Gear Search (import gear → Trade2 candidate search), a Regex Cheat Sheet (waystone/tablet stash-regex + low-value "dump" filter), a Filter Helper (loot-filter hide linter), a Gear Finder, and a Jewel Pricer. Runs via a local Node.js server, no login needed. (The original craft-route cost tool is currently blanked/being reimagined.)
+A local browser tool suite for PoE2 economy/crafting decisions, all priced off **GGG's Trade2 API (poe.ninja is not used)**: live currency/economy prices, a Rune Picker (paste reward choices → ranked sell value), Gear Search (import gear → Trade2 candidate search), a Regex Cheat Sheet (waystone/tablet stash-regex + low-value "dump" filter), a Filter Helper (loot-filter hide linter), and a Gear Finder. Runs via a local Node.js server, no login needed. (The original craft-route cost tool is currently blanked/being reimagined.)
 
 ## Brand Personality
 

@@ -518,57 +518,6 @@ async function getTradePrice(name, league, currencyRates, deadline = 0) {
   }
 }
 
-// Jewel Pricer floor: a stat-filtered sibling of getTradePrice. Prices a RARE
-// jewel by AND-ing its top 2-3 mods (each at the jewel's own rolled floor) so the
-// result is "cheapest GOOD jewel like this", not the per-mod junk floor (junk
-// jewels vastly outnumber good ones, so a single-mod sort:asc just prices a junk
-// jewel that happens to share one mod). De-bait/cluster floor is reused verbatim
-// from getTradePrice; `depth` = total matching listings, so a scarce combo reads
-// thin (the front end caveats it) instead of fabricating a confident number.
-// statFilters: [{ statId, min }]. Verified ids only (jewel-data.js); a wrong id
-// silently returns 0 → found:false (a safe failure, never a wrong price).
-async function getJewelFloor(league, statFilters, rates, deadline = 0) {
-  try {
-    if (deadline && Date.now() > deadline) return null;
-    if (!statFilters || !statFilters.length) return null;
-    const body = JSON.stringify({
-      query: {
-        status: { option: "any" },
-        filters: {
-          type_filters: { filters: { category: { option: "jewel" }, rarity: { option: "nonunique" } } },
-        },
-        stats: [{ type: "and", filters: statFilters.map((f) => ({ id: f.statId, value: { min: Math.floor(f.min) || 1 } })) }],
-      },
-      sort: { price: "asc" },
-    });
-    const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
-    const search = await fetchTrade(searchUrl, { method: "POST", body });
-    const total = Number(search && search.total) || ((search && search.result) ? search.result.length : 0);
-    if (!search.result || !search.result.length) return { found: false, ex: 0, depth: 0 };
-
-    const ids = search.result.slice(0, 10).join(",");
-    const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids + "?query=" + encodeURIComponent(search.id);
-    if (deadline && Date.now() > deadline) return null;
-    const fetched = await fetchTrade(fetchUrl);
-    const prices = [];
-    for (const entry of fetched.result || []) {
-      const price = entry.listing && entry.listing.price;
-      if (!price || !rates[price.currency]) continue;
-      const each = Math.round(Number(price.amount) * rates[price.currency] * 100) / 100;
-      if (each > 0) prices.push(each);
-    }
-    prices.sort((a, b) => a - b);
-    if (!prices.length) return { found: false, ex: 0, depth: total };
-    // Same lowball-bait drop as getTradePrice: skip an entry under HALF the next.
-    let i = 0;
-    while (i < prices.length - 1 && prices[i] < prices[i + 1] * 0.5) i++;
-    return { found: true, ex: prices[i], depth: total, thin: total <= 3 };
-  } catch (err) {
-    if (String(err && err.message).includes("rate limited")) return { limited: true };
-    return null;
-  }
-}
-
 // ── Unified currency exchange rates (Trade2, cached) ────────────────────────
 // THE single source of currency ex-values for the whole app: home strip, Gear
 // Search price conversion, Rune Picker currency pricing. Reads GGG's live Trade2
@@ -2657,38 +2606,6 @@ const server = http.createServer(async (req, res) => {
         source: "trade2",
         rawPrice: price.rawAmount + " " + price.rawCurrency,
       }), "application/json; charset=utf-8");
-      return;
-    }
-
-    if (url.pathname === "/api/jewel/price" && req.method === "POST") {
-      const input = await readJson(req);
-      const league = sanitizeLeague(input.league || "Runes of Aldur");
-      // Trust only well-formed explicit stat ids from jewel-data.js (a bad id is a
-      // safe 0-result failure, but validate the shape so we never inject junk).
-      const mods = (Array.isArray(input.mods) ? input.mods : [])
-        .filter((m) => m && typeof m.statId === "string" && /^explicit\.stat_\d+$/.test(m.statId))
-        .map((m) => ({ statId: m.statId, min: Number(m.min) || 1 }))
-        .slice(0, 3);
-      if (!mods.length) {
-        send(res, 400, JSON.stringify({ error: "No valid mods" }), "application/json; charset=utf-8");
-        return;
-      }
-      const status = tradeStatus();
-      if (status.limited) {
-        send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: status.tradeLimitedUntil }), "application/json; charset=utf-8");
-        return;
-      }
-      const rates = await getExchangeRates(league);
-      const r = await getJewelFloor(league, mods, rates, Date.now() + 12000);
-      if (r && r.limited) {
-        send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8");
-        return;
-      }
-      if (!r || !r.found) {
-        send(res, 200, JSON.stringify({ found: false, depth: (r && r.depth) || 0 }), "application/json; charset=utf-8");
-        return;
-      }
-      send(res, 200, JSON.stringify({ found: true, ex: r.ex, depth: r.depth, thin: !!r.thin }), "application/json; charset=utf-8");
       return;
     }
 
