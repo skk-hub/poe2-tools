@@ -2847,12 +2847,17 @@ const server = http.createServer(async (req, res) => {
         return q;
       };
       let q = buildQ(weighted);
+      let sessionExpired = false;
       try {
         let search, usedLeague;
         try {
           ({ search, league: usedLeague } = await gearTradeSearch(q, league));
         } catch (e) {
-          if (weighted && /HTTP 400/.test(String(e && e.message))) { weighted = false; q = buildQ(false); ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
+          // The weighted (statgroup) query 400s when POESESSID is missing/EXPIRED (GGG
+          // then treats us as logged-out → "too complex"/"log in"). POESESSID IS set here
+          // (else weighted would be false), so a 400 means the session died → flag it so
+          // the UI can prompt a refresh, and fall back to the non-weighted query.
+          if (weighted && /HTTP 400/.test(String(e && e.message))) { sessionExpired = true; weighted = false; q = buildQ(false); ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
           else throw e;
         }
         const all = search.result || [];
@@ -2921,7 +2926,7 @@ const server = http.createServer(async (req, res) => {
         // The build-weighted/price search this came from — opening it lands on these
         // candidates (no per-item permalink exists on PoE trade). Each row links here.
         const searchUrl = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(usedLeague) + "/" + search.id : "";
-        send(res, 200, JSON.stringify({ available: true, weighted, metric, spiritSkipped, searchUrl, scored: cands.length, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, weighted, sessionExpired, metric, spiritSkipped, searchUrl, scored: cands.length, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         const msg = String(err.message);

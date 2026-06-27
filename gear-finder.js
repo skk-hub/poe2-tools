@@ -59,6 +59,14 @@ window.__viewInit["gear-finder"] = function () {
     refreshSaved();
   }
 
+  // GGG logged out our POESESSID mid-session → realrank fell back to price-ranked.
+  // Show it so you know to refresh the cookie (and that it still works, just not value-ranked).
+  function markSessionExpired() {
+    els.mode.className = "gf-badge fallback";
+    els.mode.textContent = (state.headless ? "Headless DPS" : "Stat-only") + " · POESESSID expired";
+    els.mode.title = "Your logged-in session expired (GGG logged it out) — the search fell back to price-ranked (still finds upgrades). Paste a FRESH POESESSID into .env and RESTART the server to re-enable the build-value search.";
+  }
+
   // The saved-builds row holds two things: "My builds" (only if any saved) and a
   // "Save this build as…" button (only after a build is imported). Show the row when
   // either is present.
@@ -204,6 +212,7 @@ window.__viewInit["gear-finder"] = function () {
     els.realRankBtn.disabled = false;
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
+    if (d.sessionExpired) markSessionExpired();
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
     const cands = d.candidates || [];
     if (!cands.length) { setStatus("No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot." + (d.spiritSkipped ? ` (${d.spiritSkipped} skipped — would break your auras on spirit)` : ""), false); return; }
@@ -289,6 +298,7 @@ window.__viewInit["gear-finder"] = function () {
       const mods = w.weights.filter((x) => (x.cur || 0) > 0).slice(0, 4).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
       const r = await api("/api/gear/realrank", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, mods, weights: w.weights.slice(0, 8), metric, equip: w.equip, preserve: w.preserve, minPriceDiv: minDiv, maxPriceDiv: 0, league: state.league, scoreCap: 10 }).catch(() => null);
       if (r && r.limited) { partial = true; break; }
+      if (r && r.sessionExpired) markSessionExpired();
       if (!r || r.error || !Array.isArray(r.candidates)) { rows.push({ id, name: sl.name, none: "search failed" }); continue; }
       spiritTotal += r.spiritSkipped || 0;
       const mk = r.metric || metric;
