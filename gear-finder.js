@@ -279,9 +279,10 @@ window.__viewInit["gear-finder"] = function () {
       if (!w.weights || !w.weights.length) { rows.push({ id, name: sl.name, none: "nothing improves this slot" }); continue; }
       const metric = w.metric || "dps";
       const mods = w.weights.slice(0, 4).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
-      // No max budget (a pricier item can still win on gain-per-divine), optional min, and
-      // weights:[] forces the price-spread path so we sample across prices, not best-by-stat.
-      const r = await api("/api/gear/realrank", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, mods, weights: [], metric, minPriceDiv: minDiv, maxPriceDiv: 0, league: state.league, scoreCap: 10 }).catch(() => null);
+      // Pass the weights so a logged-in (POESESSID) session ranks by build VALUE across
+      // all price tiers; logged-out, realrank sorts price DESC (the priciest matching
+      // items are the real upgrades — the cheapest are junk). Optional min floor.
+      const r = await api("/api/gear/realrank", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, mods, weights: w.weights.slice(0, 8), metric, minPriceDiv: minDiv, maxPriceDiv: 0, league: state.league, scoreCap: 10 }).catch(() => null);
       if (r && r.limited) { partial = true; break; }
       if (!r || r.error || !Array.isArray(r.candidates)) { rows.push({ id, name: sl.name, none: "search failed" }); continue; }
       spiritTotal += r.spiritSkipped || 0;

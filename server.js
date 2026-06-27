@@ -2771,9 +2771,15 @@ const server = http.createServer(async (req, res) => {
       // a stat-floor + price-spread. Weights come from the client's /api/gear/weights result.
       const weights = (Array.isArray(input.weights) ? input.weights : []).filter((w) => w && /^(explicit\.stat_\d+|pseudo\.[a-z0-9_]+)$/.test(w.statId) && Number(w.weight) > 0);
       const weighted = !!POESESSID && weights.length > 0;
+      // Sort DESC by default: without a POESESSID value-sort, the search only sees the
+      // first 100 results, and the CHEAPEST 100 of a slot are always junk far below
+      // decent gear (→ "no upgrade found"). The priciest 100 are where real upgrades
+      // live. (Verified: a 224k-DPS bow's only ranked upgrades are 1000+ div.) A budget
+      // cap (maxPriceDiv) then makes this "best item I can afford". asc only on request.
+      const sortDir = input.sort === "asc" ? "asc" : "desc";
       const q = weighted
         ? buildWeightedGearQuery(slot, weights, league, Number(input.maxPriceDiv) || 0)
-        : { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) }, sort: { price: "asc" } };
+        : { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) }, sort: { price: sortDir } };
       // Price band: max (a cap) and/or min. The best-ROI scan passes NO max (a pricier
       // item can still win on gain-per-divine) and an optional min to skip junk.
       const maxDiv = Number(input.maxPriceDiv) || 0, minDiv = Number(input.minPriceDiv) || 0;
@@ -2794,6 +2800,11 @@ const server = http.createServer(async (req, res) => {
         // (≤10 ids/call, shared-IP rate limit) and PoB time; bail to partial on a limit.
         const SCORE_CAP = Math.max(10, Math.min(50, Number(input.scoreCap) || 50));   // 5 fetch calls; a multi-slot scan passes 10 (1 fetch) to stay cheap on the rate limit
         const m = Math.min(all.length, SCORE_CAP);
+        // Weighted = best-value-first, score the top m. Otherwise sample a SPREAD across
+        // the result page: for price-DESC that's the priciest 100 (where real upgrades
+        // live, spanning mirror-tier down to mid-price — the best upgrade is often
+        // mid-range, NOT the single priciest, so a spread beats top-m). asc spreads the
+        // cheap page (mostly junk, but cheap real upgrades surface if your gear is weak).
         const pick = weighted ? all.slice(0, m) : Array.from({ length: m }, (_, i) => all[Math.floor((i * all.length) / m)]);
         const rates = await getExchangeRates(league).catch(() => ({}));
         await pob.load(String(input.buildXml || ""));
