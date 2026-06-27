@@ -2432,6 +2432,13 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
   // the boots, so it reads low/wrong.
   const preserve = [];
   if (baseSlot === "boots") preserve.push({ statId: gearStatId("movementSpeed", baseSlot), min: 25 });
+  // Spirit: if the build RESERVES spirit (auras/heralds/persistent gems) and the current
+  // item carries spirit, a replacement must keep it. The SpiritUnreserved<0 guard alone is
+  // too narrow — with unreserved slack, an amulet that sheds SOME spirit stays ≥0 and slips
+  // through, quietly eating your headroom. Floor candidates at the current item's spirit roll.
+  const spiritStatId = gearStatId("spirit", baseSlot);
+  if ((Number(base.SpiritReserved) || 0) > 0 && (currentStats.spirit || 0) > 0 && spiritStatId)
+    preserve.push({ statId: spiritStatId, min: Math.round(currentStats.spirit) });
   return { metric, base: { Life: base.Life, EnergyShield: base.EnergyShield, TotalEHP: base.TotalEHP, dps: dpsOfOut(base) }, weights, equip, preserve };
 }
 
