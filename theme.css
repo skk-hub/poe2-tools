@@ -142,6 +142,7 @@ input[type=checkbox]:disabled,input[type=radio]:disabled{ opacity:.45; cursor:de
   cursor:pointer; text-decoration:none; user-select:none;
   transition:transform var(--t),background var(--t),border-color var(--t),box-shadow var(--t),color var(--t);
 }
+.btn[hidden]{ display:none; }  /* .btn sets display:inline-flex, which otherwise defeats the [hidden] attribute */
 .btn:hover{ background:var(--surface-3); border-color:var(--border-strong); transform:translateY(-1px); }
 .btn:active{ transform:translateY(0); }
 .btn:disabled{ opacity:.45; cursor:default; transform:none; }

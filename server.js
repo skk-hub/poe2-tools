@@ -740,9 +740,13 @@ let proxyMem = null, proxyInFlight = null;
 // Indirection so tests can stub the network (mirrors __setExchangeRawImpl).
 let proxyFetchImpl = async (league) => {
   const url = EE2_PROXY_BASE + "/" + proxyLeagueSlug(league) + "/overviewData.json";
-  const r = await fetch(url, { headers: { "User-Agent": "poe-tools-local/0.1 (Exiled-Exchange-2 proxy)" } });
-  if (!r.ok) throw new Error("ee2 proxy HTTP " + r.status);
-  return parseProxyOverview(JSON.parse(await r.text()));
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);   // a slow/hung proxy must not block requests
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": "poe-tools-local/0.1 (Exiled-Exchange-2 proxy)" }, signal: ctrl.signal });
+    if (!r.ok) throw new Error("ee2 proxy HTTP " + r.status);
+    return parseProxyOverview(JSON.parse(await r.text()));
+  } finally { clearTimeout(t); }
 };
 function readProxyCache() {
   if (proxyMem) return proxyMem;

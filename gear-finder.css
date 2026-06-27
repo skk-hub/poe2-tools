@@ -7,6 +7,12 @@
   .toolroot-gear .gf-badge.fallback{color:var(--gd);border-color:var(--bd-gold,var(--bd))}
 
   .toolroot-gear .gf-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
+  /* gf-contents lets a wrapper's children take part in the row's flex layout; the
+     [hidden] rule must restate display:none (a display rule otherwise defeats [hidden]). */
+  .toolroot-gear .gf-contents{display:contents}
+  .toolroot-gear .gf-contents[hidden]{display:none}
+  .toolroot-gear .gf-savebox{display:inline-flex;gap:8px;align-items:center}
+  .toolroot-gear .gf-savebox[hidden]{display:none}
   .toolroot-gear select,.toolroot-gear input[type=number]{height:38px;background:var(--bg-deep);border:1px solid var(--bd);color:var(--tx);border-radius:var(--r-sm);padding:0 10px;font:13px var(--ff-ui)}
   .toolroot-gear textarea{width:100%;min-height:80px;background:var(--bg-deep);border:1px solid var(--bd);color:var(--tx);padding:12px;font:12px var(--ff-mono);border-radius:var(--r-sm);resize:vertical;margin:8px 0}
   .toolroot-gear details.gf-paste{margin:6px 0}

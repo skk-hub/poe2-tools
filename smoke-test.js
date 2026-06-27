@@ -317,6 +317,8 @@ async function browserChecks() {
         items: [{ id: "divine", name: "Divine Orb", ex: 320, icon: "https://web.poecdn.com/divine.png" }, { id: "exalted", name: "Exalted Orb", ex: 1, base: true, icon: "https://web.poecdn.com/ex.png" }, { id: "chaos", name: "Chaos Orb", ex: 2.4, icon: "https://web.poecdn.com/chaos.png" }],
       }) }); });
       await p.route("**/api/trade-status**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ limited: false, secondsRemaining: 0, tradeLimitedUntil: "" }) }));
+      // economy history would otherwise hit the live EE2 proxy server-side and keep networkidle pending
+      await p.route("**/api/economy/history**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ points: [], updated: new Date().toISOString() }) }));
       await p.goto(BASE + "/index.html#home", { waitUntil: "networkidle" }); await p.waitForTimeout(600);
       const strip = await p.evaluate(() => { const s = document.getElementById("fxStrip"); const c = document.getElementById("fxStripChips"); const t = document.getElementById("tradeStatus"); const base = [...(c ? c.children : [])].find(el => /\(base\)/.test(el.textContent)); return { shown: s && !s.hidden, chips: c ? c.children.length : 0, icons: c ? c.querySelectorAll("img.fxicon").length : 0, baseTxt: base ? base.textContent : "", tradeOk: t ? t.classList.contains("ok") : false, tradeTxt: t ? t.textContent : "" }; });
       check(strip.shown && strip.chips === 3, "home currency strip renders chips from cache");
@@ -356,6 +358,7 @@ async function browserChecks() {
     {
       const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       await p.route("**/api/currency/overview**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ league: "Runes of Aldur", items: [], limited: true }) }));
+      await p.route("**/api/economy/history**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ points: [], updated: new Date().toISOString() }) }));
       await p.goto(BASE + "/index.html#home", { waitUntil: "networkidle" }); await p.waitForTimeout(500);
       const empty = await p.evaluate(() => { const s = document.getElementById("fxStrip"); const m = document.getElementById("fxStripMeta"); const r = document.getElementById("fxStripRefresh"); return { shown: s && !s.hidden, meta: m ? m.textContent : "", hasRefresh: !!(r && r.offsetParent !== null) }; });
       check(empty.shown && empty.hasRefresh && /retry/i.test(empty.meta), "home currency strip stays visible + retryable when rates unavailable");

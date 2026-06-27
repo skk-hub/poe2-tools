@@ -357,13 +357,16 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <p class="sub">Import your Path of Building build, then find trade upgrades ranked by real DPS/EHP gain. <span id="gfMode" class="gf-badge"></span></p>
       </div>
       <div class="gf-row" id="gfSavedRow" hidden>
-        <label>My builds <select id="gfSaved"></select></label>
-        <button class="btn btn-primary" id="gfLoadSaved" type="button">Load</button>
-        <button class="btn" id="gfDelSaved" type="button">Delete</button>
-      </div>
-      <div class="gf-row" id="gfFolderRow" hidden>
-        <label>PoB folder <select id="gfBuilds"></select></label>
-        <button class="btn" id="gfLoad" type="button">Load build</button>
+        <span class="gf-contents" id="gfMyBuilds" hidden>
+          <label>My builds <select id="gfSaved"></select></label>
+          <button class="btn btn-primary" id="gfLoadSaved" type="button">Load</button>
+          <button class="btn" id="gfDelSaved" type="button">Delete</button>
+        </span>
+        <button class="btn" id="gfSaveBuild" type="button" hidden>Save this build as…</button>
+        <span class="gf-savebox" id="gfSaveBox" hidden>
+          <input id="gfSaveName" placeholder="name it (e.g. Lightning Spear)" style="width:14em">
+          <button class="btn btn-primary" id="gfSaveConfirm" type="button">Save</button>
+        </span>
       </div>
       <details class="gf-paste" id="gfPaste">
         <summary>Paste a Path of Building export code</summary>
@@ -371,10 +374,6 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <button class="btn btn-primary" id="gfImport" type="button">Import code</button>
       </details>
       <div id="gfBuild" class="gf-build"></div>
-      <div class="gf-row" id="gfSaveRow" hidden>
-        <label>Save this build as <input id="gfSaveName" placeholder="name it (e.g. Lightning Spear)" style="width:18em"></label>
-        <button class="btn" id="gfSaveBuild" type="button">Save</button>
-      </div>
       <div class="gf-row gf-scanrow" id="gfScanRow" hidden>
         <button class="btn btn-primary" id="gfScanAll" type="button">⚡ Scan all slots for best ROI</button>
         <label>Min div <span class="muted">(optional)</span> <input id="gfScanMin" type="number" value="0" min="0" step="0.5" style="width:6em" title="skip items cheaper than this — raises the floor past junk so a real upgrade's ROI shows. No max cap: a pricier item can still win on gain-per-divine."></label>

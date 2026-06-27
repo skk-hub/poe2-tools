@@ -2,9 +2,9 @@ window.__viewInit = window.__viewInit || {};
 window.__viewInit["gear-finder"] = function () {
   const $ = (id) => document.getElementById(id);
   const els = {
-    mode: $("gfMode"), builds: $("gfBuilds"), load: $("gfLoad"), folderRow: $("gfFolderRow"),
-    saved: $("gfSaved"), savedRow: $("gfSavedRow"), loadSaved: $("gfLoadSaved"), delSaved: $("gfDelSaved"),
-    code: $("gfCode"), importBtn: $("gfImport"), paste: $("gfPaste"), saveName: $("gfSaveName"), saveBuild: $("gfSaveBuild"), saveRow: $("gfSaveRow"),
+    mode: $("gfMode"),
+    saved: $("gfSaved"), savedRow: $("gfSavedRow"), myBuilds: $("gfMyBuilds"), loadSaved: $("gfLoadSaved"), delSaved: $("gfDelSaved"),
+    code: $("gfCode"), importBtn: $("gfImport"), paste: $("gfPaste"), saveName: $("gfSaveName"), saveBuild: $("gfSaveBuild"), saveBox: $("gfSaveBox"), saveConfirm: $("gfSaveConfirm"),
     build: $("gfBuild"), slots: $("gfSlots"),
     scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), analyze: $("gfAnalyze"),
@@ -46,15 +46,21 @@ window.__viewInit["gear-finder"] = function () {
     document.body.removeChild(ta); return ok;
   }
 
+  // Only used for the headless-PoB availability badge now (the PoB-folder picker was removed).
   async function loadBuildsList() {
     const d = await api("/api/gear/builds").catch(() => null);
     if (!d) return;
     state.headless = !!d.headless;
     els.mode.className = "gf-badge " + (d.headless ? "live" : "fallback");
     els.mode.textContent = d.headless ? "Headless DPS" : "Stat-only (no PoB)";
-    els.builds.innerHTML = (d.builds || []).map((b) => `<option value="${esc(b.file)}">${esc(b.name)}</option>`).join("");
-    els.folderRow.hidden = !(d.builds || []).length;   // PoB-folder picker only useful where the server sees the Builds dir
     refreshSaved();
+  }
+
+  // The saved-builds row holds two things: "My builds" (only if any saved) and a
+  // "Save this build as…" button (only after a build is imported). Show the row when
+  // either is present.
+  function syncSaveRow() {
+    els.savedRow.hidden = els.myBuilds.hidden && els.saveBuild.hidden && els.saveBox.hidden;
   }
 
   // Named build saves in this browser (localStorage) — so you don't re-paste the
@@ -66,14 +72,15 @@ window.__viewInit["gear-finder"] = function () {
     const saves = loadSaves();
     const names = Object.keys(saves).sort((a, b) => a.localeCompare(b));
     els.saved.innerHTML = names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
-    els.savedRow.hidden = !names.length;
-    if (els.paste) els.paste.open = !names.length && els.folderRow.hidden;  // first visit → open the paste box
+    els.myBuilds.hidden = !names.length;
+    if (els.paste) els.paste.open = !names.length;   // first visit → open the paste box
+    syncSaveRow();
   }
 
   function renderBuild(d) {
     if (d.error) { setStatus(d.error, true); return; }
     state.xml = d.xml; state.slots = d.slots || {};
-    els.saveRow.hidden = false;
+    els.saveBuild.hidden = false; els.saveBox.hidden = true; syncSaveRow();   // a build is loaded → offer to save it
     const b = (d.headless && d.headless.stats) || d.build || {};
     const tiles = [["Life", b.Life], ["Energy Shield", b.EnergyShield], ["EHP", ehpOf(b) || b.TotalEHP],
       ["DPS", (b.FullDPS || b.CombinedDPS || b.TotalDPS)], ["Fire", b.FireResist], ["Cold", b.ColdResist],
@@ -296,21 +303,23 @@ window.__viewInit["gear-finder"] = function () {
     return `fetch("/api/trade2/search/poe2/${encodeURIComponent(league)}",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(${q})}).then(r=>r.json()).then(d=>{if(d.id){location.href="/trade2/search/poe2/${encodeURIComponent(league)}/"+d.id}else{alert("Search failed: "+JSON.stringify(d))}}).catch(e=>alert(e));`;
   }
 
-  els.load.addEventListener("click", async () => {
-    const file = els.builds.value; if (!file) { setStatus("No build selected.", true); return; }
-    setStatus("Loading build…"); renderBuild(await api("/api/gear/import", { buildFile: file }));
-  });
   els.importBtn.addEventListener("click", async () => {
     const code = (els.code.value || "").trim(); if (!code) { setStatus("Paste a PoB code first.", true); return; }
     setStatus("Importing…"); renderBuild(await api("/api/gear/import", { code }));
   });
+  // "Save this build as…" is a button that reveals the name box; the box's Save confirms.
   els.saveBuild.addEventListener("click", () => {
+    els.saveBuild.hidden = true; els.saveBox.hidden = false; syncSaveRow(); els.saveName.focus();
+  });
+  els.saveName.addEventListener("keydown", (e) => { if (e.key === "Enter") els.saveConfirm.click(); });
+  els.saveConfirm.addEventListener("click", () => {
     const name = (els.saveName.value || "").trim();
     if (!name) { setStatus("Type a name to save this build.", true); return; }
     if (!state.xml) { setStatus("Import a build first, then save it.", true); return; }
     const saves = loadSaves(); saves[name] = state.xml; persistSaves(saves);
-    els.saveName.value = ""; refreshSaved(); els.saved.value = name;
-    setStatus(`Saved "${name}" in this browser — pick it from My builds next time.`);
+    els.saveName.value = ""; els.saveBox.hidden = true; els.saveBuild.hidden = false;
+    refreshSaved(); els.saved.value = name;   // refreshSaved → syncSaveRow
+    setStatus(`Saved "${name}" — pick it from My builds next time.`);
   });
   els.loadSaved.addEventListener("click", async () => {
     const name = els.saved.value, saves = loadSaves();
