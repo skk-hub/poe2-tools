@@ -2454,15 +2454,14 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
   // MS is excluded (you carry the rune separately).
   if (baseSlot === "boots") preserve.push({ statId: gearStatId("movementSpeed", baseSlot), min: Math.max(25, Math.round(explicitMovementSpeed(currentRaw))) });
   // Spirit: if the build RESERVES spirit (auras/heralds) and the current item carries it, a
-  // replacement must keep ENOUGH spirit that reservation still fits. Slack-aware floor =
-  // current roll MINUS your unreserved headroom (you can shed spirit down to your
-  // reservation, no further — so more slack lets cheaper, lower-spirit items qualify). The
-  // SpiritUnreserved<0 guard alone was too narrow: with slack, a partial-spirit-loss amulet
-  // stayed ≥0 and slipped through.
+  // replacement must KEEP it — floor candidates at your current spirit roll. We do NOT
+  // subtract unreserved "slack": headless PoB's reservation reading is nondeterministic
+  // across loads (SpiritUnreserved came back 33 one load, -88 another — TotalDPS swings too),
+  // so a slack-aware floor is unreliable. The user has only ~3 slack anyway, so flooring at
+  // the full roll costs nothing and is STABLE (a slack-derived floor leaked no-spirit necks).
   const spiritStatId = gearStatId("spirit", baseSlot);
-  const spiritFloor = Math.round((currentStats.spirit || 0) - (Number(base.SpiritUnreserved) || 0));
-  if ((Number(base.SpiritReserved) || 0) > 0 && spiritFloor > 0 && spiritStatId)
-    preserve.push({ statId: spiritStatId, min: spiritFloor });
+  if ((Number(base.SpiritReserved) || 0) > 0 && (currentStats.spirit || 0) > 0 && spiritStatId)
+    preserve.push({ statId: spiritStatId, min: Math.round(currentStats.spirit) });
   return { metric, base: { Life: base.Life, EnergyShield: base.EnergyShield, TotalEHP: base.TotalEHP, dps: dpsOfOut(base) }, weights, equip, preserve };
 }
 
@@ -2473,13 +2472,19 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
 // query: the candidate must roll at least 60% of your current item's value on
 // the top-weighted stat. Anonymous POST of a weight group 400s ("log in") — so
 // this is POSTed by the user's logged-in browser (the snippet).
-function buildWeightedGearQuery(slot, weights, league, maxPriceDiv) {
+function buildWeightedGearQuery(slot, weights, league, maxPriceDiv, preserve) {
   // Cap the weight group: GGG 400s a query with too many filters ("too complex"), and
   // realrank also stacks equipment_filters + preserve floors. Top 4 weights rank fine;
   // PoB scores the real winners anyway. Drop the extra "gate" and-filter for the same
   // reason — equipment_filters/preserve already keep the candidate's core value.
   const top4 = weights.slice(0, 4);
   const stats = [{ type: "weight", filters: top4.map((w) => ({ id: w.statId, value: { weight: w.weight } })), value: {} }];
+  // Preserve floors (spirit, boots movement speed) as a hard AND gate — the weight SUM
+  // can trade these away (a high-DPS neck with 0 spirit still scores top), so without this
+  // the browser/bookmarklet weighted search surfaces no-spirit necks. realrank adds the
+  // same floors separately; this makes the snippet query enforce them too.
+  const pf = gearStatFilters(preserve, 4);
+  if (pf.length) stats.push({ type: "and", filters: pf });
   const q = {
     query: {
       status: { option: GEAR_TRADE_STATUS },
@@ -2725,7 +2730,7 @@ const server = http.createServer(async (req, res) => {
       const league = sanitizeLeague(input.league || "Runes of Aldur");
       try {
         const w = await computeGearWeights(String(input.buildXml || ""), pobSlot, slot.baseId || slotId, String((input.current && input.current.raw) || ""));
-        const query = w.weights.length ? buildWeightedGearQuery(slot, w.weights, league, input.maxPriceDiv) : null;
+        const query = w.weights.length ? buildWeightedGearQuery(slot, w.weights, league, input.maxPriceDiv, w.preserve) : null;
         send(res, 200, JSON.stringify({ available: true, slot: slotId, metric: w.metric, base: w.base, weights: w.weights, equip: w.equip, preserve: w.preserve, league, query }), "application/json; charset=utf-8");
       } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
       return;
@@ -2848,7 +2853,7 @@ const server = http.createServer(async (req, res) => {
       // "too complex"/"log in") and fall back to non-weighted.
       const buildQ = (useWeighted) => {
         const q = useWeighted
-          ? buildWeightedGearQuery(slot, weights, league, maxDiv)
+          ? buildWeightedGearQuery(slot, weights, league, maxDiv, input.preserve)
           : { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) }, sort: { price: sortDir } };
         if (!useWeighted && (maxDiv > 0 || minDiv > 0)) {
           const price = { option: "divine" };
