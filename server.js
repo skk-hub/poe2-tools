@@ -3129,7 +3129,10 @@ if (require.main === module) {
   server.listen(PORT, HOST, () => {
     const url = "http://" + HOST + ":" + PORT + "/";
     console.log("PoE Tools running at " + url);
-    if (!process.env.POE2_NO_OPEN) exec('start "" "' + url + '"');
+    // Auto-open the browser is OPT-IN (POE2_OPEN=1) — the default is quiet. `exec('start …')`
+    // flashes a cmd.exe console window AND steals focus (bad while gaming); you already know
+    // the URL. Set POE2_OPEN=1 if you want the old auto-open. POE2_NO_OPEN still forces quiet.
+    if (process.env.POE2_OPEN === "1" && process.env.POE2_NO_OPEN !== "1") exec('start "" "' + url + '"');
   });
   // Keep the currency-rate cache warm in the BACKGROUND so the Rune Picker, home
   // strip, and Gear Search never wait on the throttled Trade2 queue. Warm once on
