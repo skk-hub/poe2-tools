@@ -2059,7 +2059,23 @@ function totalResistance(stats) {
 // A Trade2 fetch result → a clean, PoB-parseable item string (Rarity / name /
 // base / Item Level / Implicits + mods). Used by real-DPS ranking; fetched items
 // always carry the base type, unlike hand-copies from the trade page.
-function pobItemFromTradeEntry(entry) {
+// The amulet ANOINT line(s) ("Allocates <Notable>", PoB → GrantedPassive) from an item's
+// text, markup-stripped. Used to transfer your current anoint onto un-anointed trade
+// candidates so the swap comparison holds the anoint constant. Matches "Allocates " (present
+// tense) only — never "…Notable Passive Skill Allocated" multiplier mods.
+function extractAnoint(raw) {
+  const out = [];
+  for (const line of String(raw || "").split("\n")) {
+    const m = line.match(/Allocates\s+\S.*$/i);
+    if (m) out.push(normalizePoeMarkup(m[0]).trim());
+  }
+  return out;
+}
+
+// extraImplicits: enchant-section lines to graft on (e.g. an anoint transferred from your
+// current item). Added to the implicit block + count so PoB reads them as enchants — skipped
+// if the candidate already carries an "Allocates" line (don't double-anoint).
+function pobItemFromTradeEntry(entry, extraImplicits) {
   const item = (entry && entry.item) || {};
   const base = item.typeLine || item.baseType || "";
   if (!base) return null;
@@ -2069,7 +2085,8 @@ function pobItemFromTradeEntry(entry) {
   // plain string like PoE1. String(obj) → "[object Object]" → PoB parses a blank item
   // (mods dropped) → every candidate scores identically. Pull the actual text.
   const modText = (m) => normalizePoeMarkup(typeof m === "string" ? m : (m && m.description) || "");
-  const impl = [].concat(item.enchantMods || [], item.runeMods || [], item.implicitMods || []).map(modText).filter(Boolean);
+  let impl = [].concat(item.enchantMods || [], item.runeMods || [], item.implicitMods || []).map(modText).filter(Boolean);
+  if (extraImplicits && extraImplicits.length && !impl.some((l) => /Allocates\s/i.test(l))) impl = impl.concat(extraImplicits);
   const expl = [].concat(item.explicitMods || [], item.fracturedMods || [], item.craftedMods || [], item.desecratedMods || []).map(modText).filter(Boolean);
   const head = name ? `Rarity: Rare\n${name}\n${base}` : `Rarity: Normal\n${base}`;
   return [head, `Item Level: ${ilvl}`, `Implicits: ${impl.length}`].concat(impl, expl).join("\n");
@@ -2850,6 +2867,13 @@ const server = http.createServer(async (req, res) => {
         // miscalibration; the search's spirit floor already excludes outright no-spirit items.
         const spiritGuard = (Number(base.SpiritReserved) || 0) > 0;
         const baseUnreserved = Number(base.SpiritUnreserved) || 0;
+        // Anoint transfer (amulet): traded amulets are listed UN-anointed (you re-anoint after
+        // buying), but YOUR amulet's anoint is in the build → counted in `base`. Scoring a bare
+        // candidate vs your anointed base penalizes it by the anoint's full worth → real upgrades
+        // get buried. Graft your current anoint onto each un-anointed candidate so it's held
+        // constant (apples-to-apples). Amulet only (the only PoE2 anoint slot).
+        const baseSlot = slot.baseId || String(input.slot || "");
+        const anointLines = baseSlot === "amulet" ? extractAnoint(input.current && input.current.raw) : [];
         let spiritSkipped = 0;
         const cands = [];
         let fetchErr = null;
@@ -2858,7 +2882,7 @@ const server = http.createServer(async (req, res) => {
           try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + pick.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id)); }
           catch (e) { fetchErr = e; break; }   // rate-limit/error mid-sweep → keep what we scored
           for (const e of fetched.result || []) {
-            const txt = pobItemFromTradeEntry(e);
+            const txt = pobItemFromTradeEntry(e, anointLines);
             if (!txt) continue;
             let stats; try { stats = await pob.calc(pobSlot, txt); } catch { continue; }
             if (spiritGuard && Number(stats.SpiritUnreserved) < baseUnreserved - 0.5) { spiritSkipped++; continue; }   // less spirit headroom than your current build → can't run its auras
