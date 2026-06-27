@@ -259,7 +259,9 @@ window.__viewInit["gear-finder"] = function () {
     };
     let html = tableFor("dps", "DPS") + tableFor("ehp", "EHP");
     if (without.length) {
-      const rest = without.map((r) => `<tr class="gf-scan-none"><td><b>${esc(r.id)}</b> <span class="muted">${esc(r.name || "")}</span></td><td class="muted">${esc(r.none)}</td></tr>`).join("");
+      // Clickable (except uniques) so you can drill into a "none" slot — the quick scan
+      // only scores 10 candidates/slot; "Rank by real DPS" scores 50 and digs deeper.
+      const rest = without.map((r) => { const link = !/unique/.test(r.none || "") && !/unavailable/.test(r.none || ""); return `<tr class="gf-scan-none${link ? " gf-scan-link" : ""}"${link ? ` data-slot="${esc(r.id)}" title="click to search this slot deeper"` : ""}><td><b>${esc(r.id)}</b> <span class="muted">${esc(r.name || "")}</span></td><td class="muted">${esc(r.none)}</td></tr>`; }).join("");
       html += `<table class="gf-scantable gf-scan-rest"><tbody>${rest}</tbody></table>`;
     }
     return html + (tail || "");
@@ -293,7 +295,7 @@ window.__viewInit["gear-finder"] = function () {
       const gainOf = (c) => mk === "ehp" ? c.dEHP : c.dDPS;
       let best = null;
       for (const c of r.candidates) { const g = gainOf(c); if (g > 0 && c.priceDiv > 0) { const roi = g / c.priceDiv; if (!best || roi > best.roi) best = { ...c, gain: g, roi, metric: mk }; } }
-      rows.push(best ? { id, name: sl.name, best } : { id, name: sl.name, none: "no upgrade found" });
+      rows.push(best ? { id, name: sl.name, best } : { id, name: sl.name, none: "none in quick scan — click to rank deeper" });
     }
     els.scanAll.disabled = false;
     const tail = partial
