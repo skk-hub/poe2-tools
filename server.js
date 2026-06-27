@@ -2425,7 +2425,14 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
   const evM = String(currentRaw || "").match(/^\s*Evasion(?: Rating)?:\s*(\d+)/im); if (evM) equip.ev = Number(evM[1]);
   const arM = String(currentRaw || "").match(/^\s*Armour(?: Rating)?:\s*(\d+)/im); if (arM) equip.ar = Number(arM[1]);
   const esM = String(currentRaw || "").match(/^\s*Energy Shield:\s*(\d+)/im); if (esM) equip.es = Number(esM[1]);
-  return { metric, base: { Life: base.Life, EnergyShield: base.EnergyShield, TotalEHP: base.TotalEHP, dps: dpsOfOut(base) }, weights, equip };
+  // PRESERVE floors: must-keep stats that PoB's DPS/EHP metric CAN'T see (so they score
+  // 0 and never become weighted floors), yet a replacement without them is a non-starter.
+  // Boots = movement speed: a fixed ≥25% floor (every build wants it). NOT the current
+  // roll — that's polluted by socketed-gem/rune movement speed, which doesn't move with
+  // the boots, so it reads low/wrong.
+  const preserve = [];
+  if (baseSlot === "boots") preserve.push({ statId: gearStatId("movementSpeed", baseSlot), min: 25 });
+  return { metric, base: { Life: base.Life, EnergyShield: base.EnergyShield, TotalEHP: base.TotalEHP, dps: dpsOfOut(base) }, weights, equip, preserve };
 }
 
 // A build-weighted Trade2 query: the `weight` group ranks items by the weighted
@@ -2436,9 +2443,12 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
 // the top-weighted stat. Anonymous POST of a weight group 400s ("log in") — so
 // this is POSTed by the user's logged-in browser (the snippet).
 function buildWeightedGearQuery(slot, weights, league, maxPriceDiv) {
-  const stats = [{ type: "weight", filters: weights.map((w) => ({ id: w.statId, value: { weight: w.weight } })), value: {} }];
-  const top = weights[0];
-  if (top && top.cur > 0) stats.push({ type: "and", filters: [{ id: top.statId, value: { min: Math.floor(top.cur * 0.6) } }] });
+  // Cap the weight group: GGG 400s a query with too many filters ("too complex"), and
+  // realrank also stacks equipment_filters + preserve floors. Top 4 weights rank fine;
+  // PoB scores the real winners anyway. Drop the extra "gate" and-filter for the same
+  // reason — equipment_filters/preserve already keep the candidate's core value.
+  const top4 = weights.slice(0, 4);
+  const stats = [{ type: "weight", filters: top4.map((w) => ({ id: w.statId, value: { weight: w.weight } })), value: {} }];
   const q = {
     query: {
       status: { option: GEAR_TRADE_STATUS },
@@ -2685,7 +2695,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const w = await computeGearWeights(String(input.buildXml || ""), pobSlot, slot.baseId || slotId, String((input.current && input.current.raw) || ""));
         const query = w.weights.length ? buildWeightedGearQuery(slot, w.weights, league, input.maxPriceDiv) : null;
-        send(res, 200, JSON.stringify({ available: true, slot: slotId, metric: w.metric, base: w.base, weights: w.weights, equip: w.equip, league, query }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, slot: slotId, metric: w.metric, base: w.base, weights: w.weights, equip: w.equip, preserve: w.preserve, league, query }), "application/json; charset=utf-8");
       } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
       return;
     }
@@ -2793,40 +2803,58 @@ const server = http.createServer(async (req, res) => {
       // and score the genuinely-best candidates. Logged-out that sort 400s, so fall back to
       // a stat-floor + price-spread. Weights come from the client's /api/gear/weights result.
       const weights = (Array.isArray(input.weights) ? input.weights : []).filter((w) => w && /^(explicit\.stat_\d+|pseudo\.[a-z0-9_]+)$/.test(w.statId) && Number(w.weight) > 0);
-      const weighted = !!POESESSID && weights.length > 0;
+      let weighted = !!POESESSID && weights.length > 0;
       // Sort DESC by default: without a POESESSID value-sort, the search only sees the
       // first 100 results, and the CHEAPEST 100 of a slot are always junk far below
       // decent gear (→ "no upgrade found"). The priciest 100 are where real upgrades
       // live. (Verified: a 224k-DPS bow's only ranked upgrades are 1000+ div.) A budget
       // cap (maxPriceDiv) then makes this "best item I can afford". asc only on request.
       const sortDir = input.sort === "asc" ? "asc" : "desc";
-      const q = weighted
-        ? buildWeightedGearQuery(slot, weights, league, Number(input.maxPriceDiv) || 0)
-        : { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) }, sort: { price: sortDir } };
-      // Price band: max (a cap) and/or min. The best-ROI scan passes NO max (a pricier
-      // item can still win on gain-per-divine) and an optional min to skip junk.
       const maxDiv = Number(input.maxPriceDiv) || 0, minDiv = Number(input.minPriceDiv) || 0;
-      if (!weighted && (maxDiv > 0 || minDiv > 0)) {
-        const price = { option: "divine" };
-        if (minDiv > 0) price.min = minDiv;
-        if (maxDiv > 0) price.max = maxDiv;
-        q.query.filters.trade_filters = { filters: { price } };
-      }
-      // Equipment filters (ev/ar/es/dps): require comparable TOTAL defence/offence so a
-      // replacement keeps the item's CORE value — an evasion chest's ~2800 evasion, a
-      // bow's dps. The stat floors (% rolls) can't express a total, and the marginal
-      // weights under-rank saturated base stats (evasion/armour), so without this the
-      // search returns res-heavy chests that drop evasion and tank EHP. Floored at 70%.
-      if (input.equip && typeof input.equip === "object") {
-        const ef = {};
-        for (const k of ["ev", "ar", "es", "dps"]) {
-          const v = Number(input.equip[k]) || 0;
-          if (v > 0) ef[k] = { min: Math.floor(v * 0.7) };
+      // Build the search query for the weighted (value-sort) OR non-weighted (price-sort)
+      // path. Same equip/preserve/price augmentation either way, so we can rebuild it if
+      // the weighted query 400s (an expired/missing POESESSID is treated as logged-out →
+      // "too complex"/"log in") and fall back to non-weighted.
+      const buildQ = (useWeighted) => {
+        const q = useWeighted
+          ? buildWeightedGearQuery(slot, weights, league, maxDiv)
+          : { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) }, sort: { price: sortDir } };
+        if (!useWeighted && (maxDiv > 0 || minDiv > 0)) {
+          const price = { option: "divine" };
+          if (minDiv > 0) price.min = minDiv;
+          if (maxDiv > 0) price.max = maxDiv;
+          q.query.filters.trade_filters = { filters: { price } };
         }
-        if (Object.keys(ef).length) { q.query.filters = q.query.filters || {}; q.query.filters.equipment_filters = { filters: ef }; }
-      }
+        // Equipment filter: the DOMINANT total defence/offence, only when SUBSTANTIAL (≥500)
+        // — the chest/armour case where a saturated base stat (evasion ~2800) wrecks the
+        // marginal weighting. Minor-defence slots (boots ~300) skip it (and avoid the
+        // complexity cap). Keeps a replacement from dropping the item's core value.
+        if (input.equip && typeof input.equip === "object") {
+          let bestK = null, bestV = 0;
+          for (const k of ["ev", "ar", "es", "dps"]) { const v = Number(input.equip[k]) || 0; if (v > bestV) { bestV = v; bestK = k; } }
+          if (bestK && bestV >= 500) { q.query.filters = q.query.filters || {}; q.query.filters.equipment_filters = { filters: { [bestK]: { min: Math.floor(bestV * 0.7) } } }; }
+        }
+        // Preserve floors (e.g. boots movement speed): ALWAYS required — the metric can't
+        // see them, but a replacement without them is a downgrade.
+        const pf = gearStatFilters(input.preserve, 4);
+        if (pf.length) {
+          q.query.stats = q.query.stats || [];
+          let andG = q.query.stats.find((g) => g && g.type === "and");
+          if (!andG) { andG = { type: "and", filters: [] }; q.query.stats.push(andG); }
+          const have = new Set(andG.filters.map((f) => f.id));
+          for (const f of pf) if (!have.has(f.id)) andG.filters.push(f);
+        }
+        return q;
+      };
+      let q = buildQ(weighted);
       try {
-        const { search, league: usedLeague } = await gearTradeSearch(q, league);
+        let search, usedLeague;
+        try {
+          ({ search, league: usedLeague } = await gearTradeSearch(q, league));
+        } catch (e) {
+          if (weighted && /HTTP 400/.test(String(e && e.message))) { weighted = false; q = buildQ(false); ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
+          else throw e;
+        }
         const all = search.result || [];
         if (!all.length) { send(res, 200, JSON.stringify({ available: true, candidates: [], total: 0 }), "application/json; charset=utf-8"); return; }
         // Score a DEEPER pool through PoB and return the real winners — don't trust the
