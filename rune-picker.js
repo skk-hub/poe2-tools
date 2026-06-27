@@ -122,7 +122,7 @@ window.__viewInit["rune-picker"] = function () {
         '<td class="num">'+esc(item.qty)+'</td>'+
         '<td>'+esc(item.name)+'</td>'+
         '<td>'+esc(item.category||"")+'</td>'+
-        '<td class="num">'+(missing?"":fx(item.each))+'</td>'+
+        '<td class="num">'+(missing?"":fx(item.each))+(item.sideLine?'<div class="muted sides" title="cheapest exchange offer on each currency side, like Exiled Exchange 2">'+esc(item.sideLine)+'</div>':'')+'</td>'+
         '<td class="num">'+(missing?"":fx(item.total))+'</td>'+
         '<td>'+confBadge(item)+'</td>'+
         '<td>'+esc(item.source||"")+(item.rawPrice?'<div class="muted">'+esc(item.rawPrice)+'</div>':'')+'</td>'+

@@ -2,6 +2,8 @@
    Shared tool-view baseline (input/button/textarea/.pagehead/.sub/.controls/.status/
    .tablewrap/table/.muted) lives in index.html's <style> because arb/map/gear reuse it. */
 
+/* EE2-style per-side cheapest asks under Each (native currency units). */
+.toolroot-rune td .sides{font:10px var(--ff-mono);opacity:.85;margin-top:2px;white-space:nowrap}
 .toolroot-rune #checkRunes{background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));color:oklch(22% 0.04 70);border-color:transparent;font-weight:700}
 .toolroot-rune #checkRunes:hover{filter:brightness(1.06);box-shadow:var(--shadow-gold)}
 

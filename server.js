@@ -58,6 +58,9 @@ if (TRADE_OFFLINE) console.log("[trade] OFFLINE replay mode — serving trade-fi
 else if (TRADE_RECORD) console.log("[trade] RECORD mode — live calls captured to trade-fixtures.json");
 const comparableCache = new Map();
 const EXALTED_ID = "exalted";
+// Listing status for the EE2-faithful exchange read. EE2's default is "online";
+// override to "any" via env if online reads too thin on the shared/VPN IP.
+const EE2_EXCHANGE_STATUS = process.env.EE2_STATUS || "online";
 const ARBITRAGE_ITEMS = [
   { id: "divine", name: "Divine Orb", category: "currency", enabled: true },
   { id: "chaos", name: "Chaos Orb", category: "currency", enabled: true },
@@ -348,17 +351,18 @@ async function getExchangeCatalog(league) {
 // offers across MANY currency pairs. The whole scan needs just 2 of these
 // (all buy legs, all sell legs) instead of 2 calls per item — the key fix for
 // repeatedly tripping the shared Trade2 rate limit.
-async function fetchExchangeRaw(league, haveIds, wantIds, status = "online") {
+async function fetchExchangeRaw(league, haveIds, wantIds, status = "online", minimum = 0) {
   const endpoint = "https://www.pathofexile.com/api/trade2/exchange/poe2/" + encodeURIComponent(league);
-  const body = JSON.stringify({
-    exchange: {
-      status: { option: status },
-      have: Array.isArray(haveIds) ? haveIds : [haveIds],
-      want: Array.isArray(wantIds) ? wantIds : [wantIds],
-    },
-    engine: "new",
-  });
-  return tradeQueue.request(endpoint, { method: "POST", body });
+  const exchange = {
+    status: { option: status },
+    have: Array.isArray(haveIds) ? haveIds : [haveIds],
+    want: Array.isArray(wantIds) ? wantIds : [wantIds],
+  };
+  // EE2's stack-size filter: only offers with stock ≥ minimum, so a single-item
+  // "1 ex : 1 rune" par-spam listing is excluded and bulk sellers surface. EE2 keys
+  // this off the pasted stack count; we pass the reward quantity.
+  if (Number(minimum) > 1) exchange.minimum = Math.floor(Number(minimum));
+  return tradeQueue.request(endpoint, { method: "POST", body: JSON.stringify({ exchange, engine: "new" }) });
 }
 // Indirection so tests can stub the network without touching the real queue.
 let exchangeRawImpl = fetchExchangeRaw;
@@ -971,39 +975,106 @@ function cheapestAsk(askData, id) {
   return { px: chosen.px, stock: chosen.stock, depth: asks.length };
 }
 
-// One batched ex→currency exchange call; the best (cheapest) offer per currency
-// gives its ex-per-unit value. Goes through fetchExchangeChunked (cap 3) + the
-// shared queue, so a full refresh is ~3 calls for the 9 main currencies. The few
-// illiquid orbs in TWO_SIDED_IDS each add one bid-side call (see geoMidRate).
-// Drop the chained sub-½ lowball bait, return the cheapest remaining ratio + its depth.
-function sideCheapestRatio(data, haveId, wantId) {
-  const r = collectExchangeOffers(data, haveId, wantId)
-    .filter((o) => o.payAmount > 0 && o.receiveAmount > 0)
-    .map((o) => o.payAmount / o.receiveAmount)   // have-currency per want-item = price in `have`
-    .sort((a, b) => a - b);
-  if (!r.length) return null;
-  let i = 0;
-  while (i < r.length - 1 && r[i] < r[i + 1] * 0.5) i++;   // chained bait drop (Exiled's rule)
-  return { px: r[i], depth: r.length - i };
+// Exiled-Exchange-2's EXACT bulk method (renderer/src/web/price-check/trade/
+// pathofexile-bulk.ts + bulk-api.ts), ported verbatim. From ONE exchange response
+// (have=[divine,exalted,chaos], want=[one id]):
+//   1. keep ONLY single-offer listings (`offers.length === 1`) — drops the bulk
+//      par/spam bundles that flood the cheap floor (the "1 ex for most stuff" bug);
+//   2. group those listings by the have-currency they offer (exalted/divine/chaos);
+//   3. per side the price = cheapest ratio `exchange.amount / item.amount`.
+// EE2 has NO bid side, NO par/bait/cluster filter, NO min-stock, NO outlier drop —
+// the cheapest single-offer ask IS the price. We must match it exactly. Returns the
+// sorted asks per currency tag.
+function ee2SidePrices(data) {
+  const listings = data && data.result
+    ? (Array.isArray(data.result) ? data.result : Object.values(data.result))
+    : [];
+  const tagOf = (cur) => (cur && typeof cur === "object" ? String(cur.id || cur.currency || cur.text || "") : String(cur || "")).toLowerCase();
+  const sides = {};   // currency tag -> [{px, stock}] sorted asc by px
+  for (const entry of listings) {
+    const offers = entry && entry.listing && entry.listing.offers;
+    if (!Array.isArray(offers) || offers.length !== 1) continue;   // EE2: single-offer listings only
+    const o = offers[0];
+    if (!o || !o.exchange || !o.item) continue;
+    const have = tagOf(o.exchange.currency);
+    const exAmt = Number(o.exchange.amount), itAmt = Number(o.item.amount);
+    if (!have || !(exAmt > 0) || !(itAmt > 0)) continue;
+    (sides[have] || (sides[have] = [])).push({ px: exAmt / itAmt, stock: Number(o.item.stock) || 0 });
+  }
+  for (const k of Object.keys(sides)) sides[k].sort((a, b) => a.px - b.px);
+  return sides;
 }
-// Exiled-Exchange's currency method, ported. ONE bulk-exchange call with
-// have=[divine,exalted,chaos], want=[id]; per side take the bait-dropped cheapest
-// ratio; prefer the EXALTED side (base unit, the real market for sub-divine items),
-// falling back to divine/chaos × their ex-rate only when exalted has no offer.
-// Returns ex-per-item. This is why Exiled prices the "unpriceable" alloys/chase orbs:
-// the old override claim was wrong — we read only the junk exalted FLOOR (1ex spam) /
-// the placeholder divine side, never the real per-item book on the right side.
-async function exchangePriceEx(league, wantId, divineEx = 0, chaosEx = 0) {
-  if (String(wantId).toLowerCase() === EXALTED_ID) return { ex: 1, side: "exalted", depth: 99 };
+// EE2's currency price + auto-side-select (bulk-api.ts, useExalts=true). ONE
+// exchange call, then EE2's rule: show exalted unless the divine side has MORE
+// listings (that's where the liquidity/denomination really is — picks divine for
+// chase items, exalted for cheap ones, automatically). Returns ex-per-item.
+async function exchangePriceEx(league, wantId, divineEx = 0, chaosEx = 0, minimum = 0) {
+  if (String(wantId).toLowerCase() === EXALTED_ID) return { ex: 1, side: "exalted", depth: 99, sides: [{ tag: "exalted", px: 1, ex: 1, depth: 99 }] };
+  // EXCLUDE the want currency's own side, exactly like EE2 (Divine→have:[exalted,chaos],
+  // Chaos→[divine,exalted]) — otherwise the 1:1 self-par spam (e.g. divine:divine) is the
+  // cheapest "ask" and the orb mis-prices to ~1, breaking every divine-side conversion.
+  const have = ["divine", "exalted", "chaos"].filter((t) => t !== String(wantId).toLowerCase());
   let data;
-  try { data = await fetchExchangeRaw(league, ["divine", "exalted", "chaos"], wantId); }
+  try { data = await exchangeRawImpl(league, have, wantId, EE2_EXCHANGE_STATUS, minimum); }
   catch { return null; }
   if (!data || data.limited) return null;
-  const ex = sideCheapestRatio(data, "exalted", wantId);
-  if (ex) return { ex: round4(ex.px), side: "exalted", depth: ex.depth };
-  if (divineEx > 0) { const d = sideCheapestRatio(data, "divine", wantId); if (d) return { ex: round4(d.px * divineEx), side: "divine", depth: d.depth }; }
-  if (chaosEx > 0) { const c = sideCheapestRatio(data, "chaos", wantId); if (c) return { ex: round4(c.px * chaosEx), side: "chaos", depth: c.depth }; }
-  return null;
+  const raw = ee2SidePrices(data);
+  const toEx = (tag, px) => tag === "divine" ? px * (divineEx > 0 ? divineEx : 1) : tag === "chaos" ? px * (chaosEx > 0 ? chaosEx : 1) : px;
+  // EE2 shows all three sides (cheapest single-offer ask each) as a list — keep them so
+  // the user reads the right denomination, exactly like EE2.
+  const sides = ["exalted", "divine", "chaos"]
+    .filter((t) => raw[t] && raw[t].length)
+    .map((t) => ({ tag: t, px: round4(raw[t][0].px), ex: round4(toEx(t, raw[t][0].px)), depth: raw[t].length }));
+  if (!sides.length) return null;
+  const exa = raw[EXALTED_ID], div = raw["divine"];
+  // EE2 side auto-select (useExalts): divine only when it out-lists exalted; ties → exalted.
+  let side;
+  if (exa && exa.length && (!div || !div.length || exa.length >= div.length)) side = "exalted";
+  else if (div && div.length) side = "divine";
+  else side = sides[0].tag;
+  const primary = sides.find((s) => s.tag === side) || sides[0];
+  return { ex: primary.ex, side: primary.tag, depth: primary.depth, stock: (raw[primary.tag][0].stock) || 0, sides };
+}
+
+// Per-item EE2 price cache (separate from the bid-priced rune book Tab Tracker uses,
+// so the Rune Picker can be pure-EE2 without disturbing it). SWR: a fresh entry serves
+// instantly (no call); stale/missing → a live call within the per-check budget, the
+// rest background-filled. An ex:0 entry records "no exchange offers" (also cached).
+const EE2_PRICES_FILE = path.join(DATA_DIR, ".ee2-prices.json");
+const EE2_PRICE_TTL_MS = 15 * 60 * 1000;
+let ee2Mem = null;
+function readEe2All() {
+  if (ee2Mem) return ee2Mem;
+  try { ee2Mem = JSON.parse(fs.readFileSync(EE2_PRICES_FILE, "utf8")) || {}; } catch { ee2Mem = {}; }
+  return ee2Mem;
+}
+function ee2Cached(league, key) {
+  const e = (readEe2All()[league] || {})[key];
+  if (!e || !e.updated || Date.now() - new Date(e.updated).getTime() > EE2_PRICE_TTL_MS) return null;
+  return { ...e, cached: true };
+}
+function writeEe2Cache(league, key, p) {
+  const all = readEe2All();
+  (all[league] || (all[league] = {}))[key] = { ex: (p && p.ex) || 0, side: (p && p.side) || "", depth: (p && p.depth) || 0, stock: (p && p.stock) || 0, sides: (p && p.sides) || [], updated: new Date().toISOString() };
+  try { fs.writeFileSync(EE2_PRICES_FILE, JSON.stringify(all)); } catch {}
+}
+// Background-fill EE2 prices for items shown as "pricing…" this check (over the live
+// budget). Bounded + stop-on-limited so a big paste can't burst the shared IP. Each
+// entry is {id, min, key} — min is the pasted qty (EE2 stack filter), key caches per qty.
+async function refreshEe2Prices(league, pending, rates, budget = 12) {
+  if (tradeStatus().limited) return;
+  for (const it of pending) {
+    if (budget-- <= 0 || tradeStatus().limited) break;
+    if (!it || !it.id || String(it.id).toLowerCase() === EXALTED_ID) continue;
+    const live = await exchangePriceEx(league, it.id, (rates && rates.divine) || 0, (rates && rates.chaos) || 0, it.min || 0);
+    writeEe2Cache(league, it.key, live || { ex: 0 });
+  }
+}
+// A side's cheapest ask in its OWN currency (EE2's list shows native units, not ex).
+function fmtSidePx(px, tag) {
+  const ab = tag === "divine" ? "div" : tag === "chaos" ? "c" : "ex";
+  const n = px >= 10 ? Math.round(px) : px >= 1 ? Math.round(px * 100) / 100 : Math.round(px * 10000) / 10000;
+  return n + " " + ab;
 }
 
 async function fetchExchangeData(league) {
@@ -1016,9 +1087,11 @@ async function fetchExchangeData(league) {
   // the real per-item book on its liquid side (no more exalted-only read + TWO_SIDED
   // geo-mid hacks). Bootstrap divine/chaos in exalted first so other items' divine/
   // chaos-side offers convert; reuse those reads in the loop (no double call).
+  // Price divine first (it reads on the exalted side — no dependency), THEN chaos with
+  // divineEx passed, so if chaos's most-liquid side is divine it still converts to ex.
   const dv = await exchangePriceEx(league, "divine");
-  const ch = await exchangePriceEx(league, "chaos");
   const divineEx = dv && dv.ex > 0 ? dv.ex : 0;
+  const ch = await exchangePriceEx(league, "chaos", divineEx, 0);
   const chaosEx = ch && ch.ex > 0 ? ch.ex : 0;
   for (const c of currencies) {
     const p = c.id === "divine" ? dv : c.id === "chaos" ? ch : await exchangePriceEx(league, c.id, divineEx, chaosEx);
@@ -1768,23 +1841,9 @@ async function fetchRunePrices(text, league, forceFresh) {
   const limitedRawLines = rawLines.slice(0, MAX_RUNE_LINES);
   let tradeFallbacks = 0;
 
-  // "Fetch fresh prices" (forceFresh) ONLY: the user explicitly waits, so block
-  // BRIEFLY (bounded) to fill the book for the pasted items before pricing. The
-  // DEFAULT "Check picks" must NOT block-fill here — doing so, plus the per-item
-  // trade-search fallbacks below, bursts the shared queue and trips the IP rate
-  // limit (5 req / 15s) on a cold multi-item paste, locking the tool out for
-  // minutes. Default instead prices what's already booked instantly and kicks a
-  // GENTLE background fill at the end; un-booked exchange items show "pricing…" and
-  // resolve on the next check.
-  if (forceFresh && !initialTradeStatus.limited) {
-    const norms = runePastedNorms(limitedRawLines);
-    if (norms.length) {
-      await Promise.race([
-        refreshRuneBook(league, norms, true, { perItemAsk: true }).catch(() => {}),
-        new Promise((resolve) => setTimeout(resolve, RUNE_FRESH_DEADLINE_MS)),
-      ]);
-    }
-  }
+  // forceFresh ("Fetch fresh prices") re-prices each pasted exchange item live inline
+  // (EE2, bounded by MAX_LIVE_EXCHANGE); the default check serves the EE2 cache and
+  // background-fills the rest. No pre-fill block needed — the per-item loop handles it.
 
   // Currency ex-values + the divine→ex rate come from the unified Trade2 exchange.
   // poe.ninja is BANNED (it gave prices nowhere near reality): runes/essences/soul
@@ -1796,7 +1855,8 @@ async function fetchRunePrices(text, league, forceFresh) {
   // exchange (Exiled's method, exchangePriceEx) instead of the stale curated override.
   const exchangeCatalog = await getExchangeCatalog(league).catch(() => new Map());
   let liveExchangeCalls = 0;
-  const MAX_LIVE_EXCHANGE = 8;   // single user, but don't burst the shared IP on a big paste
+  const MAX_LIVE_EXCHANGE = 20;  // live EE2 calls per check — covers a reward paste; overflow shows "pricing…" + background fill
+  const ee2Pending = [];         // catalog ids shown "pricing…" this check → background-filled at the end
 
   const all = [];
   const seenItemKey = new Set();
@@ -1820,34 +1880,7 @@ async function fetchRunePrices(text, league, forceFresh) {
     });
   }
 
-  // Trade2 exchange price book — accurate prices for runes/essences/soul cores,
-  // used to FILL poe.ninja's coverage gaps (it's missing/thin for most of these).
-  // poe.ninja keeps the win where it has a real volume-weighted price (it's finer
-  // for cheap items, and the exchange is coarse/noisy at sub-1ex); the book steps
-  // in only when poe.ninja has no usable price — that's the "useless for most
-  // stuff" case the user hit (e.g. soul cores poe.ninja can't price at all).
-  const runeBook = readRuneBook(league);
-  const runeBookPrices = runeBook ? runeBook.prices : {};
-  const bookResultFor = (nn, qty, fallbackName) => {
-    const b = runeBookPrices[nn];
-    if (!b || !(b.ex > 0)) return null;
-    const askSide = b.side === "ask";
-    const marketSide = b.side === "market";   // priced off the item-search trade board
-    return {
-      qty, name: b.name || fallbackName, category: (b.category || "Exchange") + " (trade2)",
-      each: b.ex, total: roundPriceExalted(b.ex * qty), currency: "exalted",
-      source: marketSide ? "trade2 search" : askSide ? "trade2 exchange (ask)" : "trade2 exchange",
-      rawPrice: marketSide ? "cheapest item-search listing (exchange book too thin)" : askSide ? "lowest ask — no standing buyers, sell-side floor" : "",
-      divineValue: currencyRates.divine ? roundPriceExalted(b.ex / currencyRates.divine) : 0,
-      // Ask-side is a sell floor (cap "low"); item-search is the real trade board for a
-      // chase item → "medium". Neither outranks a deep bid-priced/volume-backed pick.
-      change7d: "", confidence: marketSide ? "medium" : askSide ? "low" : (b.stock >= 10 ? "high" : "medium"),
-      units: Number.isFinite(b.stock) ? b.stock : null,
-    };
-  };
-
   const seenCleanNames = new Set();
-  const pastedNorms = [];
   const results = [];
   let skillTradeFallbacks = 0;
   const tradeDeadline = Date.now() + 24000;
@@ -1868,137 +1901,66 @@ async function fetchRunePrices(text, league, forceFresh) {
     const norm = normalizeName(cleanName);
     if (seenCleanNames.has(norm)) continue;
     seenCleanNames.add(norm);
-    if (!isSkillOrSupport) pastedNorms.push(norm);
 
-    // LIVE GGG bulk-exchange price first (Exiled's exact method, exchangePriceEx):
-    // multi-have read of the real per-item book. This prices the alloys/chase orbs the
-    // old code declared "unpriceable" — it was only ever reading the junk exalted floor.
-    // The curated/poe.ninja override is now a FALLBACK (exchange empty / rate-limited).
-    let live = null;
-    const cat = !isSkillOrSupport ? exchangeCatalog.get(norm) : null;
-    if (cat && cat.id && cat.id !== EXALTED_ID && liveExchangeCalls < MAX_LIVE_EXCHANGE && !tradeStatus().limited) {
-      liveExchangeCalls++;
-      live = await exchangePriceEx(league, cat.id, currencyRates.divine || 0, currencyRates.chaos || 0);
-    }
-    if (live && live.ex > 0) {
-      results.push({
-        qty: parsed.qty, name: cat.name || cleanName, category: "Currency Exchange",
-        each: live.ex, total: roundPriceExalted(live.ex * parsed.qty), currency: "exalted",
-        source: "trade2 exchange", rawPrice: "GGG exchange · " + live.side + "-side · " + live.depth + " offers",
-        divineValue: currencyRates.divine ? roundPriceExalted(live.ex / currencyRates.divine) : 0,
-        change7d: "", confidence: live.depth >= 3 ? "high" : "medium", units: null,
-      });
-      continue;
-    }
-
-    // Curated/poe.ninja override — now only a fallback when the live exchange returned
-    // nothing (thin/empty book) or we were rate-limited. See CURRENCY_OVERRIDE_SEED.
-    const ov = !isSkillOrSupport ? currencyOverride(norm) : null;
-    if (ov && ov.ex > 0) {
-      results.push({
-        qty: parsed.qty, name: ov.name || cleanName, category: "Currency Exchange",
-        each: ov.ex, total: roundPriceExalted(ov.ex * parsed.qty), currency: "exalted",
-        source: ov.source === "curated" ? "curated" : "poe.ninja",
-        rawPrice: ov.updated ? "poe.ninja ratio · " + String(ov.updated).slice(0, 10) : "curated — update from poe.ninja",
-        divineValue: currencyRates.divine ? roundPriceExalted(ov.ex / currencyRates.divine) : 0,
-        change7d: "", confidence: "high", units: null,
-      });
-      continue;
-    }
-
-    // On-demand fresh (the "Fetch fresh prices" button): the user is explicitly
-    // asking for the LIVE Trade2 exchange price, so prefer the book whenever it has
-    // one (the forced refresh above just filled it for these items). The row shows
-    // the offer stock + a confidence badge, so the user can judge a thin/noisy
-    // quote themselves. The DEFAULT "Check picks" still keeps poe.ninja's finer,
-    // volume-weighted price where it has one (see the match branch below).
-    if (forceFresh && !isSkillOrSupport) {
-      const bk = bookResultFor(norm, parsed.qty, cleanName);
-      if (bk) { results.push(bk); continue; }
-    }
-
-    let match = all.find((item) => item.normalizedName === norm);
-    if (!match && norm.length >= 6) {
+    // Currency already priced on the strip (fetchExchangeData → exchangePriceEx, EE2)
+    // — free, no extra call. Exact name first, then a tier-aware fuzzy match.
+    let match = !isSkillOrSupport ? all.find((item) => item.normalizedName === norm) : null;
+    if (!match && !isSkillOrSupport && norm.length >= 6) {
       match = all
         .filter((item) => (item.normalizedName.includes(norm) || norm.includes(item.normalizedName)) && tierKey(item.normalizedName) === tierKey(norm))
         .sort((a, b) => a.normalizedName.length - b.normalizedName.length)[0];
     }
-
-    if (match) {
-      const lowVolume = match.volume >= 0 && match.volume < MIN_NINJA_VOLUME;
-      if (forceFresh && lowVolume && tradeFallbacks < MAX_TRADE_FALLBACKS) {
-        tradeFallbacks++;
-        const tradePrice = await getTradePrice(cleanName, league, currencyRates);
-        if (tradePrice && tradePrice.limited) {
-          results.push({ qty: parsed.qty, name: match.name, category: match.category + " (trade limited)", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — live-trade is best-effort", change7d: match.change7d });
-          continue;
-        }
-        if (tradePrice) {
-          const total = roundPriceExalted(tradePrice.each * parsed.qty);
-          results.push({
-            qty: parsed.qty,
-            name: match.name,
-            category: match.category + " (low vol -> trade2)",
-            each: tradePrice.each,
-            total,
-            currency: "exalted",
-            source: "trade2",
-            rawPrice: tradePrice.rawAmount + " " + tradePrice.rawCurrency,
-            change7d: match.change7d,
-          });
-          continue;
-        }
-      }
-      if (!(match.price > 0)) {
-        const bk = bookResultFor(norm, parsed.qty, match.name);
-        if (bk) { results.push(bk); continue; }
-        results.push({ qty: parsed.qty, name: match.name, category: match.category + " (no price yet)", each: "", total: "", currency: "", source: "trade2 exchange", rawPrice: "", change7d: match.change7d, confidence: "none", units: null });
-        continue;
-      }
-      const total = roundPriceExalted(match.price * parsed.qty);
-      // Exalted is the base unit — 1 ex by definition, not a scanned/thin-market
-      // price. Don't flag it "Low 0" or label it as sourced from the exchange.
+    if (match && match.price > 0) {
       const isBase = match.base === true;
       results.push({
-        qty: parsed.qty,
-        name: match.name,
-        category: match.category,
-        each: match.price,
-        total,
-        currency: "exalted",
-        source: isBase ? "base unit" : (match.source || "trade2 exchange"),
-        rawPrice: "",
-        divineValue: match.divineValue,
-        change7d: match.change7d,
+        qty: parsed.qty, name: match.name, category: match.category,
+        each: match.price, total: roundPriceExalted(match.price * parsed.qty), currency: "exalted",
+        source: isBase ? "base unit" : (match.source || "trade2 exchange"), rawPrice: "",
+        divineValue: match.divineValue, change7d: match.change7d,
         confidence: isBase ? "base" : priceConfidence(match.units),
         units: isBase ? null : (Number.isFinite(match.units) && match.units >= 0 ? Math.round(match.units) : null),
       });
       continue;
     }
 
-    // No currency match → the Trade2 exchange book is the accurate source for
-    // runes/essences/soul cores/etc. (the main coverage win).
-    if (!isSkillOrSupport) {
-      const bk = bookResultFor(norm, parsed.qty, cleanName);
-      if (bk) { results.push(bk); continue; }
-      // The fill already ran and found NO standing buyer → resolve to "no buyers"
-      // (NOT a perpetual "pricing…"). Without this, thin items like Greater Storm Rune
-      // loop on "pricing…" forever because bookResultFor returns null for ex:0/thin.
-      const booked = runeBookPrices[norm];
-      if (booked && booked.thin) {
-        results.push({ qty: parsed.qty, name: cleanName, category: "no buyers", each: "", total: "", currency: "", source: "trade2 exchange", rawPrice: "no live buyers on the exchange", change7d: "", confidence: "none", units: null });
+    // Every other exchange item (runes, essences, soul cores, fragments, …) is priced
+    // EXACTLY like Exiled-Exchange-2: cheapest single-offer ask on its liquid side
+    // (exchangePriceEx). Fresh cache serves free; else a live call within budget; else
+    // "pricing…" + a background EE2 fill. No bid book, no override, no item-search, no
+    // "no buyers" — EE2 has none of those, and the user wants an exact match.
+    const cat = !isSkillOrSupport ? exchangeCatalog.get(norm) : null;
+    if (cat && cat.id && cat.id !== EXALTED_ID) {
+      const min = parsed.qty > 1 ? parsed.qty : 0;   // EE2 stack filter — drop 1-item par-spam
+      const cacheKey = cat.id + "|" + min;
+      let p = ee2Cached(league, cacheKey);
+      if ((!p || forceFresh) && liveExchangeCalls < MAX_LIVE_EXCHANGE && !tradeStatus().limited) {
+        liveExchangeCalls++;
+        const live = await exchangePriceEx(league, cat.id, currencyRates.divine || 0, currencyRates.chaos || 0, min);
+        writeEe2Cache(league, cacheKey, live || { ex: 0 });
+        p = live ? { ...live } : { ex: 0 };
+      }
+      // EE2 shows the cheapest ask on each currency side as a list (native units), so
+      // you read the right denomination — e.g. "1 ex · 0.5 div · 0.1 c".
+      const sideLine = (p && p.sides || []).map((s) => fmtSidePx(s.px, s.tag)).join(" · ");
+      if (p && p.ex > 0) {
+        results.push({
+          qty: parsed.qty, name: cat.name || cleanName, category: cat.category || "Exchange",
+          each: p.ex, total: roundPriceExalted(p.ex * parsed.qty), currency: "exalted",
+          source: "trade2 exchange", rawPrice: "EE2 · " + (p.side || "exalted") + "-side", sides: p.sides || [], sideLine,
+          divineValue: currencyRates.divine ? roundPriceExalted(p.ex / currencyRates.divine) : 0,
+          change7d: "", confidence: p.depth >= 4 ? "high" : p.depth >= 1 ? "medium" : "none",
+          units: Number.isFinite(p.stock) ? p.stock : null,
+        });
         continue;
       }
-      // Not booked yet. On the DEFAULT check, NEVER burst the queue with a per-item
-      // trade search (that + the fill is what tripped the rate limit). Show "pricing…"
-      // and let the gentle background fill below book it for the next check. The fill
-      // only targets real exchange items, so a genuinely off-exchange paste just stays
-      // "pricing…" (harmless — no calls wasted on it); "Fetch fresh" is the explicit
-      // bounded path that does the live trade search and the authoritative NOT FOUND.
-      if (!forceFresh) {
-        results.push({ qty: parsed.qty, name: cleanName, category: "pricing…", each: "", total: "", currency: "", source: "trade2 exchange", rawPrice: "fetching live price — check again in ~30s", change7d: "", confidence: "none", units: null });
+      if (p) {   // priced (cache or live) but no offers on the exchange
+        results.push({ qty: parsed.qty, name: cat.name || cleanName, category: "no offers", each: "", total: "", currency: "", source: "trade2 exchange", rawPrice: min ? "no exchange offers ≥ " + min + " stock" : "no exchange offers", change7d: "", confidence: "none", units: null });
         continue;
       }
+      // Over the per-check live budget → show pricing…, background-fill for next check.
+      ee2Pending.push({ id: cat.id, min, key: cacheKey });
+      results.push({ qty: parsed.qty, name: cat.name || cleanName, category: "pricing…", each: "", total: "", currency: "", source: "trade2 exchange", rawPrice: "fetching live price — check again shortly", change7d: "", confidence: "none", units: null });
+      continue;
     }
 
     let tradePrice = null;
@@ -2038,14 +2000,10 @@ async function fetchRunePrices(text, league, forceFresh) {
     results.push({ qty: parsed.qty, name: cleanName, category: "Not found", each: "", total: "", currency: "", source: "", rawPrice: "", change7d: "" });
   }
 
-  // Background-fill the price book for pasted items that are missing or stale, so
-  // the NEXT check shows accurate Trade2 prices. Fire-and-forget; never blocks.
-  if (!tradeStatus().limited) {
-    const stale = pastedNorms.filter((nn) => {
-      const b = runeBookPrices[nn];
-      return !b || !b.updated || (Date.now() - new Date(b.updated).getTime() > RUNE_BOOK_TTL_MS);
-    });
-    if (stale.length) refreshRuneBook(league, stale, false, { perItemAsk: true }).catch(() => {});
+  // Background-fill EE2 prices for items shown "pricing…" this check (over the live
+  // budget), so the NEXT check shows them. Fire-and-forget; bounded; never blocks.
+  if (ee2Pending.length && !tradeStatus().limited) {
+    refreshEe2Prices(league, ee2Pending, currencyRates).catch(() => {});
   }
 
   results.sort((a, b) => (Number(b.total) || -1) - (Number(a.total) || -1));
@@ -3688,5 +3646,7 @@ module.exports = {
   listPobBuilds,
   computeGearWeights,
   buildWeightedGearQuery,
+  ee2SidePrices,
+  exchangePriceEx,
   __setExchangeRawImpl(fn) { exchangeRawImpl = fn; },
 };
