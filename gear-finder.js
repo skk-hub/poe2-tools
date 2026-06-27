@@ -178,7 +178,7 @@ window.__viewInit["gear-finder"] = function () {
     els.analyze.disabled = false;
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
     if (d.available === false) { setStatus("Headless Path of Building isn't available — install PoB + LuaJIT for build-weighted search.", true); return; }
-    state.weights = d.weights || []; state.query = d.query; state.league = d.league || state.league; state.metric = d.metric || "dps";
+    state.weights = d.weights || []; state.query = d.query; state.league = d.league || state.league; state.metric = d.metric || "dps"; state.equip = d.equip || null;
     renderWeights(d);
   }
 
@@ -195,12 +195,12 @@ window.__viewInit["gear-finder"] = function () {
   // Rank by REAL DPS: fetch in-budget candidates and score each in PoB.
   async function realRank() {
     if (!state.curSlot || !state.weights.length) { setStatus("Analyze the slot first.", true); return; }
-    const cur = (state.slots[state.curSlot] && state.slots[state.curSlot].stats) || {};
-    // Floor at 70% of current rolls, not 100% — a near-BIS item rarely beats itself on
-    // every top stat at once, so requiring ≥ current returns nothing. PoB ΔDPS sorts the rest.
-    const mods = state.weights.slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((cur[w.key] || 1) * 0.7)) }));
+    // Floor at 70% of current rolls on stats the item HAS (cur>0); `equip` keeps the
+    // item's core total defence. A near-BIS item rarely beats itself on every stat, so
+    // 70% (not 100%) — PoB ΔDPS sorts the rest.
+    const mods = state.weights.filter((w) => (w.cur || 0) > 0).slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((w.cur || 1) * 0.7)) }));
     els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
-    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, mods, weights: state.weights.slice(0, 8), metric: state.metric, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
     els.realRankBtn.disabled = false;
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
@@ -283,11 +283,11 @@ window.__viewInit["gear-finder"] = function () {
       if (!w || w.available === false) { rows.push({ id, name: sl.name, none: "PoB unavailable" }); continue; }
       if (!w.weights || !w.weights.length) { rows.push({ id, name: sl.name, none: "nothing improves this slot" }); continue; }
       const metric = w.metric || "dps";
-      const mods = w.weights.slice(0, 4).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
-      // Pass the weights so a logged-in (POESESSID) session ranks by build VALUE across
-      // all price tiers; logged-out, realrank sorts price DESC (the priciest matching
-      // items are the real upgrades — the cheapest are junk). Optional min floor.
-      const r = await api("/api/gear/realrank", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, mods, weights: w.weights.slice(0, 8), metric, minPriceDiv: minDiv, maxPriceDiv: 0, league: state.league, scoreCap: 10 }).catch(() => null);
+      // Floor only on stats the item actually HAS (cur>0) — what it IS, not what it could
+      // gain. `equip` requires comparable total defence so candidates keep the item's core
+      // value. Weights let a POESESSID session rank by build value; logged-out sorts DESC.
+      const mods = w.weights.filter((x) => (x.cur || 0) > 0).slice(0, 4).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
+      const r = await api("/api/gear/realrank", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, mods, weights: w.weights.slice(0, 8), metric, equip: w.equip, minPriceDiv: minDiv, maxPriceDiv: 0, league: state.league, scoreCap: 10 }).catch(() => null);
       if (r && r.limited) { partial = true; break; }
       if (!r || r.error || !Array.isArray(r.candidates)) { rows.push({ id, name: sl.name, none: "search failed" }); continue; }
       spiritTotal += r.spiritSkipped || 0;

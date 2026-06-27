@@ -2418,7 +2418,14 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
   if (metric === "dps" && !raw.length) { metric = "ehp"; raw = await probe("ehp"); }
   const max = raw.reduce((m, w) => Math.max(m, w.perUnit), 0) || 1;
   const weights = raw.map((w) => ({ ...w, weight: Math.max(1, Math.round((w.perUnit / max) * 20)) })).sort((a, b) => b.weight - a.weight);
-  return { metric, base: { Life: base.Life, EnergyShield: base.EnergyShield, TotalEHP: base.TotalEHP, dps: dpsOfOut(base) }, weights };
+  // The item's TOTAL base defences (ev/ar/es) from its property lines → realrank
+  // equipment_filters so a replacement keeps the item's CORE value (e.g. an evasion
+  // chest's ~2800 evasion). The % stat-floors + marginal weights can't express this.
+  const equip = {};
+  const evM = String(currentRaw || "").match(/^\s*Evasion(?: Rating)?:\s*(\d+)/im); if (evM) equip.ev = Number(evM[1]);
+  const arM = String(currentRaw || "").match(/^\s*Armour(?: Rating)?:\s*(\d+)/im); if (arM) equip.ar = Number(arM[1]);
+  const esM = String(currentRaw || "").match(/^\s*Energy Shield:\s*(\d+)/im); if (esM) equip.es = Number(esM[1]);
+  return { metric, base: { Life: base.Life, EnergyShield: base.EnergyShield, TotalEHP: base.TotalEHP, dps: dpsOfOut(base) }, weights, equip };
 }
 
 // A build-weighted Trade2 query: the `weight` group ranks items by the weighted
@@ -2678,7 +2685,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const w = await computeGearWeights(String(input.buildXml || ""), pobSlot, slot.baseId || slotId, String((input.current && input.current.raw) || ""));
         const query = w.weights.length ? buildWeightedGearQuery(slot, w.weights, league, input.maxPriceDiv) : null;
-        send(res, 200, JSON.stringify({ available: true, slot: slotId, metric: w.metric, base: w.base, weights: w.weights, league, query }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, slot: slotId, metric: w.metric, base: w.base, weights: w.weights, equip: w.equip, league, query }), "application/json; charset=utf-8");
       } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
       return;
     }
@@ -2804,6 +2811,19 @@ const server = http.createServer(async (req, res) => {
         if (minDiv > 0) price.min = minDiv;
         if (maxDiv > 0) price.max = maxDiv;
         q.query.filters.trade_filters = { filters: { price } };
+      }
+      // Equipment filters (ev/ar/es/dps): require comparable TOTAL defence/offence so a
+      // replacement keeps the item's CORE value — an evasion chest's ~2800 evasion, a
+      // bow's dps. The stat floors (% rolls) can't express a total, and the marginal
+      // weights under-rank saturated base stats (evasion/armour), so without this the
+      // search returns res-heavy chests that drop evasion and tank EHP. Floored at 70%.
+      if (input.equip && typeof input.equip === "object") {
+        const ef = {};
+        for (const k of ["ev", "ar", "es", "dps"]) {
+          const v = Number(input.equip[k]) || 0;
+          if (v > 0) ef[k] = { min: Math.floor(v * 0.7) };
+        }
+        if (Object.keys(ef).length) { q.query.filters = q.query.filters || {}; q.query.filters.equipment_filters = { filters: ef }; }
       }
       try {
         const { search, league: usedLeague } = await gearTradeSearch(q, league);
