@@ -147,6 +147,9 @@ window.__viewInit["gear-finder"] = function () {
     els.slot.textContent = id + " — " + ((state.slots[id] && state.slots[id].name) || "");
     els.panel.hidden = false; els.weights.innerHTML = ""; els.actions.hidden = true; els.snippetBox.hidden = true;
     els.item.value = ""; els.scoreOut.innerHTML = "";
+    // Clear the previous slot's "Rank by real DPS" results + their state — else the stale
+    // rows stay visible and pinning one records it under the NEW slot (wrong-slot pins).
+    els.realOut.innerHTML = ""; state.realCands = []; state.realSearchUrl = ""; state.realHasDps = false;
     setStatus("Set a budget and analyze this slot — or paste an item below to score it directly.");
   }
 

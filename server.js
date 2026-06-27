@@ -2392,6 +2392,19 @@ const GEAR_PROBE_TEMPLATES = {
 const dpsOfOut = (o) => (o && (o.FullDPS || o.CombinedDPS || o.TotalDPS)) || 0;
 const ehpOfOut = (o) => (o && o.TotalEHP) || 0;
 
+// The boots' OWN movement-speed roll, EXCLUDING {rune}/{enchant}-granted MS (that comes
+// from a socketed rune you carry to new boots, not the base item) — so the preserve floor
+// reflects your real roll (e.g. 35%), not a flat default or a rune-polluted total.
+function explicitMovementSpeed(raw) {
+  let total = 0;
+  for (const line of String(raw || "").split("\n")) {
+    if (/\{(rune|enchant)\}/i.test(line)) continue;
+    const m = line.match(/(\d+(?:\.\d+)?)%\s+increased Movement Speed/i);
+    if (m) total += parseFloat(m[1]);
+  }
+  return total;
+}
+
 async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
   await pob.load(buildXml);
   const base = await pob.calc(pobSlot, "");
@@ -2410,14 +2423,6 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
     }
     return raw;
   };
-  // Try DPS first if the build deals damage; but a pure-DEFENSIVE slot (body armour,
-  // boots, belt…) moves NO dps, so fall back to EHP and rank it by survivability
-  // instead of reporting "nothing improves this slot". A weapon stays on DPS.
-  let metric = dpsOfOut(base) > 0 ? "dps" : "ehp";
-  let raw = await probe(metric);
-  if (metric === "dps" && !raw.length) { metric = "ehp"; raw = await probe("ehp"); }
-  const max = raw.reduce((m, w) => Math.max(m, w.perUnit), 0) || 1;
-  const weights = raw.map((w) => ({ ...w, weight: Math.max(1, Math.round((w.perUnit / max) * 20)) })).sort((a, b) => b.weight - a.weight);
   // The item's TOTAL base defences (ev/ar/es) from its property lines → realrank
   // equipment_filters so a replacement keeps the item's CORE value (e.g. an evasion
   // chest's ~2800 evasion). The % stat-floors + marginal weights can't express this.
@@ -2425,20 +2430,36 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
   const evM = String(currentRaw || "").match(/^\s*Evasion(?: Rating)?:\s*(\d+)/im); if (evM) equip.ev = Number(evM[1]);
   const arM = String(currentRaw || "").match(/^\s*Armour(?: Rating)?:\s*(\d+)/im); if (arM) equip.ar = Number(arM[1]);
   const esM = String(currentRaw || "").match(/^\s*Energy Shield:\s*(\d+)/im); if (esM) equip.es = Number(esM[1]);
+  // Metric: a slot with base defences (helmet/body/gloves/boots/shield) is FIRST a
+  // survivability item — rank it by EHP even when it also moves some DPS ("the DPS is
+  // extra"). Pure-offence slots (weapons, amulet, rings) rank by DPS; a slot that moves
+  // no DPS at all falls back to EHP rather than reporting "nothing improves this slot".
+  const hasDefence = (equip.ev || 0) + (equip.ar || 0) + (equip.es || 0) > 0;
+  let metric = hasDefence ? "ehp" : (dpsOfOut(base) > 0 ? "dps" : "ehp");
+  let raw = await probe(metric);
+  if (metric === "dps" && !raw.length) { metric = "ehp"; raw = await probe("ehp"); }
+  const max = raw.reduce((m, w) => Math.max(m, w.perUnit), 0) || 1;
+  const weights = raw.map((w) => ({ ...w, weight: Math.max(1, Math.round((w.perUnit / max) * 20)) })).sort((a, b) => b.weight - a.weight);
   // PRESERVE floors: must-keep stats that PoB's DPS/EHP metric CAN'T see (so they score
   // 0 and never become weighted floors), yet a replacement without them is a non-starter.
   // Boots = movement speed: a fixed ≥25% floor (every build wants it). NOT the current
   // roll — that's polluted by socketed-gem/rune movement speed, which doesn't move with
   // the boots, so it reads low/wrong.
   const preserve = [];
-  if (baseSlot === "boots") preserve.push({ statId: gearStatId("movementSpeed", baseSlot), min: 25 });
-  // Spirit: if the build RESERVES spirit (auras/heralds/persistent gems) and the current
-  // item carries spirit, a replacement must keep it. The SpiritUnreserved<0 guard alone is
-  // too narrow — with unreserved slack, an amulet that sheds SOME spirit stays ≥0 and slips
-  // through, quietly eating your headroom. Floor candidates at the current item's spirit roll.
+  // Boots: keep movement speed at the boots' OWN explicit roll (your 35%), not a flat 25 —
+  // but floor at ≥25 so a weak current roll still demands a sensible minimum. Rune/enchant
+  // MS is excluded (you carry the rune separately).
+  if (baseSlot === "boots") preserve.push({ statId: gearStatId("movementSpeed", baseSlot), min: Math.max(25, Math.round(explicitMovementSpeed(currentRaw))) });
+  // Spirit: if the build RESERVES spirit (auras/heralds) and the current item carries it, a
+  // replacement must keep ENOUGH spirit that reservation still fits. Slack-aware floor =
+  // current roll MINUS your unreserved headroom (you can shed spirit down to your
+  // reservation, no further — so more slack lets cheaper, lower-spirit items qualify). The
+  // SpiritUnreserved<0 guard alone was too narrow: with slack, a partial-spirit-loss amulet
+  // stayed ≥0 and slipped through.
   const spiritStatId = gearStatId("spirit", baseSlot);
-  if ((Number(base.SpiritReserved) || 0) > 0 && (currentStats.spirit || 0) > 0 && spiritStatId)
-    preserve.push({ statId: spiritStatId, min: Math.round(currentStats.spirit) });
+  const spiritFloor = Math.round((currentStats.spirit || 0) - (Number(base.SpiritUnreserved) || 0));
+  if ((Number(base.SpiritReserved) || 0) > 0 && spiritFloor > 0 && spiritStatId)
+    preserve.push({ statId: spiritStatId, min: spiritFloor });
   return { metric, base: { Life: base.Life, EnergyShield: base.EnergyShield, TotalEHP: base.TotalEHP, dps: dpsOfOut(base) }, weights, equip, preserve };
 }
 
