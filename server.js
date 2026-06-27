@@ -21,7 +21,6 @@ const ROOT = __dirname;
 // economy-history graph). ponytail: one dir, no per-file mounts.
 const DATA_DIR = process.env.DATA_DIR || ROOT;
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
-const MIN_NINJA_VOLUME = 10;
 const TRADE_MIN_GAP_MS = 3000;
 // POESESSID (a logged-in pathofexile.com session cookie, set in .env — NEVER committed)
 // unlocks the build-weighted `statgroup` sort that 400s anonymously, so realrank can
@@ -583,45 +582,6 @@ function normalizeIconUrl(src) {
 function readCurrencyRatesCache() {
   try { return JSON.parse(fs.readFileSync(CURRENCY_RATES_FILE, "utf8")); }
   catch { return null; }
-}
-
-// Illiquid orbs whose SELL side (asks) is thin and aspirational, so the cheapest
-// ask is structurally far above the real market (Transmute resolved 30ex vs a true
-// ~0.1; Greater Exalted 44 vs ~3). For these the true rate sits between the deep
-// bid and deep ask, so we price them by the GEOMETRIC MID of both sides instead of
-// the one-sided cheapest ask. Verified vs the in-game market ratio: within ~1.6x,
-// where one-sided was 14-300x high. The liquid staples (divine/chaos/alch/…) stay
-// one-sided — they're correct there, and geo-mid would wrongly drag them toward
-// their lowball bids. INTERIM: the official cxapi currency-exchange endpoint gives
-// exact traded ratios and supersedes all of this once its service scope is granted.
-// (Perfect Exalted is NOT here: its book is 1-2 offers, so two-sided is meaningless
-// — geo-mid gave 200 vs a ~660 truth where the one-sided cheapest ask gave ~560.)
-const TWO_SIDED_IDS = new Set(["transmute", "aug", "greater-exalted-orb"]);
-
-// Geometric mid of the robust deep bid and deep ask, in exalt-per-item. ASK =
-// cheapest offer with real stock (skips thin baits) BUT the raw cheapest, not the
-// densest cluster (the cluster IS the overpriced wall for these). BID = highest
-// buy offer with stock, not crossed above the ask (drops highball baits). Returns
-// {ex, stock}; falls back to whichever side exists. The bid side is one extra
-// exchange call per item — only paid for the ~4 ids in TWO_SIDED_IDS.
-async function geoMidRate(league, id, askData) {
-  const asks = collectExchangeOffers(askData, EXALTED_ID, id)
-    .filter((o) => o.payAmount > 0 && o.receiveAmount > 0 && (o.receiveStock || 0) >= 5)
-    .map((o) => ({ px: o.payAmount / o.receiveAmount, stock: o.receiveStock || 0 }))
-    .sort((a, b) => a.px - b.px);
-  const askPx = asks.length ? asks[0].px : 0;
-  let bidPx = 0;
-  try {
-    const bidData = await fetchExchangeChunked(league, id, [EXALTED_ID]);
-    const bids = collectExchangeOffers(bidData, id, EXALTED_ID)
-      .filter((o) => o.payAmount > 0 && o.receiveAmount > 0)
-      .map((o) => ({ px: o.receiveAmount / o.payAmount, stock: o.payStock || 0 }))  // exalt per item
-      .sort((a, b) => b.px - a.px);
-    const ok = (b) => !askPx || b.px <= askPx * 1.05;       // drop bids crossed above ask
-    bidPx = (bids.find((b) => b.stock >= 5 && ok(b)) || bids.find(ok) || bids[0] || {}).px || 0;
-  } catch {}
-  const ex = (askPx > 0 && bidPx > 0) ? Math.sqrt(askPx * bidPx) : (askPx || bidPx || 0);
-  return { ex, stock: asks.length ? Math.floor(asks[0].stock) : 0 };
 }
 
 // Exiled-Exchange-2's EXACT bulk method (renderer/src/web/price-check/trade/
@@ -1227,72 +1187,6 @@ async function fetchComparablePrices(target, league, currencyRates, fallback = f
     }
     return { targetId: target.id, count: 0, listings: [], quickSaleEx: 0, normalSaleEx: 0, premiumSaleEx: 0, confidence: "error", liquidity: "unknown", error: err.message };
   }
-}
-
-// Pre-pass: normalized names of pasted item lines that should be priced from the
-// rune book — mirrors the main loop's line cleaning so the forced-fresh path can
-// refresh those exact items BEFORE pricing. Skips skill/support lines (priced via
-// live trade, not the book) and bare gems / junk lines, same as the main loop.
-function runePastedNorms(limitedRawLines) {
-  const norms = [];
-  const seen = new Set();
-  for (const rawName of limitedRawLines) {
-    const parsed = stripQuantity(rawName);
-    if (/^\s*(Skill|Support)\s*:/i.test(parsed.text)) continue;
-    const cleanName = parsed.text.replace(/^\s*[|:\-•]*\s*/, "").replace(/\s+/g, " ").trim();
-    const looksLikeBareGem = /^Uncut (Skill|Spirit|Support) Gem/i.test(cleanName) && !/\d/.test(cleanName);
-    if (cleanName.length < 3 || !/[A-Za-z]{3,}/.test(cleanName) || looksLikeBareGem) continue;
-    const norm = normalizeName(cleanName);
-    if (seen.has(norm)) continue;
-    seen.add(norm);
-    norms.push(norm);
-  }
-  return norms;
-}
-
-// ── Currency-exchange-ratio overrides ──────────────────────────────────────
-// FALLBACK ONLY (2026-06-26). We used to believe the Verisium "alloys" etc. couldn't
-// be priced from GGG's Trade2 offer API — but that was because the old code read only
-// the placeholder exalted FLOOR (1ex spam) / the wrong side. Exiled-Exchange's method
-// (exchangePriceEx: multi-have read of the real per-item book, exalted-side cluster)
-// prices them live from GGG alone — proven (Celestial Alloy: live 20ex vs this seed's
-// stale 160). fetchRunePrices now tries exchangePriceEx FIRST; this curated seed (and
-// the poe.ninja snippet store) only fill in when the live exchange is empty/limited.
-// poe.ninja's PoE2 API is still Cloudflare-blocked server-side, so the snippet remains
-// the manual fallback path — but it's no longer the primary source for these.
-const CURRENCY_OVERRIDE_FILE = path.join(DATA_DIR, ".currency-overrides.json");
-const CURRENCY_OVERRIDE_SEED = {
-  "Celestial Alloy": 160, "Sovereign Alloy": 32, "Transcendent Alloy": 42,
-  "Mystic Alloy": 10, "Prismatic Alloy": 9, "The Runefather's Alloy": 4, "The Runebinder's Alloy": 10,
-};
-let currencyOverrideCache = null;
-function readCurrencyOverrides() {
-  if (currencyOverrideCache) return currencyOverrideCache;
-  const out = {};
-  for (const [name, ex] of Object.entries(CURRENCY_OVERRIDE_SEED)) out[normalizeName(name)] = { ex, name, source: "curated" };
-  let file = {};
-  try { file = JSON.parse(fs.readFileSync(CURRENCY_OVERRIDE_FILE, "utf8")) || {}; } catch {}
-  for (const [k, e] of Object.entries(file.prices || {})) {
-    if (e && e.ex > 0) out[normalizeName(k)] = { ex: e.ex, name: e.name || k, source: e.source || "poe.ninja", updated: e.updated };
-  }
-  currencyOverrideCache = out;
-  return out;
-}
-function currencyOverride(norm) { return readCurrencyOverrides()[norm] || null; }
-function writeCurrencyOverrides(prices) {
-  let file = {}; try { file = JSON.parse(fs.readFileSync(CURRENCY_OVERRIDE_FILE, "utf8")) || {}; } catch {}
-  file.prices = file.prices || {};
-  const now = new Date().toISOString();
-  let n = 0;
-  for (const [name, ex] of Object.entries(prices)) {
-    const v = Number(ex);
-    if (!(v > 0) || !String(name).trim()) continue;
-    file.prices[normalizeName(name)] = { ex: Math.round(v * 100) / 100, name: String(name).trim(), source: "poe.ninja", updated: now };
-    n++;
-  }
-  try { fs.writeFileSync(CURRENCY_OVERRIDE_FILE, JSON.stringify(file, null, 2)); } catch {}
-  currencyOverrideCache = null;
-  return n;
 }
 
 async function fetchRunePrices(text, league, forceFresh) {
@@ -2575,24 +2469,6 @@ const server = http.createServer(async (req, res) => {
       const league = input.league || "Runes of Aldur";
       const body = JSON.stringify(await fetchRunePrices(input.text || "", league, input.forceFresh === true));
       send(res, 200, body, "application/json; charset=utf-8");
-      return;
-    }
-
-    // Ingest currency-exchange prices pasted from the poe.ninja browser snippet
-    // (poe.ninja is Cloudflare-blocked server-side, so the user's browser fetches it).
-    // Accepts {prices:{name:ex}} or {text:"Name<tab>ex\n..."}.
-    if (url.pathname === "/api/currency-overrides" && req.method === "POST") {
-      const input = await readJson(req);
-      let prices = {};
-      if (input.prices && typeof input.prices === "object") prices = input.prices;
-      else if (input.text) {
-        for (const line of String(input.text).split(/\r?\n/)) {
-          const m = line.match(/^\s*(.+?)\s*[\t=:]\s*([\d.]+)\s*(?:ex)?\s*$/i);
-          if (m) prices[m[1].trim()] = Number(m[2]);
-        }
-      }
-      const saved = writeCurrencyOverrides(prices);
-      send(res, 200, JSON.stringify({ saved }), "application/json; charset=utf-8");
       return;
     }
 
