@@ -95,4 +95,14 @@
   .toolroot-gear .gf-delta.flat{color:var(--mu)}
   .toolroot-gear .gf-approx{color:var(--gd);font:11px var(--ff-mono)}
 
+  /* scan-all-slots ROI table */
+  .toolroot-gear .gf-scanout{margin:8px 0}
+  .toolroot-gear .gf-scantable{width:100%;border-collapse:collapse;font:12px var(--ff-mono);margin-bottom:6px}
+  .toolroot-gear .gf-scantable th{text-align:left;color:var(--mu);font:600 11px var(--ff-ui);text-transform:uppercase;letter-spacing:.04em;padding:5px 10px;border-bottom:1px solid var(--bd)}
+  .toolroot-gear .gf-scantable td{padding:6px 10px;border-bottom:1px solid var(--surface-1);color:var(--tx)}
+  .toolroot-gear .gf-scantable td:last-child{text-align:right;color:var(--gd)}
+  .toolroot-gear .gf-scantable .muted{color:var(--mu)}
+  .toolroot-gear .gf-scan-link{cursor:pointer;transition:background .12s}
+  .toolroot-gear .gf-scan-link:hover{background:var(--surface-2)}
+
   .toolroot-gear .gf-foot{margin-top:16px;color:var(--mu);font:11px var(--ff-mono);line-height:1.6}

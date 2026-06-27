@@ -6,6 +6,7 @@ window.__viewInit["gear-finder"] = function () {
     saved: $("gfSaved"), savedRow: $("gfSavedRow"), loadSaved: $("gfLoadSaved"), delSaved: $("gfDelSaved"),
     code: $("gfCode"), importBtn: $("gfImport"), paste: $("gfPaste"), saveName: $("gfSaveName"), saveBuild: $("gfSaveBuild"), saveRow: $("gfSaveRow"),
     build: $("gfBuild"), slots: $("gfSlots"),
+    scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanBudget: $("gfScanBudget"), scanOut: $("gfScanOut"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), analyze: $("gfAnalyze"),
     status: $("gfStatus"), weights: $("gfWeights"),
     actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
@@ -79,6 +80,7 @@ window.__viewInit["gear-finder"] = function () {
     els.build.innerHTML = tiles.map(([k, v]) => `<span class="gf-stat">${k} <b>${fmt(v)}</b></span>`).join("");
     els.slots.innerHTML = Object.entries(state.slots).map(([id, s]) =>
       `<button class="gf-slot" type="button" data-slot="${esc(id)}">${esc(id)}<span class="gf-slot-name">${esc(s.name || "—")}</span></button>`).join("");
+    els.scanRow.hidden = !Object.keys(state.slots).length;
     els.panel.hidden = true; setStatus("");
   }
 
@@ -219,6 +221,55 @@ window.__viewInit["gear-finder"] = function () {
     setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB, showing the top ${cands.length}${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${d.partial ? " — stopped early on the rate limit" : ""}.`);
   }
 
+  // Scan EVERY slot and rank them by upgrade ROI (gain per divine). Per slot:
+  // weights (local PoB, no trade) → realrank with a small scoreCap (1 fetch) so a
+  // ~12-slot sweep stays cheap on the search rate limit. Stops on a rate-limit and
+  // reports partial. The ROI unit is consistent across slots (baseDps is global),
+  // so the ranking is apples-to-apples within one build.
+  const scanRoi = (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(1) + "k" : Math.round(v);
+  function renderScan(rows, hasDps, tail) {
+    const unit = hasDps ? "DPS" : "EHP";
+    const withBest = rows.filter((r) => r.best).sort((a, b) => b.best.roi - a.best.roi);
+    const without = rows.filter((r) => !r.best);
+    const body = withBest.map((r, i) => {
+      const b = r.best, price = b.priceDiv ? `${fmt(b.priceDiv)} div` : `${fmt(b.priceEx || 0)} ex`;
+      return `<tr class="gf-scan-link" data-slot="${esc(r.id)}" title="open this slot to rank candidates"><td>${i + 1}</td><td><b>${esc(r.id)}</b> <span class="muted">${esc(r.name || "")}</span></td><td>${esc(b.name || "Item")}</td><td class="gf-delta up">+${fmt(b.gain)} ${unit}</td><td>${price}</td><td><b>${scanRoi(b.roi)}/div</b></td></tr>`;
+    }).join("");
+    const rest = without.map((r) => `<tr class="gf-scan-none"><td></td><td><b>${esc(r.id)}</b> <span class="muted">${esc(r.name || "")}</span></td><td colspan="4" class="muted">${esc(r.none)}</td></tr>`).join("");
+    const table = (body || rest) ? `<table class="gf-scantable"><thead><tr><th>#</th><th>Slot</th><th>Best upgrade</th><th>Gain</th><th>Price</th><th>ROI</th></tr></thead><tbody>${body}${rest}</tbody></table>` : "";
+    return table + (tail || "");
+  }
+  async function scanAll() {
+    if (!state.xml) { setStatus("Import a build first.", true); return; }
+    if (!state.headless) { els.scanOut.innerHTML = `<p class="status err">Headless Path of Building isn't available — it's needed to score upgrades.</p>`; return; }
+    const slots = Object.entries(state.slots);
+    if (!slots.length) return;
+    const budget = Number(els.scanBudget.value) || 0;
+    els.scanAll.disabled = true;
+    const rows = []; let partial = false, hasDps = null;
+    for (let i = 0; i < slots.length; i++) {
+      const [id, sl] = slots[i];
+      els.scanOut.innerHTML = renderScan(rows, hasDps, `<p class="status">Scanning ${esc(id)} (${i + 1}/${slots.length})…</p>`);
+      const w = await api("/api/gear/weights", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, current: { raw: sl.raw }, maxPriceDiv: budget, league: state.league }).catch(() => null);
+      if (!w || w.available === false) { rows.push({ id, name: sl.name, none: "PoB unavailable" }); continue; }
+      if (!w.weights || !w.weights.length) { rows.push({ id, name: sl.name, none: "no stat helps this slot" }); continue; }
+      const mods = w.weights.slice(0, 4).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
+      const r = await api("/api/gear/realrank", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, mods, weights: w.weights.slice(0, 8), maxPriceDiv: budget, league: state.league, scoreCap: 10 }).catch(() => null);
+      if (r && r.limited) { partial = true; break; }
+      if (!r || r.error || !Array.isArray(r.candidates)) { rows.push({ id, name: sl.name, none: "search failed" }); continue; }
+      if (hasDps === null) hasDps = r.baseDps > 0;
+      const gainOf = (c) => hasDps ? c.dDPS : c.dEHP;
+      let best = null;
+      for (const c of r.candidates) { const g = gainOf(c); if (g > 0 && c.priceDiv > 0) { const roi = g / c.priceDiv; if (!best || roi > best.roi) best = { ...c, gain: g, roi }; } }
+      rows.push(best ? { id, name: sl.name, best } : { id, name: sl.name, none: "no in-budget upgrade" });
+    }
+    els.scanAll.disabled = false;
+    const tail = partial
+      ? `<p class="status err">Stopped early — Trade2 rate-limited. Re-run shortly to finish the rest.</p>`
+      : `<p class="status">Done — top of the list is your best divine spent. Click a slot to rank its candidates.</p>`;
+    els.scanOut.innerHTML = renderScan(rows, hasDps, tail);
+  }
+
   function snippetText() {
     const league = state.league, q = JSON.stringify(state.query);
     return `fetch("/api/trade2/search/poe2/${encodeURIComponent(league)}",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(${q})}).then(r=>r.json()).then(d=>{if(d.id){location.href="/trade2/search/poe2/${encodeURIComponent(league)}/"+d.id}else{alert("Search failed: "+JSON.stringify(d))}}).catch(e=>alert(e));`;
@@ -253,6 +304,8 @@ window.__viewInit["gear-finder"] = function () {
     setStatus(`Deleted "${name}".`);
   });
   els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) selectSlot(b.dataset.slot); });
+  els.scanAll.addEventListener("click", scanAll);
+  els.scanOut.addEventListener("click", (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { selectSlot(tr.dataset.slot); els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); } });
   els.analyze.addEventListener("click", analyzeSlot);
   els.realRankBtn.addEventListener("click", realRank);
   if (els.pinBody) els.pinBody.addEventListener("click", async (ev) => {
