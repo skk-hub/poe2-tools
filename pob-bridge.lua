@@ -128,7 +128,11 @@ end
 -- so probe a list and keep whatever is present).
 local STAT_KEYS = { "FullDPS", "CombinedDPS", "TotalDPS", "TotalDotDPS", "AverageDamage",
 	"Speed", "Life", "EnergyShield", "Mana", "TotalEHP", "Ward",
-	"FireResist", "ColdResist", "LightningResist", "ChaosResist" }
+	"FireResist", "ColdResist", "LightningResist", "ChaosResist",
+	-- Spirit (PoE2): a candidate that drops Spirit below what auras/persistent gems
+	-- reserve makes SpiritUnreserved go NEGATIVE — PoB still counts those buffs in DPS,
+	-- so such an item is a fake upgrade. The ranker rejects/flags a spirit deficit.
+	"Spirit", "SpiritReserved", "SpiritUnreserved" }
 local function getStatsFrom(out)
 	local t = {}
 	out = out or {}

@@ -6,7 +6,7 @@ window.__viewInit["gear-finder"] = function () {
     saved: $("gfSaved"), savedRow: $("gfSavedRow"), loadSaved: $("gfLoadSaved"), delSaved: $("gfDelSaved"),
     code: $("gfCode"), importBtn: $("gfImport"), paste: $("gfPaste"), saveName: $("gfSaveName"), saveBuild: $("gfSaveBuild"), saveRow: $("gfSaveRow"),
     build: $("gfBuild"), slots: $("gfSlots"),
-    scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanBudget: $("gfScanBudget"), scanOut: $("gfScanOut"),
+    scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), analyze: $("gfAnalyze"),
     status: $("gfStatus"), weights: $("gfWeights"),
     actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
@@ -28,7 +28,8 @@ window.__viewInit["gear-finder"] = function () {
   const dpsOf = (s) => (s && (s.FullDPS || s.CombinedDPS || s.TotalDPS)) || 0;
   const deltaSpan = (d, unit) => { const c = d > 0 ? "up" : d < 0 ? "down" : "flat"; return `<span class="gf-delta ${c}">${d > 0 ? "+" : ""}${fmt(d)} ${unit}</span>`; };
 
-  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], pinned: [] };
+  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], pinned: [] };
+  const isUnique = (raw) => /rarity:\s*unique/i.test(String(raw || ""));
   state.pinned = loadPins();
 
   async function api(path, body) {
@@ -145,11 +146,15 @@ window.__viewInit["gear-finder"] = function () {
     if (d.available === false) { els.scoreOut.textContent = "Headless Path of Building isn't available."; return; }
     if (d.error) { els.scoreOut.textContent = "Failed: " + d.error; return; }
     const hasDps = dpsOf(d.base) > 0;
+    const reservesSpirit = (Number(d.base && d.base.SpiritReserved) || 0) > 0;
     els.scoreOut.innerHTML = (d.results || []).map((r) => {
       if (r.error || !r.stats) return `<div class="gf-srow">${esc(r.name)} — <span class="gf-delta down">${esc((r.error || "couldn't read this item").replace(/^pob:\s*/, ""))}</span></div>`;
       const dD = dpsOf(r.stats) - dpsOf(d.base), dE = ehpOf(r.stats) - ehpOf(d.base);
       const note = r.approx ? ` <span class="gf-approx">≈ base assumed (copy had no base type) — DPS accurate, EHP rough</span>` : "";
-      return `<div class="gf-srow"><b>${esc(r.name)}</b> ${hasDps ? deltaSpan(dD, "DPS") : ""} ${deltaSpan(dE, "EHP")}${note}</div>`;
+      // Spirit deficit → this item can't run the build's auras; the DPS/EHP above is fake.
+      const spirit = (reservesSpirit && Number(r.stats.SpiritUnreserved) < 0)
+        ? ` <span class="gf-delta down" title="this item drops Spirit below what your auras/persistent gems reserve — they'd turn off, so the gain above isn't real">⚠ −${fmt(-r.stats.SpiritUnreserved)} spirit (breaks auras)</span>` : "";
+      return `<div class="gf-srow"><b>${esc(r.name)}</b> ${hasDps ? deltaSpan(dD, "DPS") : ""} ${deltaSpan(dE, "EHP")}${spirit}${note}</div>`;
     }).join("") || "No items parsed.";
   }
 
@@ -163,7 +168,7 @@ window.__viewInit["gear-finder"] = function () {
     els.analyze.disabled = false;
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
     if (d.available === false) { setStatus("Headless Path of Building isn't available — install PoB + LuaJIT for build-weighted search.", true); return; }
-    state.weights = d.weights || []; state.query = d.query; state.league = d.league || state.league;
+    state.weights = d.weights || []; state.query = d.query; state.league = d.league || state.league; state.metric = d.metric || "dps";
     renderWeights(d);
   }
 
@@ -185,14 +190,14 @@ window.__viewInit["gear-finder"] = function () {
     // every top stat at once, so requiring ≥ current returns nothing. PoB ΔDPS sorts the rest.
     const mods = state.weights.slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((cur[w.key] || 1) * 0.7)) }));
     els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
-    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, mods, weights: state.weights.slice(0, 8), maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, mods, weights: state.weights.slice(0, 8), metric: state.metric, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
     els.realRankBtn.disabled = false;
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
     const cands = d.candidates || [];
-    if (!cands.length) { setStatus("No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot.", false); return; }
-    const hasDps = d.baseDps > 0;
+    if (!cands.length) { setStatus("No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot." + (d.spiritSkipped ? ` (${d.spiritSkipped} skipped — would break your auras on spirit)` : ""), false); return; }
+    const hasDps = (d.metric || (d.baseDps > 0 ? "dps" : "ehp")) === "dps";
     state.realHasDps = hasDps;
     state.realSearchUrl = d.searchUrl || "";   // fallback when an item lacks base/account
     state.realCands = cands;                   // referenced by the value-check + pin handlers
@@ -218,7 +223,7 @@ window.__viewInit["gear-finder"] = function () {
       const canOpen = (c.base && c.account) || state.realSearchUrl;
       return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
     }).join("");
-    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB, showing the top ${cands.length}${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${d.partial ? " — stopped early on the rate limit" : ""}.`);
+    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB, showing the top ${cands.length}${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.`);
   }
 
   // Scan EVERY slot and rank them by upgrade ROI (gain per divine). Per slot:
@@ -227,47 +232,63 @@ window.__viewInit["gear-finder"] = function () {
   // reports partial. The ROI unit is consistent across slots (baseDps is global),
   // so the ranking is apples-to-apples within one build.
   const scanRoi = (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(1) + "k" : Math.round(v);
-  function renderScan(rows, hasDps, tail) {
-    const unit = hasDps ? "DPS" : "EHP";
-    const withBest = rows.filter((r) => r.best).sort((a, b) => b.best.roi - a.best.roi);
+  // Two ranked tables — damage slots by DPS/div, defensive slots by EHP/div — since a
+  // chest's value is survivability, not DPS. Mixing the two units in one sort would be
+  // dishonest (DPS numbers dwarf EHP), so they're grouped.
+  function renderScan(rows, tail) {
+    const withBest = rows.filter((r) => r.best);
     const without = rows.filter((r) => !r.best);
-    const body = withBest.map((r, i) => {
-      const b = r.best, price = b.priceDiv ? `${fmt(b.priceDiv)} div` : `${fmt(b.priceEx || 0)} ex`;
-      return `<tr class="gf-scan-link" data-slot="${esc(r.id)}" title="open this slot to rank candidates"><td>${i + 1}</td><td><b>${esc(r.id)}</b> <span class="muted">${esc(r.name || "")}</span></td><td>${esc(b.name || "Item")}</td><td class="gf-delta up">+${fmt(b.gain)} ${unit}</td><td>${price}</td><td><b>${scanRoi(b.roi)}/div</b></td></tr>`;
-    }).join("");
-    const rest = without.map((r) => `<tr class="gf-scan-none"><td></td><td><b>${esc(r.id)}</b> <span class="muted">${esc(r.name || "")}</span></td><td colspan="4" class="muted">${esc(r.none)}</td></tr>`).join("");
-    const table = (body || rest) ? `<table class="gf-scantable"><thead><tr><th>#</th><th>Slot</th><th>Best upgrade</th><th>Gain</th><th>Price</th><th>ROI</th></tr></thead><tbody>${body}${rest}</tbody></table>` : "";
-    return table + (tail || "");
+    const tableFor = (mk, unit) => {
+      const g = withBest.filter((r) => r.best.metric === mk).sort((a, b) => b.best.roi - a.best.roi);
+      if (!g.length) return "";
+      const body = g.map((r, i) => {
+        const b = r.best, price = b.priceDiv ? `${fmt(b.priceDiv)} div` : `${fmt(b.priceEx || 0)} ex`;
+        return `<tr class="gf-scan-link" data-slot="${esc(r.id)}" title="click to analyze this slot"><td>${i + 1}</td><td><b>${esc(r.id)}</b> <span class="muted">${esc(r.name || "")}</span></td><td>${esc(b.name || "Item")}</td><td class="gf-delta up">+${fmt(b.gain)} ${unit}</td><td>${price}</td><td><b>${scanRoi(b.roi)} ${unit}/div</b></td></tr>`;
+      }).join("");
+      return `<p class="gf-scan-h">Best <b>${unit}</b> per divine</p><table class="gf-scantable"><thead><tr><th>#</th><th>Slot</th><th>Best upgrade</th><th>Gain</th><th>Price</th><th>ROI</th></tr></thead><tbody>${body}</tbody></table>`;
+    };
+    let html = tableFor("dps", "DPS") + tableFor("ehp", "EHP");
+    if (without.length) {
+      const rest = without.map((r) => `<tr class="gf-scan-none"><td><b>${esc(r.id)}</b> <span class="muted">${esc(r.name || "")}</span></td><td class="muted">${esc(r.none)}</td></tr>`).join("");
+      html += `<table class="gf-scantable gf-scan-rest"><tbody>${rest}</tbody></table>`;
+    }
+    return html + (tail || "");
   }
   async function scanAll() {
     if (!state.xml) { setStatus("Import a build first.", true); return; }
     if (!state.headless) { els.scanOut.innerHTML = `<p class="status err">Headless Path of Building isn't available — it's needed to score upgrades.</p>`; return; }
     const slots = Object.entries(state.slots);
     if (!slots.length) return;
-    const budget = Number(els.scanBudget.value) || 0;
+    const minDiv = Number(els.scanMin.value) || 0;
     els.scanAll.disabled = true;
-    const rows = []; let partial = false, hasDps = null;
+    const rows = []; let partial = false, spiritTotal = 0;
     for (let i = 0; i < slots.length; i++) {
       const [id, sl] = slots[i];
-      els.scanOut.innerHTML = renderScan(rows, hasDps, `<p class="status">Scanning ${esc(id)} (${i + 1}/${slots.length})…</p>`);
-      const w = await api("/api/gear/weights", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, current: { raw: sl.raw }, maxPriceDiv: budget, league: state.league }).catch(() => null);
+      els.scanOut.innerHTML = renderScan(rows, `<p class="status">Scanning ${esc(id)} (${i + 1}/${slots.length})…</p>`);
+      // Uniques are build-defining (their value isn't raw DPS) — keep them, don't suggest replacing.
+      if (isUnique(sl.raw)) { rows.push({ id, name: sl.name, none: "unique — kept (build-defining)" }); continue; }
+      const w = await api("/api/gear/weights", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, current: { raw: sl.raw }, league: state.league }).catch(() => null);
       if (!w || w.available === false) { rows.push({ id, name: sl.name, none: "PoB unavailable" }); continue; }
-      if (!w.weights || !w.weights.length) { rows.push({ id, name: sl.name, none: "no stat helps this slot" }); continue; }
+      if (!w.weights || !w.weights.length) { rows.push({ id, name: sl.name, none: "nothing improves this slot" }); continue; }
+      const metric = w.metric || "dps";
       const mods = w.weights.slice(0, 4).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
-      const r = await api("/api/gear/realrank", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, mods, weights: w.weights.slice(0, 8), maxPriceDiv: budget, league: state.league, scoreCap: 10 }).catch(() => null);
+      // No max budget (a pricier item can still win on gain-per-divine), optional min, and
+      // weights:[] forces the price-spread path so we sample across prices, not best-by-stat.
+      const r = await api("/api/gear/realrank", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, mods, weights: [], metric, minPriceDiv: minDiv, maxPriceDiv: 0, league: state.league, scoreCap: 10 }).catch(() => null);
       if (r && r.limited) { partial = true; break; }
       if (!r || r.error || !Array.isArray(r.candidates)) { rows.push({ id, name: sl.name, none: "search failed" }); continue; }
-      if (hasDps === null) hasDps = r.baseDps > 0;
-      const gainOf = (c) => hasDps ? c.dDPS : c.dEHP;
+      spiritTotal += r.spiritSkipped || 0;
+      const mk = r.metric || metric;
+      const gainOf = (c) => mk === "ehp" ? c.dEHP : c.dDPS;
       let best = null;
-      for (const c of r.candidates) { const g = gainOf(c); if (g > 0 && c.priceDiv > 0) { const roi = g / c.priceDiv; if (!best || roi > best.roi) best = { ...c, gain: g, roi }; } }
-      rows.push(best ? { id, name: sl.name, best } : { id, name: sl.name, none: "no in-budget upgrade" });
+      for (const c of r.candidates) { const g = gainOf(c); if (g > 0 && c.priceDiv > 0) { const roi = g / c.priceDiv; if (!best || roi > best.roi) best = { ...c, gain: g, roi, metric: mk }; } }
+      rows.push(best ? { id, name: sl.name, best } : { id, name: sl.name, none: "no upgrade found" });
     }
     els.scanAll.disabled = false;
     const tail = partial
       ? `<p class="status err">Stopped early — Trade2 rate-limited. Re-run shortly to finish the rest.</p>`
-      : `<p class="status">Done — top of the list is your best divine spent. Click a slot to rank its candidates.</p>`;
-    els.scanOut.innerHTML = renderScan(rows, hasDps, tail);
+      : `<p class="status">Done — click any row to analyze that slot.${spiritTotal ? ` ${spiritTotal} candidate(s) skipped (would break your auras on spirit).` : ""}</p>`;
+    els.scanOut.innerHTML = renderScan(rows, tail);
   }
 
   function snippetText() {
@@ -305,7 +326,7 @@ window.__viewInit["gear-finder"] = function () {
   });
   els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) selectSlot(b.dataset.slot); });
   els.scanAll.addEventListener("click", scanAll);
-  els.scanOut.addEventListener("click", (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { selectSlot(tr.dataset.slot); els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); } });
+  els.scanOut.addEventListener("click", (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { selectSlot(tr.dataset.slot); els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); analyzeSlot(); } });
   els.analyze.addEventListener("click", analyzeSlot);
   els.realRankBtn.addEventListener("click", realRank);
   if (els.pinBody) els.pinBody.addEventListener("click", async (ev) => {

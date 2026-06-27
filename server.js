@@ -2405,18 +2405,27 @@ const ehpOfOut = (o) => (o && o.TotalEHP) || 0;
 async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
   await pob.load(buildXml);
   const base = await pob.calc(pobSlot, "");
-  const metric = dpsOfOut(base) > 0 ? "dps" : "ehp";
-  const mf = metric === "dps" ? dpsOfOut : ehpOfOut;
-  const baseVal = mf(base);
   const currentStats = parseItemStats(currentRaw || "", baseSlot);
   const keys = (PRESERVE_CONTROL_STATS_BY_SLOT[baseSlot] || []).filter((k) => GEAR_PROBE_TEMPLATES[k] && gearStatId(k, baseSlot));
-  const raw = [];
-  for (const k of keys) {
-    const [inc, line] = GEAR_PROBE_TEMPLATES[k];
-    let per = 0;
-    try { per = (mf(await pob.calc(pobSlot, currentRaw + "\n" + line(inc))) - baseVal) / inc; } catch {}
-    if (per > 1e-4) raw.push({ key: k, statId: gearStatId(k, baseSlot), label: statLabel(k), perUnit: Math.round(per * 100) / 100, cur: Math.round(currentStats[k] || 0) });
-  }
+  // Per-stat marginal value under a chosen metric (DPS or EHP).
+  const probe = async (metric) => {
+    const mf = metric === "dps" ? dpsOfOut : ehpOfOut;
+    const baseVal = mf(base);
+    const raw = [];
+    for (const k of keys) {
+      const [inc, line] = GEAR_PROBE_TEMPLATES[k];
+      let per = 0;
+      try { per = (mf(await pob.calc(pobSlot, currentRaw + "\n" + line(inc))) - baseVal) / inc; } catch {}
+      if (per > 1e-4) raw.push({ key: k, statId: gearStatId(k, baseSlot), label: statLabel(k), perUnit: Math.round(per * 100) / 100, cur: Math.round(currentStats[k] || 0) });
+    }
+    return raw;
+  };
+  // Try DPS first if the build deals damage; but a pure-DEFENSIVE slot (body armour,
+  // boots, belt…) moves NO dps, so fall back to EHP and rank it by survivability
+  // instead of reporting "nothing improves this slot". A weapon stays on DPS.
+  let metric = dpsOfOut(base) > 0 ? "dps" : "ehp";
+  let raw = await probe(metric);
+  if (metric === "dps" && !raw.length) { metric = "ehp"; raw = await probe("ehp"); }
   const max = raw.reduce((m, w) => Math.max(m, w.perUnit), 0) || 1;
   const weights = raw.map((w) => ({ ...w, weight: Math.max(1, Math.round((w.perUnit / max) * 20)) })).sort((a, b) => b.weight - a.weight);
   return { metric, base: { Life: base.Life, EnergyShield: base.EnergyShield, TotalEHP: base.TotalEHP, dps: dpsOfOut(base) }, weights };
@@ -2809,7 +2818,15 @@ const server = http.createServer(async (req, res) => {
       const q = weighted
         ? buildWeightedGearQuery(slot, weights, league, Number(input.maxPriceDiv) || 0)
         : { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) }, sort: { price: "asc" } };
-      if (!weighted && Number(input.maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(input.maxPriceDiv) } } };
+      // Price band: max (a cap) and/or min. The best-ROI scan passes NO max (a pricier
+      // item can still win on gain-per-divine) and an optional min to skip junk.
+      const maxDiv = Number(input.maxPriceDiv) || 0, minDiv = Number(input.minPriceDiv) || 0;
+      if (!weighted && (maxDiv > 0 || minDiv > 0)) {
+        const price = { option: "divine" };
+        if (minDiv > 0) price.min = minDiv;
+        if (maxDiv > 0) price.max = maxDiv;
+        q.query.filters.trade_filters = { filters: { price } };
+      }
       try {
         const { search, league: usedLeague } = await gearTradeSearch(q, league);
         const all = search.result || [];
@@ -2825,6 +2842,14 @@ const server = http.createServer(async (req, res) => {
         const rates = await getExchangeRates(league).catch(() => ({}));
         await pob.load(String(input.buildXml || ""));
         const base = await pob.calc(pobSlot, "");
+        // Rank metric: the client sends the slot's metric (DPS for damage slots, EHP for
+        // pure-defensive ones). Default by whether the build deals damage.
+        const metric = (input.metric === "ehp" || input.metric === "dps") ? input.metric : (dpsOfOut(base) > 0 ? "dps" : "ehp");
+        // Spirit guard: if the build reserves spirit (auras/heralds/persistent gems), a
+        // candidate that drops Spirit below reservation makes SpiritUnreserved NEGATIVE —
+        // PoB still counts those buffs in the DPS, so it's a FAKE upgrade. Skip them.
+        const spiritGuard = (Number(base.SpiritReserved) || 0) > 0;
+        let spiritSkipped = 0;
         const cands = [];
         let fetchErr = null;
         for (let i = 0; i < pick.length; i += 10) {   // Trade2 fetch caps at 10 ids/call
@@ -2835,6 +2860,7 @@ const server = http.createServer(async (req, res) => {
             const txt = pobItemFromTradeEntry(e);
             if (!txt) continue;
             let stats; try { stats = await pob.calc(pobSlot, txt); } catch { continue; }
+            if (spiritGuard && Number(stats.SpiritUnreserved) < 0) { spiritSkipped++; continue; }   // can't run the build's auras → fake upgrade
             const price = listingPriceFromEntry(e, rates) || {};
             // The item's top-weighted rolled mods → lets the value-check search "items at
             // least this good on these stats" and tell you if this listing is the cheapest
@@ -2859,11 +2885,12 @@ const server = http.createServer(async (req, res) => {
           }
         }
         if (!cands.length && fetchErr) throw fetchErr;   // total failure → outer catch (rate-limit msg etc.)
-        cands.sort((a, b) => (b.dDPS - a.dDPS) || (b.dEHP - a.dEHP));
+        const gainOf = (c) => metric === "ehp" ? c.dEHP : c.dDPS;   // rank by the slot's metric
+        cands.sort((a, b) => (gainOf(b) - gainOf(a)) || (b.dEHP - a.dEHP));
         // The build-weighted/price search this came from — opening it lands on these
         // candidates (no per-item permalink exists on PoE trade). Each row links here.
         const searchUrl = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(usedLeague) + "/" + search.id : "";
-        send(res, 200, JSON.stringify({ available: true, weighted, searchUrl, scored: cands.length, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, weighted, metric, spiritSkipped, searchUrl, scored: cands.length, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 10) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         const msg = String(err.message);

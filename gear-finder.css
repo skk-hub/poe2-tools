@@ -104,5 +104,9 @@
   .toolroot-gear .gf-scantable .muted{color:var(--mu)}
   .toolroot-gear .gf-scan-link{cursor:pointer;transition:background .12s}
   .toolroot-gear .gf-scan-link:hover{background:var(--surface-2)}
+  .toolroot-gear .gf-scan-h{margin:12px 0 4px;font:600 12px var(--ff-ui);color:var(--gd)}
+  .toolroot-gear .gf-scan-h:first-child{margin-top:0}
+  .toolroot-gear .gf-scan-rest{margin-top:8px;opacity:.7}
+  .toolroot-gear .gf-scan-rest td{padding:4px 10px;border:0;font:11px var(--ff-mono)}
 
   .toolroot-gear .gf-foot{margin-top:16px;color:var(--mu);font:11px var(--ff-mono);line-height:1.6}
