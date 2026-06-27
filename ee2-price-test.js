@@ -74,5 +74,13 @@ __setExchangeRawImpl(async () => resp([
   assert.ok(p.sides.find((s) => s.tag === "exalted").px === 2, "exalted side px in native units");
   assert.ok(p.sides.find((s) => s.tag === "chaos").ex === 5, "chaos side converts to ex (0.1 × 50)");
 
+  // 5. Lone troll bait dropped: a cheapest offer < half the next is skipped so the real
+  // cluster is the price (fixes divine reading 1ex off a "1 exalted : 1 divine" bait).
+  // A deep EQUAL floor (many offers at the same px) is NOT treated as bait.
+  const baited = ee2SidePrices(resp([listing("exalted", 1, 1, 1), listing("exalted", 359, 1, 5), listing("exalted", 360, 1, 5)]));
+  assert.strictEqual(baited.exalted[0].px, 359, "lone 1ex bait dropped → real cluster 359 wins");
+  const deep = ee2SidePrices(resp([listing("divine", 1, 1, 9), listing("divine", 1, 1, 9), listing("divine", 1, 1, 9)]));
+  assert.strictEqual(deep.divine[0].px, 1, "a deep equal floor (3× at 1 div) is NOT treated as bait");
+
   console.log("ee2-price-test: all assertions passed");
 })();

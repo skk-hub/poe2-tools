@@ -610,7 +610,18 @@ function ee2SidePrices(data) {
     if (!have || !(exAmt > 0) || !(itAmt > 0)) continue;
     (sides[have] || (sides[have] = [])).push({ px: exAmt / itAmt, stock: Number(o.item.stock) || 0 });
   }
-  for (const k of Object.keys(sides)) sides[k].sort((a, b) => a.px - b.px);
+  // Drop a lone troll bait per side: a single cheapest offer far under the real cluster
+  // (e.g. a "1 exalted : 1 divine" listing beneath a ~359 wall) would otherwise BE the
+  // price and wreck the derived rate. EE2 shows the raw list and a human skips it; our
+  // programmatic cheapest can't, so we de-bait — drop an offer < HALF the next (a >2x gap
+  // is not a real price; chained baits drop one at a time). A genuine deep floor (many
+  // offers at the same px, e.g. Masterwork Rune's 91× at 1 div) is untouched.
+  for (const k of Object.keys(sides)) {
+    const a = sides[k].sort((x, y) => x.px - y.px);
+    let i = 0;
+    while (i < a.length - 1 && a[i].px < a[i + 1].px * 0.5) i++;
+    sides[k] = a.slice(i);
+  }
   return sides;
 }
 // EE2's currency price + auto-side-select (bulk-api.ts, useExalts=true). ONE
@@ -1301,9 +1312,13 @@ async function fetchRunePrices(text, league, forceFresh) {
         writeEe2Cache(league, cacheKey, live || { ex: 0 });
         p = live ? { ...live } : { ex: 0 };
       }
-      // EE2 shows the cheapest ask on each currency side as a list (native units), so
-      // you read the right denomination — e.g. "1 ex · 0.5 div · 0.1 c".
-      const sideLine = (p && p.sides || []).map((s) => fmtSidePx(s.px, s.tag)).join(" · ");
+      // Per-side cheapest ask in native units, like EE2 — but lead with the SELECTED
+      // (deepest-liquidity) side and tag each side's offer count, so the real price
+      // (e.g. Masterwork Rune = "1 div ×91") reads clearly instead of looking like a
+      // pile of base 1:1 values next to thin sides.
+      const sideLine = (p && p.sides || [])
+        .slice().sort((a, b) => (a.tag === p.side ? -1 : b.tag === p.side ? 1 : 0))
+        .map((s) => fmtSidePx(s.px, s.tag) + " ×" + s.depth).join(" · ");
       if (p && p.ex > 0) {
         results.push({
           qty: parsed.qty, name: cat.name || cleanName, category: cat.category || "Exchange",
