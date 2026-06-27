@@ -2716,6 +2716,12 @@ const server = http.createServer(async (req, res) => {
       try { parsed = parsePobBuild(xml); } catch (e) { send(res, 400, JSON.stringify({ error: "Not a Path of Building build: " + e.message }), "application/json; charset=utf-8"); return; }
       const headless = { available: await pob.ready() };
       if (headless.available) { try { headless.stats = await pob.load(xml); } catch (e) { headless.error = String(e.message); } }
+      // STALE-AGENT DETECTOR: every PoE2 character has a Spirit pool, so the bridge always
+      // returns a numeric `Spirit` IF its STAT_KEYS include it. If it's missing, the resident
+      // PoB (esp. a split-host `pob-agent` that wasn't restarted after a pob-bridge.lua change)
+      // predates the spirit keys → spirit floor/guard silently no-op. Flag it LOUDLY instead of
+      // shipping no-spirit recommendations. (This cost ~5 debugging passes once; never again.)
+      if (headless.stats && headless.stats.Spirit === undefined) headless.staleAgent = true;
       send(res, 200, JSON.stringify({ slots: parsed.slots, build: parsed.build, headless, xml }), "application/json; charset=utf-8");
       return;
     }

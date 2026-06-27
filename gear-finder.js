@@ -97,6 +97,12 @@ window.__viewInit["gear-finder"] = function () {
       ["DPS", (b.FullDPS || b.CombinedDPS || b.TotalDPS)], ["Fire", b.FireResist], ["Cold", b.ColdResist],
       ["Light", b.LightningResist], ["Chaos", b.ChaosResist], ["Spirit free", b.SpiritUnreserved]].filter(([, v]) => v != null);
     els.build.innerHTML = tiles.map(([k, v]) => `<span class="gf-stat">${k} <b>${fmt(v)}</b></span>`).join("");
+    // Stale PoB agent: returns DPS/EHP but no Spirit data → spirit floor + guard silently off,
+    // so the scan leaks no-spirit items. Loud banner with the exact fix (it's a split-host
+    // pob-agent that wasn't restarted after a bridge change).
+    if (d.headless && d.headless.staleAgent) {
+      els.build.innerHTML += `<span class="gf-warn gf-warn-stale" title="The headless Path of Building process is out of date — it doesn't report Spirit, so spirit-keep and cap checks can't run. Restart it: pm2 restart pob-agent (on the PC that runs PoB).">⛔ PoB agent is out of date — Spirit/cap checks are OFF. Run <b>pm2 restart pob-agent</b> on your PoB PC.</span>`;
+    }
     // Over-reserved spirit (Unreserved < 0) = PoB has more auras toggled on than your Spirit
     // can sustain — usually a fresh import enabling every gem. The build can't run as shown,
     // so its DPS/EHP are INFLATED and every upgrade here is scored against an impossible setup.

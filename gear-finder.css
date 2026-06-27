@@ -22,6 +22,7 @@
   .toolroot-gear .gf-stat{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-sm);padding:6px 11px;font:12px var(--ff-mono);color:var(--mu)}
   .toolroot-gear .gf-stat b{color:var(--tx);font-size:13px}
   .toolroot-gear .gf-warn{display:block;width:100%;margin-top:8px;border:1px solid #6b3a1f;background:rgba(180,90,30,.12);border-radius:var(--r-sm);padding:7px 11px;font:12px var(--ff-mono);color:#e0a060;cursor:help}
+  .toolroot-gear .gf-warn-stale{border-color:#7a2020;background:rgba(200,40,40,.14);color:#f08080}
 
   .toolroot-gear .gf-slots{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
   .toolroot-gear .gf-slot{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-sm);padding:8px 12px;cursor:pointer;font:600 12px var(--ff-ui);color:var(--tx);text-align:left}
