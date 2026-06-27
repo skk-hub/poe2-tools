@@ -12,6 +12,22 @@ const pob = require("./pob.js");   // headless Path of Building bridge (Gear Fin
 let POB_BASES = {};
 try { POB_BASES = require("./pob-bases.js"); } catch { /* not generated → keyword fallback */ }
 
+// Load a local .env (KEY=VALUE per line) into process.env — the documented home for
+// POESESSID / EE2_PROXY_BASE / etc. Without this, a local `node server.js` never read
+// it (only Docker passes env via compose), so a POESESSID set in .env was silently
+// ignored → realrank fell back to the price-spread instead of the build-value sort.
+// Zero-dep; does NOT override vars already set in the real environment (Docker wins).
+try {
+  for (const line of fs.readFileSync(path.join(__dirname, ".env"), "utf8").split(/\r?\n/)) {
+    if (!line || /^\s*#/.test(line)) continue;
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!m) continue;
+    let v = m[2];
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+    if (process.env[m[1]] === undefined || process.env[m[1]] === "") process.env[m[1]] = v;
+  }
+} catch { /* no .env → rely on the real environment */ }
+
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = 17777;
 const ROOT = __dirname;
@@ -2625,7 +2641,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── Gear Upgrade Finder (PoB-driven) ──────────────────────────────────
     if (url.pathname === "/api/gear/builds") {
-      send(res, 200, JSON.stringify({ dir: POB_BUILDS_DIR, builds: listPobBuilds(), headless: await pob.ready() }), "application/json; charset=utf-8");
+      send(res, 200, JSON.stringify({ dir: POB_BUILDS_DIR, builds: listPobBuilds(), headless: await pob.ready(), poesessid: !!POESESSID }), "application/json; charset=utf-8");
       return;
     }
 

@@ -52,7 +52,10 @@ window.__viewInit["gear-finder"] = function () {
     if (!d) return;
     state.headless = !!d.headless;
     els.mode.className = "gf-badge " + (d.headless ? "live" : "fallback");
-    els.mode.textContent = d.headless ? "Headless DPS" : "Stat-only (no PoB)";
+    // Show whether POESESSID is active — it's what unlocks the build-value-ranked
+    // search (vs price-only, which can only reach the cheapest/priciest listings).
+    els.mode.textContent = (d.headless ? "Headless DPS" : "Stat-only (no PoB)") + (d.poesessid ? " · weighted search" : " · price-only (no POESESSID)");
+    els.mode.title = d.poesessid ? "Logged-in session active — upgrade search is ranked by your build's value across all price tiers." : "No POESESSID — the search can only see the priciest 100 listings per slot. Put POESESSID=<cookie> in a .env file (project root) to enable the build-value search.";
     refreshSaved();
   }
 
