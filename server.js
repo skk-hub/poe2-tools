@@ -697,29 +697,113 @@ function fmtSidePx(px, tag) {
   return n + " " + ab;
 }
 
+// ── EE2 economy data (poe.ninja, via Exiled-Exchange-2's proxy) ──────────────
+// EE2's reliable per-item VALUE comes from poe.ninja, which it serves through its
+// own proxy (poe.ninja blocks our server directly — Cloudflare 404). One cached
+// fetch of overviewData.json gives EVERY item's divine value + 30d volume, with NO
+// GGG rate-limit exposure. The user lifted the poe.ninja ban (2026-06-27) because
+// EE2's volume-weighted value is more accurate than our Trade2-bulk reads (e.g.
+// Masterwork Rune: bulk floor 1 div vs real 0.25 div). This is the PRIMARY price
+// source now; the Trade2 bulk exchange (exchangePriceEx) stays for live offers +
+// as a fallback when the proxy is unreachable.
+const EE2_PROXY_BASE = process.env.EE2_PROXY_BASE || "https://api.exiledexchange2.dev/proxy";
+const EE2_PROXY_FILE = path.join(DATA_DIR, ".ee2-proxy.json");
+const EE2_PROXY_TTL_MS = 25 * 60 * 1000;   // EE2 itself refreshes ~31 min; we cache 25
+function proxyLeagueSlug(league) {
+  const l = String(league || "").toLowerCase();
+  if (l.includes("standard")) return l.includes("hardcore") || /\bhc\b/.test(l) ? "standardhc" : "standard";
+  if (l.includes("hardcore") || /\bhc\b/.test(l)) return "leaguehc";
+  return "league";   // EE2's proxy maps "league" to the current challenge league (Runes of Aldur)
+}
+// Parse overviewData.json → { divineEx, chaosEx, items: { normName: {ex,div,volume,type} } }.
+// rates are relative to divine (primary): rates.exalted = exalted-per-divine = divine's
+// ex value; rates.chaos = chaos-per-divine, so chaosEx = divineEx / rates.chaos.
+function parseProxyOverview(j) {
+  const rates = (j && j.core && j.core.rates) || {};
+  const divineEx = Number(rates.exalted) || 0;
+  const chaosEx = divineEx > 0 && Number(rates.chaos) > 0 ? round4(divineEx / Number(rates.chaos)) : 0;
+  const items = {};
+  for (const ov of (j && j.itemOverviews) || []) {
+    for (const ln of (ov && ov.lines) || []) {
+      const div = Number(ln && ln.primaryValue) || 0;
+      if (!ln || !ln.name || !(div > 0)) continue;
+      const key = normalizeName(ln.name);
+      if (!items[key]) items[key] = { ex: round4(div * divineEx), div: round4(div), volume: Math.round(Number(ln.volumePrimaryValue) || 0), type: ov.type, name: ln.name };
+    }
+  }
+  // Exalted is the base unit (1 ex by definition); divine/chaos from the rate table.
+  items[normalizeName("Exalted Orb")] = { ex: 1, div: divineEx > 0 ? round4(1 / divineEx) : 0, volume: 0, type: "Currency", name: "Exalted Orb", base: true };
+  if (divineEx > 0) items[normalizeName("Divine Orb")] = { ex: divineEx, div: 1, volume: 0, type: "Currency", name: "Divine Orb" };
+  return { divineEx, chaosEx, items, updated: new Date().toISOString() };
+}
+let proxyMem = null, proxyInFlight = null;
+// Indirection so tests can stub the network (mirrors __setExchangeRawImpl).
+let proxyFetchImpl = async (league) => {
+  const url = EE2_PROXY_BASE + "/" + proxyLeagueSlug(league) + "/overviewData.json";
+  const r = await fetch(url, { headers: { "User-Agent": "poe-tools-local/0.1 (Exiled-Exchange-2 proxy)" } });
+  if (!r.ok) throw new Error("ee2 proxy HTTP " + r.status);
+  return parseProxyOverview(JSON.parse(await r.text()));
+};
+function readProxyCache() {
+  if (proxyMem) return proxyMem;
+  try { proxyMem = JSON.parse(fs.readFileSync(EE2_PROXY_FILE, "utf8")); } catch { proxyMem = null; }
+  return proxyMem;
+}
+function refreshProxy(league) {
+  if (proxyInFlight) return proxyInFlight;
+  proxyInFlight = (async () => {
+    try {
+      const d = await proxyFetchImpl(league);
+      if (d && d.divineEx > 0) { d.league = league; proxyMem = d; try { fs.writeFileSync(EE2_PROXY_FILE, JSON.stringify(d)); } catch {} }
+      return proxyMem;
+    } finally { proxyInFlight = null; }
+  })();
+  return proxyInFlight;
+}
+// SWR: serve cache instantly + refresh in the background; cold/forced waits once.
+// Returns null if the proxy is unreachable AND nothing is cached (callers fall back
+// to the Trade2 bulk method).
+async function getProxyData(league, force) {
+  league = sanitizeLeague(league);
+  const cached = readProxyCache();
+  const fresh = cached && cached.league === league && cached.updated && Date.now() - new Date(cached.updated).getTime() < EE2_PROXY_TTL_MS;
+  if (fresh && !force) return cached;
+  if (cached && !force) { refreshProxy(league).catch(() => {}); return cached; }
+  try { return await refreshProxy(league); } catch { return cached; }
+}
+function proxyPrice(proxy, name) {
+  return proxy && proxy.items ? proxy.items[normalizeName(name)] || null : null;
+}
+
 async function fetchExchangeData(league) {
   const resolved = await resolveArbitrageItems(league);
   const icons = (arbitrageStaticCache && arbitrageStaticCache.iconsById) || {};
   const currencies = resolved.filter((it) => it.category === "currency" && it.id !== EXALTED_ID);
   const rates = { exalted: 1 };
   const items = [{ id: "exalted", name: "Exalted Orb", ex: 1, stock: 0, icon: normalizeIconUrl(icons.exalted), base: true }];
-  // Unified on Exiled's exchange method (exchangePriceEx): every currency is priced by
-  // the real per-item book on its liquid side (no more exalted-only read + TWO_SIDED
-  // geo-mid hacks). Bootstrap divine/chaos in exalted first so other items' divine/
-  // chaos-side offers convert; reuse those reads in the loop (no double call).
-  // Price divine first (it reads on the exalted side — no dependency), THEN chaos with
-  // divineEx passed, so if chaos's most-liquid side is divine it still converts to ex.
-  const dv = await exchangePriceEx(league, "divine");
-  const divineEx = dv && dv.ex > 0 ? dv.ex : 0;
-  const ch = await exchangePriceEx(league, "chaos", divineEx, 0);
-  const chaosEx = ch && ch.ex > 0 ? ch.ex : 0;
+  // PRIMARY: poe.ninja values via EE2's proxy (one cheap cached fetch, no GGG limit,
+  // volume-weighted = accurate). FALLBACK: the Trade2 bulk method (exchangePriceEx)
+  // per currency, used only if the proxy is unreachable.
+  const proxy = await getProxyData(league).catch(() => null);
+  let divineEx = (proxy && proxy.divineEx) || 0, chaosEx = (proxy && proxy.chaosEx) || 0;
+  if (!divineEx) {
+    const dv = await exchangePriceEx(league, "divine");
+    divineEx = dv && dv.ex > 0 ? dv.ex : 0;
+    const ch = await exchangePriceEx(league, "chaos", divineEx, 0);
+    chaosEx = ch && ch.ex > 0 ? ch.ex : 0;
+  }
   for (const c of currencies) {
-    const p = c.id === "divine" ? dv : c.id === "chaos" ? ch : await exchangePriceEx(league, c.id, divineEx, chaosEx);
-    if (!p || !(p.ex > 0)) continue;
-    const ex = round4(p.ex);
+    let ex = 0, vol = 0, src = "ee2 (poe.ninja)";
+    const pv = proxyPrice(proxy, c.name);
+    if (pv && pv.ex > 0) { ex = round4(pv.ex); vol = pv.volume || 0; }
+    else {
+      const p = await exchangePriceEx(league, c.id, divineEx, chaosEx);   // proxy miss → Trade2 bulk
+      if (!p || !(p.ex > 0)) continue;
+      ex = round4(p.ex); vol = p.depth || 0; src = "trade2 exchange";
+    }
     rates[c.id] = ex;
     rates[normalizeName(c.name)] = ex;
-    items.push({ id: c.id, name: c.name, ex, stock: p.depth || 0, side: p.side, icon: normalizeIconUrl(icons[c.id]) });
+    items.push({ id: c.id, name: c.name, ex, stock: vol, source: src, icon: normalizeIconUrl(icons[c.id]) });
   }
   for (const [alias, target] of Object.entries(CURRENCY_ALIASES)) {
     const t = rates[normalizeName(target)];
@@ -901,15 +985,24 @@ async function economyCurrent(league) {
   const exPerDiv = (exData && exData.rates && exData.rates.divine) || 0;
   if (!exPerDiv) return null;                              // no Divine anchor → nothing to show
   const chaosEx = (exData.rates && exData.rates.chaos) || 0; // exalted-per-chaos, so the home page can show chaos as the base unit
+  // Price every economy item off the SAME poe.ninja proxy the strip uses (reliable,
+  // volume-weighted — the right value for illiquid omens too, e.g. Whittling 6.96 div).
+  // Exalt-side items also live in the strip rates; div-side items (omens, Hinekora's)
+  // fall back to the cluster method (economyDivSide) only if the proxy lacks them.
+  const proxy = await getProxyData(league).catch(() => null);
   const ex = {};
+  const divMissing = [];
   for (const it of ECONOMY_ITEMS) {
-    if (it.div) continue;
-    const v = exData.rates[it.id];
-    if (v > 0) ex[it.id] = Math.round(v * 100) / 100;
+    const pv = proxyPrice(proxy, it.name);
+    if (pv && pv.ex > 0) { ex[it.id] = Math.round(pv.ex * 100) / 100; continue; }
+    if (!it.div) { const v = exData.rates[it.id]; if (v > 0) ex[it.id] = Math.round(v * 100) / 100; }
+    else divMissing.push(it.id);
   }
-  const dz = await economyDivSide(league);
-  if (dz && dz.perDiv) for (const [id, perDiv] of Object.entries(dz.perDiv)) {
-    if (perDiv > 0) ex[id] = Math.round(perDiv * exPerDiv * 100) / 100;
+  if (divMissing.length) {
+    const dz = await economyDivSide(league);
+    if (dz && dz.perDiv) for (const [id, perDiv] of Object.entries(dz.perDiv)) {
+      if (perDiv > 0 && divMissing.includes(id)) ex[id] = Math.round(perDiv * exPerDiv * 100) / 100;
+    }
   }
   if (Object.keys(ex).length < 2) return null;
   return { t: new Date().toISOString(), exPerDiv, chaosEx, ex };
@@ -1231,27 +1324,11 @@ async function fetchRunePrices(text, league, forceFresh) {
   const MAX_LIVE_EXCHANGE = 20;  // live EE2 calls per check — covers a reward paste; overflow shows "pricing…" + background fill
   const ee2Pending = [];         // catalog ids shown "pricing…" this check → background-filled at the end
 
-  const all = [];
-  const seenItemKey = new Set();
-
-  // Currency rewards (Exalted/Divine/Chaos/…) priced off the Trade2 exchange.
-  for (const it of exData.items || []) {
-    const key = it.name + "|Currency";
-    if (seenItemKey.has(key)) continue;
-    seenItemKey.add(key);
-    all.push({
-      name: it.name,
-      normalizedName: normalizeName(it.name),
-      category: "Currency",
-      slug: "currency",
-      price: it.ex,
-      volume: it.stock || 0,
-      units: it.stock || 0,
-      base: it.base === true,
-      divineValue: currencyRates.divine ? Math.round((it.ex / currencyRates.divine) * 10000) / 10000 : 0,
-      change7d: "",
-    });
-  }
+  // PRIMARY price source: poe.ninja values via EE2's proxy (cached, no GGG limit,
+  // volume-weighted = accurate). Covers currency, runes, essences, alloys, omens, …
+  // The Trade2 bulk book (exchangePriceEx) is shown alongside as the LIVE buyable
+  // offers, and is the fallback for anything the proxy doesn't list.
+  const proxy = await getProxyData(league).catch(() => null);
 
   const seenCleanNames = new Set();
   const results = [];
@@ -1275,69 +1352,53 @@ async function fetchRunePrices(text, league, forceFresh) {
     if (seenCleanNames.has(norm)) continue;
     seenCleanNames.add(norm);
 
-    // Currency already priced on the strip (fetchExchangeData → exchangePriceEx, EE2)
-    // — free, no extra call. Exact name first, then a tier-aware fuzzy match.
-    let match = !isSkillOrSupport ? all.find((item) => item.normalizedName === norm) : null;
-    if (!match && !isSkillOrSupport && norm.length >= 6) {
-      match = all
-        .filter((item) => (item.normalizedName.includes(norm) || norm.includes(item.normalizedName)) && tierKey(item.normalizedName) === tierKey(norm))
-        .sort((a, b) => a.normalizedName.length - b.normalizedName.length)[0];
-    }
-    if (match && match.price > 0) {
-      const isBase = match.base === true;
-      results.push({
-        qty: parsed.qty, name: match.name, category: match.category,
-        each: match.price, total: roundPriceExalted(match.price * parsed.qty), currency: "exalted",
-        source: isBase ? "base unit" : (match.source || "trade2 exchange"), rawPrice: "",
-        divineValue: match.divineValue, change7d: match.change7d,
-        confidence: isBase ? "base" : priceConfidence(match.units),
-        units: isBase ? null : (Number.isFinite(match.units) && match.units >= 0 ? Math.round(match.units) : null),
-      });
-      continue;
-    }
-
-    // Every other exchange item (runes, essences, soul cores, fragments, …) is priced
-    // EXACTLY like Exiled-Exchange-2: cheapest single-offer ask on its liquid side
-    // (exchangePriceEx). Fresh cache serves free; else a live call within budget; else
-    // "pricing…" + a background EE2 fill. No bid book, no override, no item-search, no
-    // "no buyers" — EE2 has none of those, and the user wants an exact match.
-    const cat = !isSkillOrSupport ? exchangeCatalog.get(norm) : null;
-    if (cat && cat.id && cat.id !== EXALTED_ID) {
-      const min = parsed.qty > 1 ? parsed.qty : 0;   // EE2 stack filter — drop 1-item par-spam
-      const cacheKey = cat.id + "|" + min;
-      let p = ee2Cached(league, cacheKey);
-      if ((!p || forceFresh) && liveExchangeCalls < MAX_LIVE_EXCHANGE && !tradeStatus().limited) {
-        liveExchangeCalls++;
-        const live = await exchangePriceEx(league, cat.id, currencyRates.divine || 0, currencyRates.chaos || 0, min);
-        writeEe2Cache(league, cacheKey, live || { ex: 0 });
-        p = live ? { ...live } : { ex: 0 };
+    if (!isSkillOrSupport) {
+      // HEADLINE value: poe.ninja via the EE2 proxy (reliable, volume-weighted).
+      const pv = proxyPrice(proxy, cleanName);
+      // LIVE OFFERS: the Trade2 bulk book (cached + budgeted), shown as the side line.
+      const cat = exchangeCatalog.get(norm);
+      let bulk = null, sideLine = "";
+      if (cat && cat.id && cat.id !== EXALTED_ID) {
+        const min = parsed.qty > 1 ? parsed.qty : 0;   // EE2 stack filter — drop 1-item par-spam
+        const cacheKey = cat.id + "|" + min;
+        let p = ee2Cached(league, cacheKey);
+        if ((!p || forceFresh) && liveExchangeCalls < MAX_LIVE_EXCHANGE && !tradeStatus().limited) {
+          liveExchangeCalls++;
+          const live = await exchangePriceEx(league, cat.id, currencyRates.divine || 0, currencyRates.chaos || 0, min);
+          writeEe2Cache(league, cacheKey, live || { ex: 0 });
+          p = live ? { ...live } : { ex: 0 };
+        } else if (!p) { ee2Pending.push({ id: cat.id, min, key: cacheKey }); }   // fill live offers for next check
+        if (p && p.sides && p.sides.length) {
+          bulk = p;
+          // Lead with the selected (deepest-liquidity) side + each side's offer count.
+          sideLine = p.sides.slice().sort((a, b) => (a.tag === p.side ? -1 : b.tag === p.side ? 1 : 0)).map((s) => fmtSidePx(s.px, s.tag) + " ×" + s.depth).join(" · ");
+        }
       }
-      // Per-side cheapest ask in native units, like EE2 — but lead with the SELECTED
-      // (deepest-liquidity) side and tag each side's offer count, so the real price
-      // (e.g. Masterwork Rune = "1 div ×91") reads clearly instead of looking like a
-      // pile of base 1:1 values next to thin sides.
-      const sideLine = (p && p.sides || [])
-        .slice().sort((a, b) => (a.tag === p.side ? -1 : b.tag === p.side ? 1 : 0))
-        .map((s) => fmtSidePx(s.px, s.tag) + " ×" + s.depth).join(" · ");
-      if (p && p.ex > 0) {
+      // Value = poe.ninja if known, else the live bulk floor as a fallback.
+      const each = (pv && pv.ex > 0) ? round4(pv.ex) : (bulk && bulk.ex > 0 ? bulk.ex : 0);
+      if (each > 0) {
+        const fromProxy = !!(pv && pv.ex > 0);
+        const vol = fromProxy ? (pv.volume || 0) : (bulk ? bulk.depth : 0);
         results.push({
-          qty: parsed.qty, name: cat.name || cleanName, category: cat.category || "Exchange",
-          each: p.ex, total: roundPriceExalted(p.ex * parsed.qty), currency: "exalted",
-          source: "trade2 exchange", rawPrice: "EE2 · " + (p.side || "exalted") + "-side", sides: p.sides || [], sideLine,
-          divineValue: currencyRates.divine ? roundPriceExalted(p.ex / currencyRates.divine) : 0,
-          change7d: "", confidence: p.depth >= 4 ? "high" : p.depth >= 1 ? "medium" : "none",
-          units: Number.isFinite(p.stock) ? p.stock : null,
+          qty: parsed.qty, name: (pv && pv.name) || (cat && cat.name) || cleanName,
+          category: fromProxy ? (pv.type || "Currency") : ((cat && cat.category) || "Exchange"),
+          each, total: roundPriceExalted(each * parsed.qty), currency: "exalted",
+          source: fromProxy ? "poe.ninja (EE2)" : "trade2 exchange",
+          rawPrice: sideLine ? "live: " + sideLine : "", sides: bulk ? bulk.sides : [], sideLine,
+          divineValue: currencyRates.divine ? roundPriceExalted(each / currencyRates.divine) : 0,
+          change7d: "",
+          confidence: (pv && pv.base) ? "base" : vol >= 100 ? "high" : vol >= 10 ? "medium" : "low",
+          units: Number.isFinite(vol) ? Math.round(vol) : null,
         });
         continue;
       }
-      if (p) {   // priced (cache or live) but no offers on the exchange
-        results.push({ qty: parsed.qty, name: cat.name || cleanName, category: "no offers", each: "", total: "", currency: "", source: "trade2 exchange", rawPrice: min ? "no exchange offers ≥ " + min + " stock" : "no exchange offers", change7d: "", confidence: "none", units: null });
+      // Known exchange item but no value yet (proxy miss + over the live budget / no offers).
+      if (cat) {
+        const pending = liveExchangeCalls >= MAX_LIVE_EXCHANGE && !tradeStatus().limited;
+        results.push({ qty: parsed.qty, name: (cat.name) || cleanName, category: pending ? "pricing…" : "no price", each: "", total: "", currency: "", source: "ee2", rawPrice: pending ? "fetching — check again shortly" : "", change7d: "", confidence: "none", units: null });
         continue;
       }
-      // Over the per-check live budget → show pricing…, background-fill for next check.
-      ee2Pending.push({ id: cat.id, min, key: cacheKey });
-      results.push({ qty: parsed.qty, name: cat.name || cleanName, category: "pricing…", each: "", total: "", currency: "", source: "trade2 exchange", rawPrice: "fetching live price — check again shortly", change7d: "", confidence: "none", units: null });
-      continue;
+      // Not in the proxy or the exchange catalog → fall through to Not found below.
     }
 
     let tradePrice = null;
@@ -2974,5 +3035,9 @@ module.exports = {
   buildWeightedGearQuery,
   ee2SidePrices,
   exchangePriceEx,
+  parseProxyOverview,
+  getProxyData,
+  proxyPrice,
   __setExchangeRawImpl(fn) { exchangeRawImpl = fn; },
+  __setProxyFetchImpl(fn) { proxyFetchImpl = fn; },
 };

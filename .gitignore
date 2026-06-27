@@ -2,6 +2,7 @@
 .waystone-weights.json
 .currency-rates.json
 .ee2-prices.json
+.ee2-proxy.json
 .economy-history.json
 *.env
 .env
