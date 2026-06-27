@@ -168,13 +168,17 @@ window.__viewInit["gear-finder"] = function () {
     if (d.error) { els.scoreOut.textContent = "Failed: " + d.error; return; }
     const hasDps = dpsOf(d.base) > 0;
     const reservesSpirit = (Number(d.base && d.base.SpiritReserved) || 0) > 0;
+    const baseUnreserved = Number(d.base && d.base.SpiritUnreserved) || 0;
     els.scoreOut.innerHTML = (d.results || []).map((r) => {
       if (r.error || !r.stats) return `<div class="gf-srow">${esc(r.name)} — <span class="gf-delta down">${esc((r.error || "couldn't read this item").replace(/^pob:\s*/, ""))}</span></div>`;
       const dD = dpsOf(r.stats) - dpsOf(d.base), dE = ehpOf(r.stats) - ehpOf(d.base);
       const note = r.approx ? ` <span class="gf-approx">≈ base assumed (copy had no base type) — DPS accurate, EHP rough</span>` : "";
       // Spirit deficit → this item can't run the build's auras; the DPS/EHP above is fake.
-      const spirit = (reservesSpirit && Number(r.stats.SpiritUnreserved) < 0)
-        ? ` <span class="gf-delta down" title="this item drops Spirit below what your auras/persistent gems reserve — they'd turn off, so the gain above isn't real">⚠ −${fmt(-r.stats.SpiritUnreserved)} spirit (breaks auras)</span>` : "";
+      // RELATIVE to your current build's headroom (headless reservation is miscalibrated for
+      // some builds, so an absolute "< 0" mis-flags every item) — flag only a real reduction.
+      const dSpirit = baseUnreserved - Number(r.stats.SpiritUnreserved);
+      const spirit = (reservesSpirit && dSpirit > 0.5)
+        ? ` <span class="gf-delta down" title="this item drops Spirit headroom below your current build — auras/persistent gems would turn off, so the gain above isn't real">⚠ −${fmt(dSpirit)} spirit (breaks auras)</span>` : "";
       return `<div class="gf-srow"><b>${esc(r.name)}</b> ${hasDps ? deltaSpan(dD, "DPS") : ""} ${deltaSpan(dE, "EHP")}${spirit}${note}</div>`;
     }).join("") || "No items parsed.";
   }

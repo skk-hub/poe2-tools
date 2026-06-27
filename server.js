@@ -2918,9 +2918,15 @@ const server = http.createServer(async (req, res) => {
         // pure-defensive ones). Default by whether the build deals damage.
         const metric = (input.metric === "ehp" || input.metric === "dps") ? input.metric : (dpsOfOut(base) > 0 ? "dps" : "ehp");
         // Spirit guard: if the build reserves spirit (auras/heralds/persistent gems), a
-        // candidate that drops Spirit below reservation makes SpiritUnreserved NEGATIVE —
-        // PoB still counts those buffs in the DPS, so it's a FAKE upgrade. Skip them.
+        // candidate that drops Spirit headroom is a FAKE upgrade — PoB still counts those
+        // buffs in the DPS even when you couldn't run them. RELATIVE test (not "< 0"):
+        // headless PoB's reservation reading is miscalibrated for some builds (computes
+        // SpiritUnreserved = -88 where the GUI shows +33), so an absolute "< 0" rejected
+        // EVERY candidate. Compare to the BASE's unreserved in the SAME load state instead —
+        // skip only a candidate with LESS headroom than your current build. Robust to the
+        // miscalibration; the search's spirit floor already excludes outright no-spirit items.
         const spiritGuard = (Number(base.SpiritReserved) || 0) > 0;
+        const baseUnreserved = Number(base.SpiritUnreserved) || 0;
         let spiritSkipped = 0;
         const cands = [];
         let fetchErr = null;
@@ -2932,7 +2938,7 @@ const server = http.createServer(async (req, res) => {
             const txt = pobItemFromTradeEntry(e);
             if (!txt) continue;
             let stats; try { stats = await pob.calc(pobSlot, txt); } catch { continue; }
-            if (spiritGuard && Number(stats.SpiritUnreserved) < 0) { spiritSkipped++; continue; }   // can't run the build's auras → fake upgrade
+            if (spiritGuard && Number(stats.SpiritUnreserved) < baseUnreserved - 0.5) { spiritSkipped++; continue; }   // less spirit headroom than your current build → can't run its auras
             const price = listingPriceFromEntry(e, rates) || {};
             // The item's top-weighted rolled mods → lets the value-check search "items at
             // least this good on these stats" and tell you if this listing is the cheapest
