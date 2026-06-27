@@ -21,8 +21,6 @@ const ROOT = __dirname;
 // economy-history graph). ponytail: one dir, no per-file mounts.
 const DATA_DIR = process.env.DATA_DIR || ROOT;
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
-const POE_OAUTH_FILE = path.join(DATA_DIR, ".poe-oauth.json");
-const POE_OAUTH_STATE_FILE = path.join(DATA_DIR, ".poe-oauth-state.json");
 const MIN_NINJA_VOLUME = 10;
 const TRADE_MIN_GAP_MS = 3000;
 // POESESSID (a logged-in pathofexile.com session cookie, set in .env — NEVER committed)
@@ -110,15 +108,6 @@ function tradeStatus() {
   return tradeQueue.status();
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 function readJson(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
@@ -420,110 +409,15 @@ async function fetchExchangeChunked(league, haveIds, wantIds, batchCap = EXCHANG
 
 
 
-function base64Url(buffer) {
-  return Buffer.from(buffer).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
 
-function oauthConfig() {
-  const clientId = process.env.POE_CLIENT_ID || "";
-  return {
-    clientId,
-    clientSecret: process.env.POE_CLIENT_SECRET || "",
-    redirectUri: process.env.POE_REDIRECT_URI || ("http://" + HOST + ":" + PORT + "/api/oauth/callback"),
-    scope: "account:profile account:characters",
-    configured: Boolean(clientId),
-  };
-}
 
-function readOauthToken() {
-  try {
-    return JSON.parse(fs.readFileSync(POE_OAUTH_FILE, "utf8"));
-  } catch {
-    return null;
-  }
-}
 
-function writeOauthToken(token) {
-  fs.writeFileSync(POE_OAUTH_FILE, JSON.stringify({ ...token, savedAt: Date.now() }, null, 2));
-}
 
-function clearOauthToken() {
-  try { fs.unlinkSync(POE_OAUTH_FILE); } catch {}
-}
 
-function writeOauthState(state) {
-  fs.writeFileSync(POE_OAUTH_STATE_FILE, JSON.stringify(state, null, 2));
-}
 
-function readOauthState() {
-  try {
-    return JSON.parse(fs.readFileSync(POE_OAUTH_STATE_FILE, "utf8"));
-  } catch {
-    return null;
-  }
-}
 
-function oauthStatus() {
-  const cfg = oauthConfig();
-  const token = readOauthToken();
-  const expiresAt = token && token.expires_in ? Number(token.savedAt || 0) + Number(token.expires_in) * 1000 : 0;
-  return {
-    configured: cfg.configured,
-    clientId: cfg.clientId ? cfg.clientId.replace(/.(?=.{4})/g, "*") : "",
-    redirectUri: cfg.redirectUri,
-    scope: cfg.scope,
-    authenticated: Boolean(token && token.access_token && (!expiresAt || Date.now() < expiresAt)),
-    username: token && token.username ? token.username : "",
-    expiresAt: expiresAt ? new Date(expiresAt).toISOString() : "",
-  };
-}
 
-function buildOauthStartUrl() {
-  const cfg = oauthConfig();
-  if (!cfg.configured) throw new Error("Set POE_CLIENT_ID and restart the server first.");
-  const codeVerifier = base64Url(crypto.randomBytes(32));
-  const codeChallenge = base64Url(crypto.createHash("sha256").update(codeVerifier).digest());
-  const state = base64Url(crypto.randomBytes(24));
-  writeOauthState({ state, codeVerifier, createdAt: Date.now() });
-  const params = new URLSearchParams({
-    client_id: cfg.clientId,
-    response_type: "code",
-    scope: cfg.scope,
-    state,
-    redirect_uri: cfg.redirectUri,
-    code_challenge: codeChallenge,
-    code_challenge_method: "S256",
-  });
-  return "https://www.pathofexile.com/oauth/authorize?" + params.toString();
-}
 
-async function exchangeOauthCode(code, returnedState) {
-  const cfg = oauthConfig();
-  const saved = readOauthState();
-  if (!cfg.configured) throw new Error("OAuth client is not configured.");
-  if (!saved || saved.state !== returnedState) throw new Error("OAuth state mismatch.");
-  if (Date.now() - Number(saved.createdAt || 0) > 5 * 60 * 1000) throw new Error("OAuth state expired.");
-  const params = new URLSearchParams({
-    client_id: cfg.clientId,
-    grant_type: "authorization_code",
-    code,
-    redirect_uri: cfg.redirectUri,
-    scope: cfg.scope,
-    code_verifier: saved.codeVerifier,
-  });
-  if (cfg.clientSecret) params.set("client_secret", cfg.clientSecret);
-  const response = await fetchWithTimeout("https://www.pathofexile.com/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": TRADE_HEADERS["User-Agent"] },
-    body: params.toString(),
-  }, 12000);
-  const text = await response.text();
-  if (!response.ok) throw new Error("OAuth token exchange failed: " + text.slice(0, 500));
-  const token = JSON.parse(text);
-  writeOauthToken(token);
-  try { fs.unlinkSync(POE_OAUTH_STATE_FILE); } catch {}
-  return token;
-}
 
 
 
@@ -3687,41 +3581,6 @@ const server = http.createServer(async (req, res) => {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true }), "application/json; charset=utf-8"); return; }
         send(res, 200, JSON.stringify({ error: String(err.message) }), "application/json; charset=utf-8");
       }
-      return;
-    }
-
-    if (url.pathname === "/api/oauth/status") {
-      send(res, 200, JSON.stringify(oauthStatus()), "application/json; charset=utf-8");
-      return;
-    }
-
-    if (url.pathname === "/api/oauth/start") {
-      try {
-        send(res, 200, JSON.stringify({ url: buildOauthStartUrl(), status: oauthStatus() }), "application/json; charset=utf-8");
-      } catch (err) {
-        send(res, 400, JSON.stringify({ error: err.message, status: oauthStatus() }), "application/json; charset=utf-8");
-      }
-      return;
-    }
-
-    if (url.pathname === "/api/oauth/callback") {
-      try {
-        const code = url.searchParams.get("code") || "";
-        const state = url.searchParams.get("state") || "";
-        const error = url.searchParams.get("error") || "";
-        if (error) throw new Error(error);
-        if (!code || !state) throw new Error("Missing OAuth callback code/state.");
-        const token = await exchangeOauthCode(code, state);
-        send(res, 200, "<!doctype html><title>PoE OAuth Connected</title><body style=\"font-family:sans-serif;background:#111;color:#eee;padding:24px\"><h1>Connected</h1><p>Authenticated as " + String(token.username || "Path of Exile user") + ".</p><p>You can close this tab and return to the app.</p></body>", "text/html; charset=utf-8");
-      } catch (err) {
-        send(res, 400, "<!doctype html><title>PoE OAuth Failed</title><body style=\"font-family:sans-serif;background:#111;color:#eee;padding:24px\"><h1>OAuth failed</h1><p>" + String(err.message).replace(/[<>&]/g, "") + "</p></body>", "text/html; charset=utf-8");
-      }
-      return;
-    }
-
-    if (url.pathname === "/api/oauth/logout" && req.method === "POST") {
-      clearOauthToken();
-      send(res, 200, JSON.stringify(oauthStatus()), "application/json; charset=utf-8");
       return;
     }
 
