@@ -95,8 +95,14 @@ window.__viewInit["gear-finder"] = function () {
     const b = (d.headless && d.headless.stats) || d.build || {};
     const tiles = [["Life", b.Life], ["Energy Shield", b.EnergyShield], ["EHP", ehpOf(b) || b.TotalEHP],
       ["DPS", (b.FullDPS || b.CombinedDPS || b.TotalDPS)], ["Fire", b.FireResist], ["Cold", b.ColdResist],
-      ["Light", b.LightningResist], ["Chaos", b.ChaosResist]].filter(([, v]) => v != null);
+      ["Light", b.LightningResist], ["Chaos", b.ChaosResist], ["Spirit free", b.SpiritUnreserved]].filter(([, v]) => v != null);
     els.build.innerHTML = tiles.map(([k, v]) => `<span class="gf-stat">${k} <b>${fmt(v)}</b></span>`).join("");
+    // Over-reserved spirit (Unreserved < 0) = PoB has more auras toggled on than your Spirit
+    // can sustain — usually a fresh import enabling every gem. The build can't run as shown,
+    // so its DPS/EHP are INFLATED and every upgrade here is scored against an impossible setup.
+    if (Number(b.SpiritUnreserved) < 0) {
+      els.build.innerHTML += `<span class="gf-warn" title="Toggle off the auras you don't actually run in Path of Building so the build matches your in-game character, then re-import. Until then, DPS/EHP and spirit-based filtering use an unrunnable aura setup.">⚠ over-reserved spirit by ${fmt(-b.SpiritUnreserved)} — auras exceed your Spirit; DPS/EHP inflated. Fix toggles in PoB &amp; re-import.</span>`;
+    }
     els.slots.innerHTML = Object.entries(state.slots).map(([id, s]) =>
       `<button class="gf-slot" type="button" data-slot="${esc(id)}">${esc(id)}<span class="gf-slot-name">${esc(s.name || "—")}</span></button>`).join("");
     els.scanRow.hidden = !Object.keys(state.slots).length;
