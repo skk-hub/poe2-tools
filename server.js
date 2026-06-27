@@ -2430,12 +2430,15 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
   const evM = String(currentRaw || "").match(/^\s*Evasion(?: Rating)?:\s*(\d+)/im); if (evM) equip.ev = Number(evM[1]);
   const arM = String(currentRaw || "").match(/^\s*Armour(?: Rating)?:\s*(\d+)/im); if (arM) equip.ar = Number(arM[1]);
   const esM = String(currentRaw || "").match(/^\s*Energy Shield:\s*(\d+)/im); if (esM) equip.es = Number(esM[1]);
-  // Metric: a slot with base defences (helmet/body/gloves/boots/shield) is FIRST a
+  // Metric: a slot with base defences (helmet/body/boots/belt/shield) is FIRST a
   // survivability item — rank it by EHP even when it also moves some DPS ("the DPS is
-  // extra"). Pure-offence slots (weapons, amulet, rings) rank by DPS; a slot that moves
-  // no DPS at all falls back to EHP rather than reporting "nothing improves this slot".
+  // extra"). EXCEPT gloves: they're an armour piece but carry the build's offensive rolls
+  // (attack/cast speed, crit, %damage), so they're DPS-ranked despite base defence. Pure-
+  // offence slots (weapons, amulet, rings) rank by DPS; a slot that moves no DPS at all
+  // falls back to EHP rather than reporting "nothing improves this slot".
   const hasDefence = (equip.ev || 0) + (equip.ar || 0) + (equip.es || 0) > 0;
-  let metric = hasDefence ? "ehp" : (dpsOfOut(base) > 0 ? "dps" : "ehp");
+  const ehpSlot = hasDefence && baseSlot !== "gloves";
+  let metric = ehpSlot ? "ehp" : (dpsOfOut(base) > 0 ? "dps" : "ehp");
   let raw = await probe(metric);
   if (metric === "dps" && !raw.length) { metric = "ehp"; raw = await probe("ehp"); }
   const max = raw.reduce((m, w) => Math.max(m, w.perUnit), 0) || 1;
