@@ -66,7 +66,7 @@ function staticChecks() {
   check(/rel="stylesheet" href="theme.css"/.test(idx), "index links theme.css");
   const themeCss = read("theme.css");
   check(/@font-face/.test(themeCss) && !/fonts\.googleapis\.com/.test(themeCss), "theme.css self-hosts fonts (no Google @import)");
-  check(["inter", "cinzel", "jetbrains-mono"].every(f => themeCss.includes("/fonts/" + f + ".woff2")), "theme.css references all 3 self-hosted woff2");
+  check(["inter", "jetbrains-mono"].every(f => themeCss.includes("/fonts/" + f + ".woff2")), "theme.css references the self-hosted woff2 fonts");
   const views = ["home", "rune-picker", "map-juicer", "jewel-pricer", "gear-finder", "filter-helper", "tab-tracker"];
   check(views.every(v => idx.includes(`id="${v}"`)), "index has all core view sections");
   check(idx.includes('href="#jewel-pricer"') && idx.includes('data-view-link="jewel-pricer"'), "index has the Jewel Pricer nav link");
@@ -174,7 +174,7 @@ function staticChecks() {
 // ---- 2) HTTP checks ----
 async function httpChecks() {
   console.log("HTTP checks:");
-  for (const [p, type] of [["/", "html"], ["/theme.css", "css"], ["/map-juicer.css", "css"], ["/rune-picker.css", "css"], ["/jewel-pricer.css", "css"], ["/map-juicer.js", "javascript"], ["/rune-picker.js", "javascript"], ["/jewel-pricer.js", "javascript"], ["/jewel-data.js", "javascript"], ["/gear-finder.css", "css"], ["/gear-finder.js", "javascript"], ["/home.js", "javascript"], ["/waystone-data.js", "javascript"], ["/fonts/inter.woff2", "font/woff2"], ["/fonts/cinzel.woff2", "font/woff2"], ["/fonts/jetbrains-mono.woff2", "font/woff2"]]) {
+  for (const [p, type] of [["/", "html"], ["/theme.css", "css"], ["/map-juicer.css", "css"], ["/rune-picker.css", "css"], ["/jewel-pricer.css", "css"], ["/map-juicer.js", "javascript"], ["/rune-picker.js", "javascript"], ["/jewel-pricer.js", "javascript"], ["/jewel-data.js", "javascript"], ["/gear-finder.css", "css"], ["/gear-finder.js", "javascript"], ["/home.js", "javascript"], ["/waystone-data.js", "javascript"], ["/fonts/inter.woff2", "font/woff2"], ["/fonts/jetbrains-mono.woff2", "font/woff2"]]) {
     const r = await get(BASE + p); check(r.status === 200 && r.type.includes(type), `GET ${p} -> 200 ${type}`);
   }
   const ts = await get(BASE + "/api/trade-status"); check(ts.status === 200 && ts.body.includes("limited"), "GET /api/trade-status -> 200 JSON");

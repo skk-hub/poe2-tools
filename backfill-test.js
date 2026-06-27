@@ -8,7 +8,7 @@
 // (real page starvation). The backfill must re-fetch each starved item alone and
 // recover it, without re-fetching the already-covered whale or wasting calls when
 // nothing is starved.
-const { fetchExchangeChunked, collectExchangeOffers, bestExchangeOffer, sanitizeLeague, buildExchangeCatalog, analyzeGearSearch, buildGearSearchQuery, gearSearchSlots, __setExchangeRawImpl } = require("./server.js");
+const { fetchExchangeChunked, collectExchangeOffers, bestExchangeOffer, sanitizeLeague, buildExchangeCatalog, __setExchangeRawImpl } = require("./server.js");
 
 const EXALTED_ID = "exalted";
 const WHALE = "divine";
@@ -92,64 +92,6 @@ __setExchangeRawImpl(async (league, haveIds, wantIds) => {
   const allPar = { result: { a: offer(1, "x", 1, 9), b: offer(5, "x", 5, 9) } };
   const pBest = bestExchangeOffer(allPar, EXALTED_ID, "x", 5);
   ok(pBest && pBest.payPerReceive === 1, "bestExchangeOffer falls back to par only when nothing else exists");
-
-  // Multi-weapon + slot-aware stat-id resolution (no network). The same
-  // conceptual key must resolve to the slot-correct Trade2 id: weapon-local on
-  // martial weapons, the SPELL variants on caster weapons, generic elsewhere.
-  const slots = gearSearchSlots();
-  ok(["bow", "spear", "crossbow", "wand", "staff", "sceptre", "twomace", "quarterstaff"].every((s) => slots[s]), "gearSearchSlots exposes the new weapon classes");
-  const qids = (slot, filters) => {
-    const { query } = buildGearSearchQuery({ slot, matchMode: "all", filters }, slots[slot]);
-    return (query.query.stats || []).flatMap((g) => (g.filters || []).map((f) => f.id));
-  };
-  const spearIds = qids("spear", [{ key: "critChance", min: 1 }, { key: "critDamage", min: 1 }, { key: "localPhysDamage", min: 1 }]);
-  ok(spearIds.includes("explicit.stat_518292764") && spearIds.includes("explicit.stat_2694482655"), "spear crit -> weapon-local ids (like bow)");
-  const wandIds = qids("wand", [{ key: "critChance", min: 1 }, { key: "critDamage", min: 1 }, { key: "spellDamage", min: 1 }]);
-  ok(wandIds.includes("explicit.stat_737908626") && wandIds.includes("explicit.stat_274716455") && wandIds.includes("explicit.stat_2974417149"), "wand crit -> SPELL crit ids + spell damage");
-  const amuIds = qids("amulet", [{ key: "critChance", min: 1 }]);
-  ok(amuIds.includes("explicit.stat_587431675"), "amulet crit stays generic (587431675)");
-  const sp = analyzeGearSearch("Item Class: Spears\nRarity: Rare\nWidowmaker\n--------\n+1.4% to Critical Hit Chance\n45% increased Physical Damage");
-  ok(sp.equipped && sp.equipped.spear, "analyzeGearSearch detects a pasted Spear as the spear slot");
-  const wd = analyzeGearSearch("Item Class: Wands\nRarity: Rare\nStorm Branch\n--------\n38% increased Spell Damage\n+2 to Level of all Spell Skills");
-  ok(wd.equipped && wd.equipped.wand && Number(wd.equipped.wand.stats.spellDamage) === 38, "analyzeGearSearch detects a Wand + parses spell damage");
-
-  // Slot-aware local/global: "% increased Attack Speed" is LOCAL on a martial
-  // weapon, GLOBAL on gloves (was a fragile whole-text class scan).
-  const spAs = analyzeGearSearch("Item Class: Spears\nRarity: Rare\nPike\n--------\n12% increased Attack Speed\n8% increased Critical Hit Chance");
-  ok(spAs.equipped.spear && Number(spAs.equipped.spear.stats.localAttackSpeed) === 12 && Number(spAs.equipped.spear.stats.localCritChance) === 8, "spear: increased AS/crit parse as LOCAL");
-  const glAs = analyzeGearSearch("Item Class: Gloves\nRarity: Rare\nMitts\n--------\n12% increased Attack Speed");
-  ok(glAs.equipped.gloves && Number(glAs.equipped.gloves.stats.attackSpeed) === 12 && !glAs.equipped.gloves.stats.localAttackSpeed, "gloves: increased AS parses as GLOBAL");
-  // chest no longer offers the dead "deflection" filter (chests roll 0 of it; it
-  // is a shield/off-hand mod) — verified live to return 0 listings.
-  ok(slots.chest && !slots.chest.statKeys.includes("deflection"), "chest no longer offers the dead deflection filter");
-
-  // P0-A: count-mode threshold is computed from the real count group (which
-  // EXCLUDES dps/equipment + composite groups), and never collapses to strict
-  // AND. Six UI rows here -> only 4 are count-group filters.
-  const bowQ = buildGearSearchQuery({ slot: "bow", matchMode: "count", filters: [
-    { key: "dps", min: 100 }, { key: "critChance", min: 1 }, { key: "critDamage", min: 1 },
-    { key: "localPhysDamage", min: 1 }, { key: "totalFlatAttack", min: 1 }, { key: "localFlatCold", min: 1 },
-  ] }, slots.bow);
-  ok(bowQ.matchOf === 4, "count group excludes dps(equipment)+composites (matchOf=" + bowQ.matchOf + ")");
-  ok(bowQ.matchMin < bowQ.matchOf && bowQ.matchMin === Math.max(1, Math.round(4 * 0.6)), "auto count min is relaxed not strict-AND (" + bowQ.matchMin + " of " + bowQ.matchOf + ")");
-  ok(bowQ.query.query.stats[0].value.min === bowQ.matchMin, "query encodes the auto count min");
-  const bowQ2 = buildGearSearchQuery({ slot: "bow", matchMode: "count", minMatches: 99, filters: [{ key: "critChance", min: 1 }, { key: "critDamage", min: 1 }] }, slots.bow);
-  ok(bowQ2.matchMin === 2, "user minMatches is capped to the count-group size");
-  // P0-B: no single-currency price filter (price.option=divine hid ~80% of the
-  // market — every exalt/chaos listing); budget is enforced locally instead.
-  ok(!bowQ.query.query.filters.trade_filters, "no trade_filters.price filter (whole-market coverage)");
-
-  // D: per-slot affix pools contain ONLY affixes that item type can actually
-  // roll (verified vs live explicit-affix sampling). Guards the "bow offered
-  // Cold Resistance" class of bug.
-  const pool = (s) => slots[s].statKeys;
-  ok(!pool("bow").includes("coldRes") && !pool("bow").includes("life"), "bow pool excludes resistances + life");
-  ok(!pool("ring1").includes("critChance"), "ring pool excludes crit chance (rings don't roll it)");
-  ok(!pool("belt").includes("energyShield") && !pool("belt").includes("evasion"), "belt pool excludes ES/evasion");
-  ok(!pool("jewel").includes("life") && !pool("jewel").includes("flatPhysAttack"), "jewel pool is %-mods only (no flat life/damage)");
-  ok(["armour", "evasion", "energyShield", "coldRes", "critChance", "levelAllMinionSkills"].every((k) => pool("helmet").includes(k)), "helmet pool includes armour/evasion/ES/res/crit/minion-levels");
-  const hq = buildGearSearchQuery({ slot: "helmet", matchMode: "all", filters: [{ key: "armour", min: 100 }] }, slots.helmet);
-  ok(hq.query.query.filters.equipment_filters && hq.query.query.filters.equipment_filters.filters.ar, "armour resolves to the 'ar' equipment filter, not a stat id");
 
   console.log("\n  " + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);
