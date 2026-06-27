@@ -107,7 +107,7 @@ window.__viewInit["home"] = function () {
   load(false);
 
   // ── Trade2 availability pill — the one global go/no-go to check before opening
-  //    a call-heavy tool (Gear Search / Tab Tracker / Arbitrage). /api/trade-status
+  //    a call-heavy tool (e.g. Gear Finder / Rune Picker). /api/trade-status
   //    is local-only (no GGG call), so polling it is free. ─────────────────────
   const ts = document.getElementById("tradeStatus");
   if (ts) {

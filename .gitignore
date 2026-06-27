@@ -3,10 +3,9 @@
 .waystone-exchange.json
 .currency-overview.json
 .currency-rates.json
-.rune-exchange-book.json
+.ee2-prices.json
 .economy-history.json
 .filter-helper.json
-.tab-tracker.json
 .arbitrage-scan-cache.json
 .poe-oauth.json
 .poe-oauth-state.json

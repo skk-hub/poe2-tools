@@ -9,9 +9,7 @@
 <link rel="stylesheet" href="theme.css">
 <link rel="stylesheet" href="map-juicer.css">
 <link rel="stylesheet" href="rune-picker.css">
-<link rel="stylesheet" href="filter-helper.css">
-<link rel="stylesheet" href="tab-tracker.css">
-<link rel="stylesheet" href="jewel-pricer.css">
+<link rel="stylesheet" href="filter-helper.css"><link rel="stylesheet" href="jewel-pricer.css">
 <link rel="stylesheet" href="gear-finder.css">
 <style>
 /* ===== Hub: modern dashboard, built on theme.css tokens ===== */
@@ -42,7 +40,7 @@ a:hover{text-decoration:underline}
 h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;line-height:1.06;letter-spacing:-.02em;margin:14px 0 0;text-wrap:balance}
 
 /* Shared background-scan bar — shows on every page while any tool is scanning in
-   the background (Tab Tracker pricing, Rune Picker fill), so you can navigate away. */
+   the background (e.g. Rune Picker price fill), so you can navigate away. */
 .bg-bar[hidden]{display:none}
 .bg-bar{position:sticky;top:0;z-index:99;display:flex;align-items:center;gap:10px;padding:5px 16px;
   background:oklch(15% 0.006 270 / 0.92);border-bottom:1px solid var(--border-gold,var(--border));
@@ -214,9 +212,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <a class="navbtn" href="#home" data-view-link="home">Home</a>
       <a class="navbtn" href="#rune-picker" data-view-link="rune-picker">Rune Picker</a>
       <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Regex Cheat Sheet</a>
-      <a class="navbtn" href="#filter-helper" data-view-link="filter-helper">Filter Helper</a>
-      <a class="navbtn" href="#tab-tracker" data-view-link="tab-tracker">Tab Tracker</a>
-      <a class="navbtn" href="#jewel-pricer" data-view-link="jewel-pricer">Jewel Pricer</a>
+      <a class="navbtn" href="#filter-helper" data-view-link="filter-helper">Filter Helper</a>      <a class="navbtn" href="#jewel-pricer" data-view-link="jewel-pricer">Jewel Pricer</a>
       <a class="navbtn" href="#gear-finder" data-view-link="gear-finder">Gear Finder</a>
     </nav>
   </div>
@@ -487,46 +483,6 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
    </div>
   </section>
 
-  <section id="tab-tracker" class="view" data-view="tab-tracker">
-   <div class="toolroot toolroot-tt">
-    <div class="pagehead">
-      <div>
-        <h1>Tab Tracker</h1>
-        <p class="sub">Values the currency parked in a stash tab at live market prices and <b>ranks it by what's worth selling</b> — items with live buyers sit on top with their real sell value; ones with no buyers drop to the bottom as <span class="muted">no live buyers</span>. Make the tab public and give every item a <b>price note in divine</b> so the tool can read it — no login needed. Each lookup only sees the first 100 items, so spread a big tab across a few different price notes (e.g. 11, 12, 13, 14).</p>
-      </div>
-      <div class="controls">
-        <label>Account <input id="ttAccount" placeholder="e.g. Name#1234"></label>
-        <label>League <input id="ttLeague" value="Runes of Aldur"></label>
-        <label>Price notes (div) <input id="ttMarkers" value="11, 12, 13, 14" aria-label="Price notes in divine" style="width:8em"></label>
-        <button id="ttLoad" type="button" class="btn btn-primary">Value tab</button>
-        <div id="ttStatus" class="status">Enter your account name and load your tracked tab.</div>
-      </div>
-    </div>
-    <div id="ttProgress" class="tt-progress" hidden>
-      <div class="tt-progress-bar" role="progressbar" aria-label="Valuation progress"><div class="tt-progress-fill" id="ttProgressFill"></div></div>
-      <div class="tt-progress-label" id="ttProgressLabel">Working…</div>
-    </div>
-    <details class="tt-browser">
-      <summary>Read it in your own browser instead (uses your VPN's fresh limit)</summary>
-      <p class="sub">If the server read keeps rate-limiting, read your tab from your own browser instead (on your VPN, fresh budget): set your account + markers above, click <b>Copy snippet</b>, then on <b>pathofexile.com</b> (VPN on) open the console (F12) and paste it. It copies your items — paste them below and value them here (no server read).</p>
-      <div class="controls">
-        <button id="ttCopySnippet" type="button" class="btn">Copy snippet</button>
-      </div>
-      <textarea id="ttPaste" spellcheck="false" placeholder="Paste the items the snippet copied (one 'Name xQty' per line)…"></textarea>
-      <div class="controls">
-        <button id="ttValuePaste" type="button" class="btn">Value pasted items</button>
-      </div>
-    </details>
-    <div id="ttTotal" class="tt-total" hidden></div>
-    <div id="ttTableWrap" class="tablewrap" hidden>
-      <table>
-        <thead><tr><th class="num" data-sort="qty">Qty</th><th data-sort="name">Item</th><th class="num" data-sort="each">Each</th><th class="num" data-sort="total">Value</th><th data-sort="source">Source</th></tr></thead>
-        <tbody id="ttRows"></tbody>
-      </table>
-    </div>
-   </div>
-  </section>
-
 </main>
 <script>
 // ===== App shell: hash-routed SPA. Each tool view registers a one-time init
@@ -622,9 +578,7 @@ window.addEventListener("DOMContentLoaded",()=>runViewInit(currentView()));
 <script src="home.js"></script>
 <script src="rune-picker.js"></script>
 <script src="map-juicer.js"></script>
-<script src="filter-helper.js"></script>
-<script src="tab-tracker.js"></script>
-<script src="jewel-data.js"></script>
+<script src="filter-helper.js"></script><script src="jewel-data.js"></script>
 <script src="jewel-pricer.js"></script>
 <script src="gear-finder.js"></script>
 </body>

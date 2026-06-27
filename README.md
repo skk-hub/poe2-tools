@@ -1,6 +1,6 @@
 # PoE Tools
 
-Path of Exile 2 local pricing & utility suite — a single-page hub (`index.html`) with: live currency/economy prices (Home), a **Rune Picker** (paste reward choices → ranked sell value), **Gear Search** (import gear → Trade2 candidate search/compare), a **Regex Cheat Sheet** (waystone/tablet stash-regex builder + a low-value "dump" filter), an **Arbitrage** scanner (Currency Exchange ex-spread flips), a **Filter Helper** (client-side loot-filter "what does my filter hide" linter), and a **Tab Tracker** (value a public stash tab). Runs as a local HTTP server with zero npm dependencies.
+Path of Exile 2 local pricing & utility suite — a single-page hub (`index.html`) with: live currency/economy prices (Home), a **Rune Picker** (paste reward choices → ranked sell value), **Gear Search** (import gear → Trade2 candidate search/compare), a **Regex Cheat Sheet** (waystone/tablet stash-regex builder + a low-value "dump" filter), an **Arbitrage** scanner (Currency Exchange ex-spread flips), and a **Filter Helper** (client-side loot-filter "what does my filter hide" linter). Runs as a local HTTP server with zero npm dependencies.
 
 **All market data is GGG Trade2 only.** poe.ninja is not used anywhere (removed; do not reintroduce). Every Trade2 call goes through one shared, rate-limit-aware queue (`trade-queue.js`).
 
@@ -20,7 +20,7 @@ Opens `http://localhost:17777` in your browser automatically. To suppress the au
 POE2_NO_OPEN=1 node server.js
 ```
 
-Everything is in the `index.html` hub, hash-routed (e.g. `#rune-picker`, `#tab-tracker`). The old standalone pages (`arbitrage-scanner.html`, `waystone-juicer.html`, `character-upgrades.html`) are thin redirects into the hub. `craft-optimizer.html` is a separate experimental page, not surfaced in the hub nav.
+Everything is in the `index.html` hub, hash-routed (e.g. `#rune-picker`, `#gear-finder`). The old standalone pages (`arbitrage-scanner.html`, `waystone-juicer.html`, `character-upgrades.html`) are thin redirects into the hub. `craft-optimizer.html` is a separate experimental page, not surfaced in the hub nav.
 
 ## Run in Docker
 
@@ -56,7 +56,7 @@ Edit `docker-compose.yml` to set `POE_CONTACT` before deploying.
 
 ## Trade rate limits
 
-The server makes live trade2 lookups (`pathofexile.com/api/trade2`) for the Rune Picker, Gear Search, Tab Tracker, Arbitrage, and the Regex Cheat Sheet's mod-value sweep. **Every call routes through one shared adaptive queue (`trade-queue.js`)** — it spaces calls (3s+ gap, adapts under load), parses the official `X-Rate-Limit-*` headers, and honors `Retry-After` on `429`. While a cooldown is active, endpoints return the timer instead of probing again. The public IP is **shared** with prod + real users, so the queue budgets conservatively — see `RATE-LIMITS.md` before any Trade2 work.
+The server makes live trade2 lookups (`pathofexile.com/api/trade2`) for the Rune Picker, Gear Finder, Jewel Pricer, and the Regex Cheat Sheet's mod-value sweep. **Every call routes through one shared adaptive queue (`trade-queue.js`)** — it spaces calls (3s+ gap, adapts under load), parses the official `X-Rate-Limit-*` headers, and honors `Retry-After` on `429`. While a cooldown is active, endpoints return the timer instead of probing again. The public IP is **shared** with prod + real users, so the queue budgets conservatively — see `RATE-LIMITS.md` before any Trade2 work.
 
 ## Character OAuth import
 

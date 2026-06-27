@@ -111,7 +111,6 @@ function tradeStatus() {
   return tradeQueue.status();
 }
 
-
 function readJson(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -147,8 +146,6 @@ function readRawBody(req, maxBytes = 10 * 1024 * 1024) {
   });
 }
 
-
-
 // The league name goes straight into upstream GGG/poe.ninja URLs, so never trust
 // the raw query value. A reverse proxy was seen appending its own origin onto it
 // ("Runes of Aldur" + "http://docker:8098"), producing an invalid league and an
@@ -163,8 +160,6 @@ function sanitizeLeague(raw) {
     .trim();
   return cleaned || DEFAULT_LEAGUE;
 }
-
-
 
 function round4(n) {
   return Math.round((Number(n) || 0) * 10000) / 10000;
@@ -411,23 +406,6 @@ async function fetchExchangeChunked(league, haveIds, wantIds, batchCap = EXCHANG
   return { result: merged };
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 function normalizeName(value) {
   return String(value)
     // Strip combining diacritics first: OCR / odd copy-paste turns an apostrophe+
@@ -466,7 +444,6 @@ function stripQuantity(value) {
   };
 }
 
-
 // poe.ninja exposes no trade count, but volumePrimaryValue is total turnover
 // (in divine) and primaryValue is the unit price, so their quotient is the
 // number of units traded in the window. More units = deeper, more reliable price.
@@ -478,289 +455,8 @@ function priceConfidence(units) {
   return "low";
 }
 
-
 async function fetchTrade(url, options = {}) {
   return tradeQueue.request(url, options);
-}
-
-// Tab Tracker — read a public stash tab's contents via Trade2 ONLY (no OAuth, no
-// cookie: PoE2's get-stash-items returns 403 unauthenticated). The user makes
-// tab(s) public and prices every item at a MARKER divine price to mark it apart
-// from real sales. We find them with ONE ranged account search (min..max marker),
-// then sort each result into its band by exact price — so a normal tab is ~1 search
-// + a fetch or two, NOT one search per marker (that burst tripped the tight search
-// limit and made a 9-item scan take an hour of cooldowns; see readTrackedBands).
-// Trade2 caps a search at 100 results, so only a >100-item range falls back to a
-// per-marker read to span the cap. Every kept result IS a tracked item (price ==
-// a marker). ponytail: a genuine sale priced at exactly a marker is picked up too;
-// reserve the marker prices.
-const TAB_MARKERS_DEFAULT = [11, 12, 13, 14];
-const TAB_CACHE_FILE = path.join(DATA_DIR, ".tab-tracker.json");
-const TAB_CACHE_TTL_MS = 10 * 60 * 1000;
-// Unique names to price per request. With RUNE_BOOK_BATCH=10 + 2 legs that's ~4
-// exchange calls/visit, so a typical tab (~40 unique types) finishes in ~2 visits
-// without tripping GGG's 30-per-5-min ban. The UI auto-polls the CACHED path to
-// fill any remainder. (Was 6 with batch-3 → ~28 calls for a big tab = a 30-min ban.)
-const TAB_FILL_PER_VISIT = 20;
-const RUNE_BOOK_BATCH = 10;
-
-// Parse a "11,12,13,14" markers string → distinct positive numbers (≤8, to bound
-// the per-price search count). Falls back to the default set.
-function parseTabMarkers(raw) {
-  const set = [];
-  for (const part of String(raw || "").split(/[, ]+/)) {
-    const n = Number(part);
-    if (Number.isFinite(n) && n > 0 && !set.includes(n)) set.push(n);
-  }
-  return set.length ? set.slice(0, 8) : TAB_MARKERS_DEFAULT.slice();
-}
-
-function readTabCache(account, league) {
-  try {
-    const c = JSON.parse(fs.readFileSync(TAB_CACHE_FILE, "utf8"));
-    if (c && c.account === account && c.league === league) return c;
-  } catch {}
-  return null;
-}
-
-// Read the marker bands via Trade2, RESUMING from prior progress: each marker price
-// is one exact-price search (≤100 results/band), and a band already read (done) is
-// reused, not re-fetched. So a read cut short by a 429 caches the bands it finished,
-// and the next call continues with the rest — clicking "Value tab" makes progress
-// instead of restarting. Returns the per-band map {price: {lines, done}}.
-// Per-marker search+fetch for ONE price band (the cap-spanning fallback). ≤100 results.
-async function readOneBand(searchUrl, account, league, m) {
-  const body = JSON.stringify({
-    query: { status: { option: "any" }, filters: { trade_filters: { filters: {
-      account: { input: account },
-      price: { option: "divine", min: m, max: m },
-    } } } },
-    sort: { price: "desc" },
-  });
-  let search;
-  try { search = await fetchTrade(searchUrl, { method: "POST", body }); }
-  catch (e) { return { lines: [], done: false, hitLimit: true, truncated: false }; }
-  const ids = search.result || [];
-  const truncated = (search.total || 0) > ids.length;   // this one price has 100+ items
-  const lines = [];
-  for (let i = 0; i < ids.length; i += 10) {
-    let fetched;
-    try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id)); }
-    catch (e) { return { lines, done: false, hitLimit: true, truncated }; }
-    for (const r of fetched.result || []) {
-      const item = r.item || {};
-      const name = item.typeLine || item.baseType || item.name;
-      if (name) lines.push(name + " x" + (item.stackSize || 1));
-    }
-  }
-  return { lines, done: true, hitLimit: false, truncated };
-}
-
-async function readTrackedBands(account, league, markers, prior) {
-  const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
-  const bands = Object.assign({}, prior || {});
-  const remaining = markers.filter((m) => !(bands[String(m)] && bands[String(m)].done));
-  if (!remaining.length) return { bands, hitLimit: false, truncated: false };
-  if (tradeStatus().limited) return { bands, hitLimit: true, truncated: false };
-
-  // ONE ranged search across ALL remaining markers (min..max) instead of one search
-  // PER marker. That per-marker burst hit the tight Trade2 SEARCH limit and turned a
-  // 9-item scan into an hour of 30-min cooldowns. Trade2 caps a search at 100 results,
-  // so for the normal case (a handful of tracked items) one search returns them all and
-  // we sort each into its marker band by the item's EXACT listed price (so a wide range
-  // over non-contiguous markers still keeps only true marker items — same result as the
-  // old per-marker union, at a fraction of the calls). Only a capped range (>100 items)
-  // falls back to per-marker to span the 100-cap.
-  const min = Math.min(...remaining), max = Math.max(...remaining);
-  const markerSet = new Set(remaining.map(Number));
-  const body = JSON.stringify({
-    query: { status: { option: "any" }, filters: { trade_filters: { filters: {
-      account: { input: account },
-      price: { option: "divine", min, max },
-    } } } },
-    sort: { price: "desc" },
-  });
-  let search;
-  try { search = await fetchTrade(searchUrl, { method: "POST", body }); }
-  catch (e) { return { bands, hitLimit: true, truncated: false }; }
-  const ids = search.result || [];
-  const capped = (search.total || 0) > ids.length;
-
-  if (capped && remaining.length > 1) {
-    // >100 items in the range → the single page missed some. Span the cap per-marker.
-    let hitLimit = false, truncated = false;
-    for (const m of remaining) {
-      if (tradeStatus().limited) { hitLimit = true; break; }
-      const r = await readOneBand(searchUrl, account, league, m);
-      bands[String(m)] = { lines: r.lines, done: r.done };
-      truncated = truncated || r.truncated;
-      if (r.hitLimit) { hitLimit = true; break; }
-    }
-    return { bands, hitLimit, truncated };
-  }
-
-  // Single-search path: fetch the ids, sort each item into its marker band by price.
-  for (const m of remaining) bands[String(m)] = { lines: [], done: true };
-  let hitLimit = false;
-  for (let i = 0; i < ids.length; i += 10) {
-    let fetched;
-    try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id)); }
-    catch (e) { hitLimit = true; break; }
-    for (const r of fetched.result || []) {
-      const item = r.item || {};
-      const name = item.typeLine || item.baseType || item.name;
-      const price = r.listing && r.listing.price;
-      if (!name || !price || price.currency !== "divine" || !markerSet.has(Number(price.amount))) continue;
-      bands[String(price.amount)].lines.push(name + " x" + (item.stackSize || 1));
-    }
-  }
-  if (hitLimit) for (const m of remaining) bands[String(m)].done = false;   // resume next click
-  return { bands, hitLimit, truncated: false };
-}
-
-function parseTabLine(l) {
-  const m = /^(.*?)\s*x(\d+)\s*$/.exec(l);
-  return m ? { name: m[1], qty: Number(m[2]) } : { name: l, qty: 1 };
-}
-
-// Shared valuation: price items off the exchange book (cap-fill ≤TAB_FILL_PER_VISIT
-// unbooked/visit so it can't burst), build rows + totals. `meta` carries read-state
-// fields (markers/unreadBands/truncated/pasted) onto the response.
-async function valueTabItems(account, league, items, meta) {
-  const nk = (n) => normalizeName(n);
-  let book = readRuneBook(league) || { prices: {} };
-  // "Booked" = we have a settled answer: a real bid price OR a thin/no-buyers verdict.
-  // Both count so a thin item isn't re-fetched on every visit.
-  const booked = (n) => { const b = book.prices[nk(n)]; return b && (b.ex > 0 || b.thin); };
-  // Fill by UNIQUE name — a 212-item tab is only ~40 distinct types, and the book is
-  // keyed by name, so pricing one name values every stack of it. Batching by item
-  // (dupes) wasted the per-visit budget and made big tabs take dozens of passes.
-  const unbookedNames = [...new Set(items.filter((it) => !booked(it.name)).map((it) => nk(it.name)))];
-  if (unbookedNames.length && !tradeStatus().limited) {
-    const batch = unbookedNames.slice(0, TAB_FILL_PER_VISIT);
-    await Promise.race([
-      refreshRuneBook(league, batch, true).catch(() => {}),
-      new Promise((r) => setTimeout(r, RUNE_FRESH_DEADLINE_MS)),
-    ]);
-    book = readRuneBook(league) || book;
-  }
-  const rates = await getExchangeRates(league);
-  const results = items.map((it) => {
-    const b = book.prices[nk(it.name)];
-    if (b && b.ex > 0) return { qty: it.qty, name: it.name, each: b.ex, total: roundPriceExalted(b.ex * it.qty), source: b.rough ? "exchange · rough" : "trade2 exchange", rough: !!b.rough };
-    // Sellers list it but no buyers stand on the exchange — can't value a sale, so
-    // say so plainly instead of quoting the aspirational ask. `thin` = settled (not
-    // still loading), so the poll completes and it isn't re-fetched.
-    if (b && b.thin) {
-      // No live buyers, so no firm sell price — but show the cheapest LISTING (ask)
-      // as a rough indicative ceiling so the scan can still rank it for triage.
-      // Flagged `indicative` + "no live buyers" so it's never mistaken for a firm bid.
-      const ask = Number(b.ask) || 0;
-      return { qty: it.qty, name: it.name, each: "", total: "", thin: true,
-        askTotal: ask > 0 ? roundPriceExalted(ask * it.qty) : "",   // sub-sort hint only; not shown (ask is noisy)
-        source: "no live buyers" };
-    }
-    // Base/curated currencies (Divine, Chaos, …) aren't in the rune book — price
-    // them off the exchange rates (keyed by normalized name).
-    const rx = rates[nk(it.name)];
-    if (rx > 0) return { qty: it.qty, name: it.name, each: rx, total: roundPriceExalted(rx * it.qty), source: "trade2 exchange" };
-    return { qty: it.qty, name: it.name, each: "", total: "", source: "pricing…" };
-  });
-  // Rank so what's actually worth selling is on top. Two tiers: anything with a FIRM
-  // (bid) sell value ranks first, by value desc — that's the real "sell these" list.
-  // Thin/no-buyer items always sit BELOW the firm ones (their ask is noisy and must
-  // never outrank a real price); within that group, higher ask floats up as a weak
-  // hint of what might be worth a manual look.
-  results.sort((a, b) => {
-    const fa = Number(a.total) || 0, fb = Number(b.total) || 0;
-    if (fa > 0 || fb > 0) return fb - fa;
-    return (Number(b.askTotal) || 0) - (Number(a.askTotal) || 0);
-  });
-  const totalEx = results.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
-  const pricedCount = results.filter((r) => r.total).length;
-  // Thin items have no firm price but ARE resolved — exclude them from "remaining" so
-  // the valuation poll finishes instead of looping on unpriceable items.
-  const resolvedCount = results.filter((r) => r.total || r.thin).length;
-  return Object.assign({
-    account, league, results,
-    count: results.length,
-    pricedCount,
-    thinCount: results.filter((r) => r.thin).length,
-    remaining: results.length - resolvedCount,
-    totalEx: Math.round(totalEx * 100) / 100,
-    totalDiv: rates.divine ? Math.round((totalEx / rates.divine) * 100) / 100 : 0,
-    limited: tradeStatus().limited,
-    updated: new Date().toISOString(),
-  }, meta || {});
-}
-
-async function fetchTrackedTab(account, league, refresh, markers, pastedItems, pasteMode) {
-  account = String(account || "").trim();
-  if (!account) return { error: "Missing account name.", results: [] };
-
-  // PASTE MODE — items came from the browser-side reader (run on pathofexile.com
-  // through your VPN), so we skip ALL trade2 reads and just value them. POST sends
-  // the items once; auto-poll GETs reuse the cached pasted set to fill prices.
-  if (pastedItems != null || pasteMode) {
-    let cache = readTabCache(account, league);
-    if (pastedItems != null) {
-      const lines = String(pastedItems).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-      if (!lines.length) return { account, league, results: [], note: "No items pasted.", pasted: true };
-      cache = { account, league, markerSig: "pasted", bands: { pasted: { lines, done: true } }, updated: new Date().toISOString() };
-      try { fs.writeFileSync(TAB_CACHE_FILE, JSON.stringify(cache, null, 2)); } catch {}
-    }
-    if (!cache || cache.markerSig !== "pasted" || !cache.bands || !cache.bands.pasted) {
-      return { account, league, results: [], note: "Paste your browser-read items first.", pasted: true };
-    }
-    const items = (cache.bands.pasted.lines || []).map(parseTabLine);
-    if (!items.length) return { account, league, results: [], note: "No pasted items.", pasted: true };
-    return await valueTabItems(account, league, items, { pasted: true, unreadBands: 0 });
-  }
-
-  markers = (markers && markers.length) ? markers : TAB_MARKERS_DEFAULT.slice();
-  const markerSig = markers.join(",");
-
-  // 1. Tab contents — per-band cache (10 min). Reuse bands already read; on refresh,
-  //    RESUME any not-yet-done bands (a 429 mid-read caches the finished bands so the
-  //    next click continues instead of restarting). Price-only polls (refresh=false)
-  //    never touch the network — they just re-price the cached lines.
-  let cache = readTabCache(account, league);
-  const sameSig = cache && cache.markerSig === markerSig && cache.bands;
-  const fresh = sameSig && (Date.now() - new Date(cache.updated).getTime() < TAB_CACHE_TTL_MS);
-  // ALWAYS serve the cached contents for this marker set, ANY age — so reopening the tab
-  // shows your last scan instantly with no Trade2 call. A network re-read happens ONLY on
-  // an explicit refresh that needs one: to RESUME unread bands, or to refresh a COMPLETE-
-  // but-stale read. (A cooldown can outlast the TTL; partial progress is never wiped.)
-  let bands = sameSig ? cache.bands : {};
-  let truncated = sameSig ? !!cache.truncated : false;
-  let scannedAt = sameSig ? cache.updated : null;
-  const isDone = (m) => bands[String(m)] && bands[String(m)].done;
-  const allDone = markers.every(isDone);
-  const needRead = refresh && !tradeStatus().limited && !(allDone && fresh);
-
-  if (needRead) {
-    // Stale-complete → start over (else readTrackedBands skips every done band and re-reads
-    // nothing); partial → keep finished bands and resume.
-    const base = (allDone && !fresh) ? {} : bands;
-    const read = await readTrackedBands(account, league, markers, base);
-    bands = read.bands;
-    truncated = !!read.truncated;
-    scannedAt = new Date().toISOString();
-    cache = { account, league, markerSig, bands, truncated, updated: scannedAt };
-    try { fs.writeFileSync(TAB_CACHE_FILE, JSON.stringify(cache, null, 2)); } catch {}
-  }
-
-  const lines = [];
-  for (const m of markers) { const b = bands[String(m)]; if (b && b.lines) lines.push(...b.lines); }
-  const unreadBands = markers.filter((m) => !isDone(m)).length;
-  const items = lines.map(parseTabLine);
-
-  if (!items.length) {
-    if (unreadBands === 0) return { account, league, results: [], note: "No items found priced at " + markerSig + " divine under that account. Price your tracked items at one of those divine values.", markers, unreadBands: 0 };
-    return { account, league, results: [], limited: tradeStatus().limited, tradeLimitedUntil: tradeStatus().tradeLimitedUntil, unreadBands, markers };
-  }
-
-  return await valueTabItems(account, league, items, { markers, markerSig, unreadBands, truncated, partial: unreadBands > 0, scannedAt });
 }
 
 async function getTradePrice(name, league, currencyRates, deadline = 0) {
@@ -926,53 +622,6 @@ async function geoMidRate(league, id, askData) {
   } catch {}
   const ex = (askPx > 0 && bidPx > 0) ? Math.sqrt(askPx * bidPx) : (askPx || bidPx || 0);
   return { ex, stock: asks.length ? Math.floor(asks[0].stock) : 0 };
-}
-
-// Highest standing BID (exalt-per-item) for `id` from a pre-fetched item→exalted
-// exchange page — i.e. what a buyer will actually pay, the real liquidation value.
-// Same robust rule as geoMidRate's bid side: prefer real stock (>=5), drop highball
-// bids crossed above the ask. Returns 0 if NO buyer stands on the exchange — the
-// caller treats that as "thin / no buyers" rather than trusting the aspirational ask.
-function robustBidPx(bidData, id, askPx) {
-  const bids = collectExchangeOffers(bidData, id, EXALTED_ID)
-    .filter((o) => o.payAmount > 0 && o.receiveAmount > 0)
-    .map((o) => ({ px: o.receiveAmount / o.payAmount, stock: o.payStock || 0 }))   // exalt per item
-    .sort((a, b) => b.px - a.px);
-  // Drop bids "crossed" above the ask — a buy offer far over what the item sells for
-  // is bait/noise (e.g. a lone "10 ex for an idol" that lists at 3). If nothing passes,
-  // return 0 (no real bid) rather than trusting the bait — do NOT fall back to bids[0].
-  const ok = (b) => !askPx || b.px <= askPx * 1.05;
-  return (bids.find((b) => b.stock >= 5 && ok(b)) || bids.find(ok) || {}).px || 0;
-}
-
-// Cheapest ASK (exalt-per-item) = the realistic sell floor: the lowest offer with a
-// bit of stock (≥2 skips lone stock-1 baits), falling back to the outright cheapest.
-// NOT the clustered "wall" — many books (e.g. idols) have a few cheap real sellers
-// under a big overpriced wall, and the cheap ones are what you'd actually undercut to.
-function cheapestAsk(askData, id) {
-  let asks = collectExchangeOffers(askData, EXALTED_ID, id)
-    .filter((o) => o.payAmount > 0 && o.receiveAmount > 0)
-    .map((o) => ({ px: o.payAmount / o.receiveAmount, stock: o.receiveStock || 0 }))
-    .sort((a, b) => a.px - b.px);
-  // Drop par/sub-par floor spam (px ≤ 1). The exchange's practical single-item floor is
-  // "1 ex : 1 item", so cheap runes get flooded with ≤1ex asks (especially with the
-  // status:"any" read, which pulls in offline spam) — that's NOT a real price for a
-  // valuable item, just the floor everyone defaults to. (And an item genuinely worth
-  // ≤1ex has no real two-sided exchange market anyway.) What remains is the real book.
-  // Without this, Ire/Passion/Breath of Aldur floored at 1ex and read "no buyers"; the
-  // old stock≥2 skip hid the spam but wrongly inflated thin chase items (stock-1 = real).
-  asks = asks.filter((a) => a.px > 1);
-  if (!asks.length) return { px: 0, stock: 0 };
-  // De-bait: skip a lone lowball far under the next real ask (Cadigan's Epiphany had a
-  // stray cheap ask sitting under a 4444ex one). An ask under HALF the next-cheapest is
-  // bait → skip it (chained baits drop one at a time).
-  let i = 0;
-  while (i < asks.length - 1 && asks[i].px < asks[i + 1].px * 0.5) i++;
-  const chosen = asks[i];
-  // depth = how many above-floor sellers there are. A deep book (many) = a trustworthy
-  // exchange price; a lone wall (1-2) means the exchange ASK is unreliable for this item
-  // and the real price lives on the item-search trade board (see refreshRuneBook).
-  return { px: chosen.px, stock: chosen.stock, depth: asks.length };
 }
 
 // Exiled-Exchange-2's EXACT bulk method (renderer/src/web/price-check/trade/
@@ -1323,176 +972,6 @@ function maybeSampleEconomy(league = DEFAULT_LEAGUE) {
   return economySampleInFlight;
 }
 
-
-// ── Rune Picker price book: accurate Trade2 exchange prices for runes/essences/
-// soul cores (poe.ninja's PoE2 coverage of these is thin = "useless"). Same bulk
-// exchange the currency uses. Served from a persistent cache INSTANTLY (poe.ninja
-// stays the fallback for anything not booked yet); missing/stale entries refresh
-// in the BACKGROUND off one batched exchange call, so the book fills in from real
-// usage and the user never waits. Cheap/illiquid items with no exalted-side offer
-// simply stay on the poe.ninja fallback. ───────────────────────────────────────
-const RUNE_BOOK_FILE = path.join(DATA_DIR, ".rune-exchange-book.json");
-const RUNE_BOOK_TTL_MS = 30 * 60 * 1000;
-// Bump when the PRICING LOGIC changes so cached entries written by old logic are
-// auto-discarded and re-fetched — otherwise a stale book on the prod volume (which
-// survives `--build` redeploys) keeps serving old prices and silently defeats the
-// fix. v7 = BID-ONLY (dropped the v5 ask fallback): no standing buyer → thin/no-buyers
-// instead of an aspirational ask. The bulk exchange floods cheap items (e.g. Greater
-// Storm Rune, real ~79/ex) with par/overpriced asks (1:1, 2:1) + zero bids, which the
-// ask-fallback mis-priced at a fake ~1-2ex. v6 = v5 + `rough` flag; v5 = bid-else-ask
-// (ignores the overpriced wall); v4 = clustered ask; v3 = deep-ask; v2 = bid-only.
-const RUNE_BOOK_VERSION = 10;
-// Bound the on-demand "Fetch fresh prices" wait — the shared queue self-throttles
-// (its inter-call gap grows to several seconds under load), so a forced refresh of
-// a handful of items can take 20-40s. Give it real headroom so a SINGLE press
-// usually returns live prices; past this we fall back to the book/poe.ninja rather
-// than hang forever. The front-end shows a spinner for the duration.
-const RUNE_FRESH_DEADLINE_MS = 35 * 1000;
-let runeBookRefreshInFlight = null; // Promise | null while a refresh is running
-
-function readRuneBook(league) {
-  try {
-    const b = JSON.parse(fs.readFileSync(RUNE_BOOK_FILE, "utf8"));
-    // Ignore a book from an older pricing-logic version → it gets re-fetched fresh.
-    if (!b || b.league !== league || b.version !== RUNE_BOOK_VERSION) return null;
-    return b;
-  } catch { return null; }
-}
-
-// Batch-price the given normalized names off the exchange and merge into the
-// book. Single-flight: if a refresh is already running, a background caller is
-// satisfied by it (won't pile on); a forced on-demand caller (`force`, the "Fetch
-// fresh prices" button) waits it out then runs its own pass for its exact norms so
-// the response reflects fresh prices. Skips currency (priced elsewhere).
-async function refreshRuneBook(league, normNames, force, opts = {}) {
-  if (tradeStatus().limited || !normNames.length) return;
-  while (runeBookRefreshInFlight) {
-    try { await runeBookRefreshInFlight; } catch {}
-    if (!force) return;
-  }
-  runeBookRefreshInFlight = (async () => {
-    try {
-      const catalog = await getExchangeCatalog(league);
-      // Skip only the base unit + the curated currencies getExchangeData already
-      // prices (avoid redundant exchange calls). Everything else on the exchange —
-      // runes, essences, soul cores, AND utility currencies the curated set doesn't
-      // cover (whetstones, scraps, etchers, …) — is fair game for the book. (The old
-      // blanket `category !== "Currency"` skip wrongly dropped those utilities, so
-      // they came back NOT FOUND.)
-      const curatedIds = new Set(
-        (await resolveArbitrageItems(league))
-          .filter((it) => it.category === "currency")
-          .map((it) => String(it.id))
-      );
-      const targets = [];
-      const seenId = new Set();
-      for (const nn of normNames) {
-        const entry = catalog.get(nn);
-        if (entry && entry.id !== EXALTED_ID && !curatedIds.has(String(entry.id)) && !seenId.has(entry.id)) {
-          seenId.add(entry.id);
-          targets.push({ ...entry, norm: nn });
-        }
-      }
-      if (!targets.length) return;
-      // Two batched legs (same pattern as the arbitrage scan): the ASK side (give
-      // exalted, get item) and the BID side (give item, get exalted). The cheapest
-      // ASK is aspirational for thin currency — a lone "1 essence : 5 ex" single —
-      // so we price off the BID (what buyers actually pay = the real liquidation
-      // value). When NO buyer stands on the exchange, we DON'T trust the ask: the
-      // item is marked `thin` so consumers show "no buyers" instead of a fake price.
-      // Bigger batch (10, just under the API's ~11 cap) + no per-item backfill →
-      // far fewer calls so a big tab doesn't trip GGG's 30-per-5-min ban. Illiquid
-      // items that get no offers in a batch correctly fall through to thin/no-buyers.
-      // status:"any" (NOT online-only): high-value chase items (Cadigan's Epiphany,
-      // Astrid's Creativity) often have NO seller online at any given moment, so an
-      // online-only book read returned ZERO offers → priced them "no buyers" despite a
-      // real market. "any" includes offline listings (you still whisper/trade them).
-      // ASK leg. The exchange returns ONE capped page (~100 listings TOTAL across all
-      // want-items), so a single high-volume SPAM item (Greater Storm Rune: 99 of 100
-      // listings, all 1ex) starves every other item in a shared batch to ZERO asks →
-      // they wrongly read "no buyers". No batch size fixes this — one whale floods any
-      // batch. So the Rune Picker (`opts.perItemAsk`) fetches the ask leg PER ITEM
-      // (batchCap 1 → each item gets its own full page; reward-screen pastes are small,
-      // so the extra calls are fine and the queue self-paces). Tab Tracker keeps the
-      // batched read (triage over big tabs — protect its call budget) with starvation
-      // backfill (skipBackfill=false) to recover the fully-starved few it can.
-      // ASK leg: batched (one ~10-item page covers a whole reward paste) + starvation
-      // backfill. If a spam whale (Greater Storm Rune = 99/100 listings) floods the
-      // shared page and zeroes an item to no offers, fetchExchangeChunked re-fetches
-      // just that item solo (skipBackfill=false). This is FAST for the common paste —
-      // ~1 call, not one-per-item — and still recovers the starved few. (Was blanket
-      // per-item = N calls every time, needlessly slow when no whale is even pasted;
-      // that was the Rune Picker "slow" regression.) The item-search fallback below
-      // still gives chase items their real price.
-      const askData = await fetchExchangeChunked(league, EXALTED_ID, targets.map((t) => t.id), RUNE_BOOK_BATCH, false, "any");
-      const bidData = await fetchExchangeChunked(league, targets.map((t) => t.id), [EXALTED_ID], RUNE_BOOK_BATCH, true, "any");
-      const existing = readRuneBook(league);
-      const prices = existing ? { ...existing.prices } : {};
-      const now = new Date().toISOString();
-      // Item-search fallback budget (Rune Picker only). The bulk exchange is the WRONG
-      // source for chase items: the real trades clear instantly at the market ratio and
-      // don't sit as standing offers, so the offer book is just a lone bait + a greedy
-      // wall (Cadigan's Epiphany: 1ex + 4444ex, while the in-game Market Ratio is 576:1).
-      // The actual price lives on the item-search trade board. When the exchange ask book
-      // is too thin to trust (a lone wall, not a real cluster) we look it up there — but
-      // BUDGETED LOW: item-search is search+fetch per item on a MUCH tighter rate policy
-      // than the exchange — a few in a row trip it and poison the whole fill. 2 per fill
-      // covers the real workflow (price a chase item or two); the rest of a big paste
-      // fall back to the exchange ask and resolve over later checks.
-      let searchBudget = opts.perItemAsk ? 2 : 0;
-      const rates = opts.perItemAsk ? await getExchangeRates(league).catch(() => null) : null;
-      for (const t of targets) {
-        // Price off the BID (what buyers actually pay = real liquidation value). The ASK
-        // side is NOT a price for thin items: GGG's bulk exchange floods cheap items
-        // (e.g. Greater Storm Rune, real ~79/ex) with aspirational/par asks (1:1, 2:1 …)
-        // and no buyers — an ask-fallback mis-priced those at a fake ~1-2ex. So: a real
-        // standing bid IS the price; NO bid → thin / "no buyers" (don't fabricate from
-        // the ask). Same handling as essences. (ask kept only for stock + crossed-bid ref.)
-        const ask = cheapestAsk(askData, t.id);
-        const bidPx = robustBidPx(bidData, t.id, ask.px || 0);   // real, non-crossed bid only
-        const common = { id: t.id, name: t.name, category: t.category, updated: now };
-        // The exchange ASK book is "thin/wall-y" when there are ≤3 above-floor sellers —
-        // a lone greedy wall, not a real cluster, so its price isn't trustworthy (Cadigan's
-        // one 4444ex wall vs the true 576ex). A deep book (≥4) is a real market we trust.
-        const thinAskBook = ask.depth >= 1 && ask.depth <= 3;
-        if (bidPx > 0) {
-          prices[t.norm] = { ...common, ex: round4(bidPx), stock: Math.floor(ask.stock) || 0, side: "bid" };
-        } else if (rates && ask.depth >= 1 && thinAskBook && searchBudget > 0) {
-          // Valuable item (someone's asking real ex for it) but the exchange book is a
-          // thin wall → get the true price from the item-search trade board, where chase
-          // items actually list and cluster. De-baited + ex-converted in getTradePrice.
-          searchBudget--;
-          const tp = await getTradePrice(t.name, league, rates);
-          if (tp && tp.limited) searchBudget = 0;   // hit the tight search limit → stop; rest fall back to ask
-          if (tp && !tp.limited && tp.each >= 2) {
-            prices[t.norm] = { ...common, ex: round4(tp.each), stock: 0, side: "market" };
-          } else if (ask.px >= 2) {
-            prices[t.norm] = { ...common, ex: round4(ask.px), stock: Math.floor(ask.stock) || 0, side: "ask" };
-          } else {
-            prices[t.norm] = { ...common, ex: 0, thin: true, stock: 0 };
-          }
-        } else if (ask.px >= 2) {
-          // No bid, but a real (deep-enough) ask cluster. Price off the lowest de-baited
-          // ask — the sell-side floor. Covers the liquid "of Aldur" runes (many sellers)
-          // and Astrid's-style items. GATE: ≥ 2 ex/item — the spam guard, since sub-1ex
-          // runes (Greater Storm/Iron) all floor at par 1ex and get filtered to nothing.
-          prices[t.norm] = { ...common, ex: round4(ask.px), stock: Math.floor(ask.stock) || 0, side: "ask" };
-        } else {
-          // No bid AND no real ask market → not liquidatable on the exchange. Mark thin
-          // so it shows "no buyers" instead of a fabricated price (or looping "pricing…").
-          prices[t.norm] = { ...common, ex: 0, thin: true, stock: 0 };
-        }
-      }
-      try { fs.writeFileSync(RUNE_BOOK_FILE, JSON.stringify({ league, version: RUNE_BOOK_VERSION, prices, updated: now }, null, 2)); } catch {}
-    } catch {
-      // best-effort; the poe.ninja fallback already served the user
-    } finally {
-      runeBookRefreshInFlight = null;
-    }
-  })();
-  return runeBookRefreshInFlight;
-}
-
 // Drop-in for the old poe.ninja fetchCurrencyRates: just the id/name→ex map.
 async function getExchangeRates(league) {
   return (await getExchangeData(league)).rates;
@@ -1616,20 +1095,12 @@ async function runWaystoneSweep(league) {
 // Cached with a TTL so a page load triggers at most one trade call per window;
 // falls back to the last cached value (or {limited}) when the queue is blocked.
 
-
 // Best buyer rate (cheapest exalted-per-divine) with non-trivial stock, so a
 // single tiny-stock outlier can't skew the headline number.
-
-
 
 // Disabled: this powered the now-blanked craft-pricer off poe.ninja, which is BANNED.
 // Returns empty so /api/prices stays a valid (dead) endpoint; rebuild on Trade2 if the
 // craft-pricer comes back. ponytail: stub, not deleted — the route still references it.
-
-
-
-
-
 
 function percentile(values, pct) {
   if (!values.length) return 0;
@@ -1757,9 +1228,6 @@ async function fetchComparablePrices(target, league, currencyRates, fallback = f
     return { targetId: target.id, count: 0, listings: [], quickSaleEx: 0, normalSaleEx: 0, premiumSaleEx: 0, confidence: "error", liquidity: "unknown", error: err.message };
   }
 }
-
-
-
 
 // Pre-pass: normalized names of pasted item lines that should be priced from the
 // rune book — mirrors the main loop's line cleaning so the forced-fresh path can
@@ -2614,10 +2082,6 @@ function normalizePoeMarkup(value) {
     .replace(/\s+/g, " ");
 }
 
-
-
-
-
 function collectItemLikeObjects(value, out = [], seen = new Set()) {
   if (!value || typeof value !== "object" || seen.has(value)) return out;
   seen.add(value);
@@ -2647,33 +2111,11 @@ function tryParseJson(value) {
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 function totalResistance(stats) {
   return ["fireRes", "coldRes", "lightningRes", "chaosRes"].reduce((total, key) => {
     return total + (Number(stats && stats[key]) || 0);
   }, 0);
 }
-
-
-
-
-
-
-
-
-
-
 
 // A Trade2 fetch result → a clean, PoB-parseable item string (Rarity / name /
 // base / Item Level / Implicits + mods). Used by real-DPS ranking; fetched items
@@ -2694,8 +2136,6 @@ function pobItemFromTradeEntry(entry) {
   return [head, `Item Level: ${ilvl}`, `Implicits: ${impl.length}`].concat(impl, expl).join("\n");
 }
 
-
-
 function listingPriceFromEntry(entry, currencyRates) {
   const price = entry.listing && entry.listing.price;
   if (!price || !currencyRates[price.currency]) return null;
@@ -2707,7 +2147,6 @@ function listingPriceFromEntry(entry, currencyRates) {
     raw: price.amount + " " + price.currency,
   };
 }
-
 
 function gearSearchSlots() {
   const slots = {};
@@ -2803,11 +2242,6 @@ function statLabel(key) {
   return labels[key] || key.replace(/([A-Z])/g, " $1").replace(/^./, (ch) => ch.toUpperCase());
 }
 
-
-
-
-
-
 // Derived/aggregate or equipment-property keys whose stored value does not map
 // 1:1 to a single explicit trade stat, so they must not become per-item filters.
 
@@ -2815,9 +2249,6 @@ function statLabel(key) {
 // later ask the server to open the official Trade UI focused on (essentially)
 // that item. Only explicit single-mod stats are used; price + base type are the
 // strongest discriminators. No server-side state is kept.
-
-
-
 
 // ── Gear Upgrade Finder: Path of Building import ───────────────────────────
 // PoB stores each equipped item as in-game item TEXT inside <Item> tags (so
@@ -3044,8 +2475,6 @@ function reconstructItem(currentRaw, candidateRaw) {
 // may carry status "afk"/"dnd" (absent = plain online). Note: this reflects the
 // seller, not whether the item is still in their stash.
 
-
-
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://" + HOST + ":" + PORT);
@@ -3155,27 +2584,6 @@ const server = http.createServer(async (req, res) => {
       }
       const saved = writeCurrencyOverrides(prices);
       send(res, 200, JSON.stringify({ saved }), "application/json; charset=utf-8");
-      return;
-    }
-
-    if (url.pathname === "/api/tab-tracker" && req.method === "POST") {
-      // Paste-mode ingest: items read browser-side (on pathofexile.com via VPN).
-      const input = await readJson(req);
-      const account = String(input.account || "").trim();
-      const league = sanitizeLeague(input.league || "Runes of Aldur");
-      const body = JSON.stringify(await fetchTrackedTab(account, league, false, null, String(input.items || ""), true));
-      send(res, 200, body, "application/json; charset=utf-8");
-      return;
-    }
-
-    if (url.pathname === "/api/tab-tracker") {
-      const account = (url.searchParams.get("account") || "").trim();
-      const league = sanitizeLeague(url.searchParams.get("league") || "Runes of Aldur");
-      const refresh = url.searchParams.get("refresh") === "1";
-      const pasteMode = url.searchParams.get("paste") === "1";
-      const markers = parseTabMarkers(url.searchParams.get("markers"));
-      const body = JSON.stringify(await fetchTrackedTab(account, league, refresh, markers, null, pasteMode));
-      send(res, 200, body, "application/json; charset=utf-8");
       return;
     }
 

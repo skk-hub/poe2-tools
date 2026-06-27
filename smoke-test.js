@@ -67,7 +67,7 @@ function staticChecks() {
   const themeCss = read("theme.css");
   check(/@font-face/.test(themeCss) && !/fonts\.googleapis\.com/.test(themeCss), "theme.css self-hosts fonts (no Google @import)");
   check(["inter", "jetbrains-mono"].every(f => themeCss.includes("/fonts/" + f + ".woff2")), "theme.css references the self-hosted woff2 fonts");
-  const views = ["home", "rune-picker", "map-juicer", "jewel-pricer", "gear-finder", "filter-helper", "tab-tracker"];
+  const views = ["home", "rune-picker", "map-juicer", "jewel-pricer", "gear-finder", "filter-helper"];
   check(views.every(v => idx.includes(`id="${v}"`)), "index has all core view sections");
   check(idx.includes('href="#jewel-pricer"') && idx.includes('data-view-link="jewel-pricer"'), "index has the Jewel Pricer nav link");
   check(["toolroot-mj", "toolroot-rune", "toolroot-jewel", "toolroot-gear"].every(t => idx.includes(t)), "index has the active inline tool roots");
@@ -207,7 +207,7 @@ async function browserChecks() {
     }) }));
     await page.goto(BASE + "/#home", { waitUntil: "domcontentloaded" });
     let maxOv = 0, ifr = 0;
-    for (const v of ["map-juicer", "rune-picker", "tab-tracker", "jewel-pricer", "gear-finder", "filter-helper", "home"]) {
+    for (const v of ["map-juicer", "rune-picker", "jewel-pricer", "gear-finder", "filter-helper", "home"]) {
       await page.click(`[data-view-link="${v}"]`).catch(() => {});
       await page.waitForTimeout(500);
       maxOv = Math.max(maxOv, await page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth)));
@@ -286,35 +286,6 @@ async function browserChecks() {
       await p.close();
     }
 
-    // Tab Tracker: click-to-sort columns + a global mini progress bar on other pages
-    {
-      const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-      await p.route("**/api/trade-status**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ limited: false, secondsRemaining: 0, tradeLimitedUntil: "" }) }));
-      await p.route("**/api/tab-tracker**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
-        results: [
-          { qty: 1, name: "Bravo", each: 5, total: 5, source: "x" },
-          { qty: 1, name: "Alpha", each: 50, total: 50, source: "x" },
-          { qty: 1, name: "Charlie", each: 1, total: 1, source: "x" },
-        ], totalDiv: 0, totalEx: 56, pricedCount: 3, thinCount: 0, remaining: 0,
-      }) }));
-      await p.goto(BASE + "/index.html#tab-tracker", { waitUntil: "networkidle" }); await p.waitForTimeout(400);
-      // the paste box lives in a collapsed <details> — open it, then value the pasted items
-      await p.evaluate(() => { const d = document.querySelector(".toolroot-tt .tt-browser"); if (d) d.open = true; document.getElementById("ttPaste").value = "Alpha x1\nBravo x1\nCharlie x1"; });
-      await p.click("#ttValuePaste"); await p.waitForTimeout(500);
-      const ttNames = () => p.evaluate(() => [...document.querySelectorAll("#ttRows tr")].map(r => r.children[1] && r.children[1].textContent));
-      check((await ttNames()).length === 3, "tab tracker renders pasted rows");
-      await p.click('.toolroot-tt thead th[data-sort="name"]'); await p.waitForTimeout(150);
-      const ttByName = await ttNames();
-      check(ttByName[0] === "Alpha" && ttByName[2] === "Charlie", "tab tracker sorts by Item name on header click");
-      await p.click('.toolroot-tt thead th[data-sort="total"]'); await p.waitForTimeout(150);
-      const ttByVal = await ttNames();
-      check(ttByVal[0] === "Alpha" && ttByVal[2] === "Charlie", "tab tracker sorts by Value desc on header click");
-      // navigating away while progress lingers surfaces the shared background bar
-      await p.evaluate(() => { location.hash = "#home"; }); await p.waitForTimeout(200);
-      const miniShown = await p.evaluate(() => { const m = document.getElementById("bgBar"); return !!(m && !m.hidden && /tab tracker/i.test(m.textContent)); });
-      check(miniShown, "tab tracker progress shows in the shared top bar on other pages");
-      await p.close();
-    }
 
     // Rune Picker: "pricing…" items get an auto-updating status + show in the shared bar
     {
@@ -455,7 +426,7 @@ async function browserChecks() {
     }) }));
     const pm = await m.newPage(); await pm.goto(BASE + "/#home", { waitUntil: "domcontentloaded" }); await pm.waitForTimeout(400);
     let mOv = await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth));
-    for (const v of ["map-juicer", "rune-picker", "tab-tracker", "jewel-pricer", "gear-finder", "filter-helper"]) { await pm.click(`[data-view-link="${v}"]`); await pm.waitForTimeout(700); mOv = Math.max(mOv, await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth))); }
+    for (const v of ["map-juicer", "rune-picker", "jewel-pricer", "gear-finder", "filter-helper"]) { await pm.click(`[data-view-link="${v}"]`); await pm.waitForTimeout(700); mOv = Math.max(mOv, await pm.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth))); }
     check(mOv === 0, "mobile: no horizontal overflow on tool views");
     await m.close();
   } finally { await browser.close(); }
