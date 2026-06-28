@@ -9,7 +9,7 @@ window.__viewInit["gear-finder"] = function () {
     scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), analyze: $("gfAnalyze"),
     status: $("gfStatus"), weights: $("gfWeights"),
-    actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"), preserveEhp: $("gfPreserveEhp"), preserveEhpRow: $("gfPreserveEhpRow"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
+    actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"), preserveBox: $("gfPreserveBox"), preserveRow: $("gfPreserveRow"), preserveLabel: $("gfPreserveLabel"), preserveSub: $("gfPreserveSub"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
     item: $("gfItem"), scoreBtn: $("gfScoreBtn"), scoreOut: $("gfScoreOut"),
     pins: $("gfPins"), pinCount: $("gfPinCount"), pinBody: $("gfPinBody"),
   };
@@ -28,7 +28,7 @@ window.__viewInit["gear-finder"] = function () {
   const dpsOf = (s) => (s && (s.FullDPS || s.CombinedDPS || s.TotalDPS)) || 0;
   const deltaSpan = (d, unit) => { const c = d > 0 ? "up" : d < 0 ? "down" : "flat"; return `<span class="gf-delta ${c}">${d > 0 ? "+" : ""}${fmt(d)} ${unit}</span>`; };
 
-  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], preserveEhp: false, pinned: [] };
+  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], preserveOther: false, pinned: [] };
   const isUnique = (raw) => /rarity:\s*unique/i.test(String(raw || ""));
   state.pinned = loadPins();
 
@@ -161,7 +161,7 @@ window.__viewInit["gear-finder"] = function () {
     els.item.value = ""; els.scoreOut.innerHTML = "";
     // Clear the previous slot's "Rank by real DPS" results + their state — else the stale
     // rows stay visible and pinning one records it under the NEW slot (wrong-slot pins).
-    els.realOut.innerHTML = ""; state.realCands = []; state.realSearchUrl = ""; state.realHasDps = false; els.preserveEhpRow.hidden = true;
+    els.realOut.innerHTML = ""; state.realCands = []; state.realSearchUrl = ""; state.realHasDps = false; els.preserveRow.hidden = true;
     setStatus("Set a budget and analyze this slot — or paste an item below to score it directly.");
   }
 
@@ -216,11 +216,15 @@ window.__viewInit["gear-finder"] = function () {
     els.weights.innerHTML = `<p class="gf-metric">For your build, a better <b>${esc(state.curSlot)}</b> is ranked by <b>${metricTxt}</b>. Highest-value stats:</p>` +
       state.weights.map((w) => `<div class="gf-wrow"><span class="gf-wlabel">${esc(w.label || w.key)}</span><span class="gf-wbar"><span style="width:${Math.round((w.weight / max) * 100)}%"></span></span><span class="gf-wval">×${w.weight}</span></div>`).join("");
     els.actions.hidden = false; els.snippetBox.hidden = true;
-    // "Preserve EHP" is a PRE-scan setting (only for DPS-ranked slots) — tick it before
-    // ranking and the scan itself drops survivability-lowering candidates, so a deeper
-    // EHP-safe upgrade can surface (not just whatever survives filtering the top DPS list).
-    els.preserveEhpRow.hidden = (d.metric !== "dps");
-    els.preserveEhp.checked = state.preserveEhp;
+    // Pre-scan "preserve the OTHER metric" toggle: a DPS-ranked slot (amulet/weapon) can
+    // protect EHP; an EHP-ranked slot (helmet/chest — hybrids that also do some damage) can
+    // protect DPS. Ticked, the scan drops candidates that lower the secondary stat BEFORE
+    // ranking, so a deeper safe upgrade can surface. Label flips to match the slot's metric.
+    const sec = d.metric === "dps" ? "EHP" : "DPS";
+    els.preserveLabel.textContent = "Preserve " + sec;
+    els.preserveSub.textContent = "— hide upgrades that lower your " + (sec === "EHP" ? "survivability" : "damage");
+    els.preserveRow.hidden = false;
+    els.preserveBox.checked = state.preserveOther;
     setStatus("");
   }
 
@@ -232,16 +236,17 @@ window.__viewInit["gear-finder"] = function () {
     // 70% (not 100%) — PoB ΔDPS sorts the rest.
     const mods = state.weights.filter((w) => (w.cur || 0) > 0).slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((w.cur || 1) * 0.7)) }));
     els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
-    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveEhp: state.preserveEhp, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
     els.realRankBtn.disabled = false;
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
     if (d.sessionExpired) markSessionExpired();
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
+    const secLabel = (d.metric === "ehp" || (d.metric == null && !(d.baseDps > 0))) ? "DPS" : "EHP";
     const cands = d.candidates || [];
     if (!cands.length) {
-      const why = (state.preserveEhp && d.ehpDropped)
-        ? `All ${d.ehpDropped} matching candidate(s) would lower your EHP — untick “Preserve EHP” to see them.`
+      const why = (state.preserveOther && d.otherDropped)
+        ? `All ${d.otherDropped} matching candidate(s) would lower your ${secLabel} — untick “Preserve ${secLabel}” to see them.`
         : "No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot." + (d.spiritSkipped ? ` (${d.spiritSkipped} skipped — would break your auras on spirit)` : "");
       setStatus(why, false); return;
     }
@@ -249,10 +254,12 @@ window.__viewInit["gear-finder"] = function () {
     state.realHasDps = hasDps;
     state.realSearchUrl = d.searchUrl || "";   // fallback when an item lacks base/account
     state.realCands = cands;                   // referenced by the value-check + pin handlers
-    els.preserveEhpRow.hidden = !hasDps;       // "preserve EHP" only meaningful when ranking by DPS
-    els.preserveEhp.checked = state.preserveEhp;
+    els.preserveLabel.textContent = "Preserve " + secLabel;
+    els.preserveSub.textContent = "— hide upgrades that lower your " + (secLabel === "EHP" ? "survivability" : "damage");
+    els.preserveRow.hidden = false;
+    els.preserveBox.checked = state.preserveOther;
     renderRealCands();
-    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${state.preserveEhp && d.ehpDropped ? ` — Preserve EHP dropped ${d.ehpDropped}` : ""}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.`);
+    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${state.preserveOther && d.otherDropped ? ` — Preserve ${secLabel} dropped ${d.otherDropped}` : ""}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.`);
   }
 
   // Render the realrank pool: sort by the slot's gain metric, show the top 10. The Preserve-EHP
@@ -398,9 +405,10 @@ window.__viewInit["gear-finder"] = function () {
   els.realRankBtn.addEventListener("click", realRank);
   // Preserve EHP is a PRE-scan setting (applied server-side before ranking), so changing it
   // after results prompts a re-rank rather than silently re-filtering — no surprise re-fetch.
-  els.preserveEhp.addEventListener("change", () => {
-    state.preserveEhp = els.preserveEhp.checked;
-    if (state.realCands && state.realCands.length) setStatus(`Preserve EHP ${state.preserveEhp ? "on" : "off"} — click “Rank by real DPS” to apply.`);
+  els.preserveBox.addEventListener("change", () => {
+    state.preserveOther = els.preserveBox.checked;
+    const sec = state.realHasDps ? "EHP" : "DPS";
+    if (state.realCands && state.realCands.length) setStatus(`Preserve ${sec} ${state.preserveOther ? "on" : "off"} — click “Rank by real DPS” to apply.`);
   });
   if (els.pinBody) els.pinBody.addEventListener("click", async (ev) => {
     // Score all pins together in one PoB calc (real compounded gain).

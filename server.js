@@ -2918,13 +2918,15 @@ const server = http.createServer(async (req, res) => {
           }
         }
         if (!cands.length && fetchErr) throw fetchErr;   // total failure → outer catch (rate-limit msg etc.)
-        // Preserve EHP (pre-scan toggle, DPS slots): drop any candidate that lowers survivability
-        // BEFORE ranking, so a slightly-lower-DPS but EHP-safe item still surfaces in the top 25
-        // (a client-side post-filter on the top-DPS list would miss it).
-        let scoredCount = cands.length, ehpDropped = 0;
-        if (input.preserveEhp && metric === "dps") {
-          const kept = cands.filter((c) => (c.dEHP || 0) >= 0);
-          ehpDropped = cands.length - kept.length;
+        // Preserve-the-OTHER-metric (pre-scan toggle): drop any candidate that lowers the
+        // SECONDARY stat BEFORE ranking, so a slightly-lower-primary but safe item still
+        // surfaces in the top 25 (a client post-filter on the ranked list would miss it). On a
+        // DPS slot the secondary is EHP; on an EHP slot (helmet/chest hybrids) it's DPS.
+        let scoredCount = cands.length, otherDropped = 0;
+        if (input.preserveOther) {
+          const safe = metric === "dps" ? (c) => (c.dEHP || 0) >= 0 : (c) => (c.dDPS || 0) >= 0;
+          const kept = cands.filter(safe);
+          otherDropped = cands.length - kept.length;
           cands = kept;
         }
         const gainOf = (c) => metric === "ehp" ? c.dEHP : c.dDPS;   // rank by the slot's metric
@@ -2932,7 +2934,7 @@ const server = http.createServer(async (req, res) => {
         // The build-weighted/price search this came from — opening it lands on these
         // candidates (no per-item permalink exists on PoE trade). Each row links here.
         const searchUrl = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(usedLeague) + "/" + search.id : "";
-        send(res, 200, JSON.stringify({ available: true, weighted, sessionExpired, metric, spiritSkipped, ehpDropped, searchUrl, scored: scoredCount, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, weighted, sessionExpired, metric, spiritSkipped, otherDropped, searchUrl, scored: scoredCount, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         const msg = String(err.message);
