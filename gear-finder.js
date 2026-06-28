@@ -205,19 +205,31 @@ window.__viewInit["gear-finder"] = function () {
   function renderTree(d) {
     const add = (d.add || []), rem = (d.remove || []);
     if (!add.length && !rem.length) { return `<p class="status">No notables found within range — try a larger search radius.</p>`; }
+    // "Free to drop" = loses no DPS AND only negligible EHP. EHP-giving notables are NOT free
+    // — dropping them costs survivability, which the user wants to avoid where possible.
+    const baseEhp = d.baseEhp || 0;
+    const freeEhp = Math.max(80, Math.round(baseEhp * 0.005));   // ≤0.5% EHP ≈ negligible
+    const isFree = (r) => r.dDPS <= 0 && r.dEHP <= freeEhp;
     const perPt = (a) => a.dDPS / Math.max(1, a.pts);
-    const adds = add.slice(0, 15).map((a) => `<tr><td><b>${esc(a.name)}</b></td><td>${deltaSpan(a.dDPS, "DPS")}</td><td>${a.pts} pt</td><td class="muted">${fmt(perPt(a))}/pt</td></tr>`).join("");
-    const have = rem.slice(0, 15).map((r) => `<tr class="${r.dDPS <= 0 ? "gf-tree-dead" : ""}"><td><b>${esc(r.name)}</b></td><td>${r.dDPS > 0 ? deltaSpan(-r.dDPS, "DPS") : "<span class='muted'>no DPS</span>"}</td><td>${r.pts} pt</td></tr>`).join("");
-    // Rough respec hint: free your dead (0-DPS) allocated notables, take the top reachable one.
-    const dead = rem.filter((r) => r.dDPS <= 0);
+    // Adds: show the EHP change too (some notables also move EHP) so a DPS grab that tanks
+    // survivability is visible.
+    const adds = add.slice(0, 15).map((a) => `<tr><td><b>${esc(a.name)}</b></td><td>${deltaSpan(a.dDPS, "DPS")}</td><td>${a.dEHP ? deltaSpan(a.dEHP, "EHP") : ""}</td><td>${a.pts} pt</td><td class="muted">${fmt(perPt(a))}/pt</td></tr>`).join("");
+    // Allocated: safest-to-drop first (lowest combined DPS+EHP cost). Show BOTH costs so you
+    // see the EHP you'd give up. Struck through only when truly free.
+    const have = rem.slice().sort((a, b) => (a.dDPS + a.dEHP) - (b.dDPS + b.dEHP)).slice(0, 18).map((r) => {
+      const dpsCell = r.dDPS > 0 ? deltaSpan(-r.dDPS, "DPS") : "<span class='muted'>no DPS</span>";
+      const ehpCell = r.dEHP > 0 ? deltaSpan(-r.dEHP, "EHP") : "<span class='muted'>no EHP</span>";
+      return `<tr class="${isFree(r) ? "gf-tree-dead" : ""}"><td><b>${esc(r.name)}</b></td><td>${dpsCell}</td><td>${ehpCell}</td><td>${r.pts} pt</td></tr>`;
+    }).join("");
+    const dead = rem.filter(isFree);
     const deadPts = dead.reduce((s, r) => s + (r.pts || 1), 0);
     const top = add[0];
     const summary = (deadPts && top)
-      ? `<div class="gf-pinsum">Free up ~${deadPts} dead point${deadPts > 1 ? "s" : ""} (${dead.slice(0, 3).map((r) => esc(r.name)).join(", ")}${dead.length > 3 ? "…" : ""}) → e.g. <b>${esc(top.name)}</b> for <b><span class="gf-delta up">+${fmt(top.dDPS)} DPS</span></b> (${top.pts} pt). <span class="gf-note" title="Gains are exact PoB calcs done one node at a time. Pairing freed points with a new notable is a suggestion — confirm the actual respec path is legal in Path of Building (and that several moves together compound differently).">ⓘ</span></div>`
-      : "";
+      ? `<div class="gf-pinsum">Free up ~${deadPts} low-cost point${deadPts > 1 ? "s" : ""} (${dead.slice(0, 3).map((r) => esc(r.name)).join(", ")}${dead.length > 3 ? "…" : ""}) — each loses no DPS and ≤${fmt(freeEhp)} EHP → e.g. <b>${esc(top.name)}</b> for <b><span class="gf-delta up">+${fmt(top.dDPS)} DPS</span></b> (${top.pts} pt). <span class="gf-note" title="Gains are exact PoB calcs, one node at a time. Pairing freed points with a new notable is a suggestion — confirm the real respec path is legal in Path of Building, and that several moves together compound differently.">ⓘ</span></div>`
+      : `<div class="gf-pinsum">No truly free points — every allocated notable gives DPS or meaningful EHP, so moving points will cost some survivability. The EHP column shows what each drop costs; pick the lowest.</div>`;
     return summary + `<div class="gf-tree-cols">
       <div><p class="gf-scan-h">Move points INTO — best DPS within ${d.maxDepth} pts</p><table class="gf-opttbl"><tbody>${adds || "<tr><td class='muted'>none</td></tr>"}</tbody></table></div>
-      <div><p class="gf-scan-h">Your allocated notables — weakest first</p><table class="gf-opttbl"><tbody>${have || "<tr><td class='muted'>none</td></tr>"}</tbody></table></div>
+      <div><p class="gf-scan-h">Your allocated notables — safest to drop first</p><table class="gf-opttbl"><tbody>${have || "<tr><td class='muted'>none</td></tr>"}</tbody></table></div>
     </div>`;
   }
 
