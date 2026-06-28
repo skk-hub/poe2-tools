@@ -31,6 +31,7 @@ window.__viewInit["map-juicer"]=function(){
   let rarityMin = 0, packMin = 0, effMin = 0, wdropMin = 0;   // all start at 0 (off) — build up from nothing; wdrop is 0 or 100
   let dumpRarityKeep = 60;   // dump keeps maps with Item Rarity >= this%
   let dropKeep = 115;        // dump keeps maps with Waystone Drop Chance >= this% (your sustain rule); 0 = dump any drop roll
+  let monRarKeep = 80;       // dump keeps maps with Monster Rarity >= this% (user's keep rule); 0 = don't keep on monster rarity
   // Match a number ≥ pct (pct is a multiple of 10). Two-digit: first digit
   // (pct/10)…9 + any second digit (so ≥ pct); OR any three-digit (100+). Uses
   // [0-9] not "." so it can't swallow the trailing "%". The label token carries the
@@ -96,6 +97,7 @@ window.__viewInit["map-juicer"]=function(){
       `"!${atLeast(L.itemRarity, dumpRarityKeep, 87)}"`,   // keep high Item Rarity
       `"!${atLeast(L.monsterEffectiveness, 40, 70)}"`,     // keep Monster Effectiveness >=40%
     ];
+    if (monRarKeep > 0) blocks.push(`"!${atLeast(L.monsterRarity, monRarKeep)}"`);   // keep Monster Rarity >= selector
     if (dropKeep > 0) blocks.push(`"!${atLeast(L.waystoneDrop, dropKeep)}"`);   // keep Drop >= selector (0 = dump any drop)
     return blocks.join(" ");
   }
@@ -219,13 +221,13 @@ window.__viewInit["map-juicer"]=function(){
   function seg(attr, val, cur, label){ return `<button class="seg-btn${val===cur?" on":""}" type="button" data-${attr}="${val}">${esc(label)}</button>`; }
   // Each tunable: [lo, hi, click-step]. The control is a typeable number input
   // (type the value directly — no clicking to 0) flanked by −/+ for quick nudges.
-  const STEP_CFG = { rarity:[0,70,10], pack:[0,40,10], eff:[0,70,10], rarityKeep:[40,70,10], dropKeep:[0,150,5] };
-  function stepCur(id){ return ({ rarity:rarityMin, pack:packMin, eff:effMin, rarityKeep:dumpRarityKeep, dropKeep })[id]; }
+  const STEP_CFG = { rarity:[0,70,10], pack:[0,40,10], eff:[0,70,10], rarityKeep:[40,70,10], monRarKeep:[0,120,10], dropKeep:[0,150,5] };
+  function stepCur(id){ return ({ rarity:rarityMin, pack:packMin, eff:effMin, rarityKeep:dumpRarityKeep, monRarKeep, dropKeep })[id]; }
   function setStep(id, v){
     const c = STEP_CFG[id]; if (!c) return;
     v = clamp(Math.round(Number(v) || 0), c[0], c[1]);
     if (id==="rarity") rarityMin=v; else if (id==="pack") packMin=v; else if (id==="eff") effMin=v;
-    else if (id==="rarityKeep") dumpRarityKeep=v; else if (id==="dropKeep") dropKeep=v;
+    else if (id==="rarityKeep") dumpRarityKeep=v; else if (id==="monRarKeep") monRarKeep=v; else if (id==="dropKeep") dropKeep=v;
   }
   function stepper(id, label){
     const [lo, hi, step] = STEP_CFG[id], val = stepCur(id);
@@ -243,7 +245,7 @@ window.__viewInit["map-juicer"]=function(){
   function waystoneQs(){
     const segs = `<div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}${seg("wmatch","dump",wMatch,"Low-value dump")}</div>`;
     if (wMatch === "dump") {
-      return `${segs}<div class="forge-steps">${stepper("rarityKeep","Keep if Item Rarity ≥")}${stepper("dropKeep","Keep if Drop Chance ≥")}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones that are <b>~5ex bulk</b> and keeps the real money OUT of the dump pile: <b>Item Rarity ≥${dumpRarityKeep}%</b>, <b>Monster Effectiveness ≥40%</b>${dropKeep>0?`, and <b>Drop Chance ≥${dropKeep}%</b> (your sustain rule — set Drop to <b>0</b> to dump any drop roll)`:` — <b>Drop Chance off</b>, dumping any drop roll`}. <b>Monster Rarity is no longer auto-kept</b>: gated buy-side it's ~5ex solo (same as Pack Size), not worth keeping alone. Thresholds from buy-side sweeps on this exact class (2026-06-25). <b>Ignore the in-game price-check</b> — most "expensive"-looking juiced maps sell for ~5ex.</p>`;
+      return `${segs}<div class="forge-steps">${stepper("rarityKeep","Keep if Item Rarity ≥")}${stepper("monRarKeep","Keep if Monster Rarity ≥")}${stepper("dropKeep","Keep if Drop Chance ≥")}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones that are <b>~5ex bulk</b> and keeps the real money OUT of the dump pile: <b>Item Rarity ≥${dumpRarityKeep}%</b>, <b>Monster Effectiveness ≥40%</b>${monRarKeep>0?`, <b>Monster Rarity ≥${monRarKeep}%</b>`:``}${dropKeep>0?`, and <b>Drop Chance ≥${dropKeep}%</b> (your sustain rule — set Drop to <b>0</b> to dump any drop roll)`:` — <b>Drop Chance off</b>, dumping any drop roll`}. Thresholds from buy-side sweeps on this exact class (2026-06-25); Monster Rarity kept per your rule (set it to <b>0</b> to stop keeping on it). <b>Ignore the in-game price-check</b> — most "expensive"-looking juiced maps sell for ~5ex.</p>`;
     }
     return `
       ${segs}
