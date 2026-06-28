@@ -2143,6 +2143,18 @@ function pobItemFromTradeEntry(entry, extraImplicits) {
   return [head, `Item Level: ${ilvl}`, `Implicits: ${impl.length}`].concat(impl, expl).join("\n");
 }
 
+// The item's top-weighted rolled mods (statId + floored roll), for narrowing an
+// "open this listing" search to the exact item. Critical for jewels: their base type
+// ("Diamond"/"Sapphire") is generic, so base+account alone matches a seller's OTHER
+// jewels — adding 2-3 of its mods pins it.
+function linkModsFromEntry(entry, weights) {
+  const expl = (entry && entry.item && entry.item.explicitMods) || [];
+  const valOf = (statId) => { const md = expl.find((x) => (x && x.hash) === "stat." + statId); if (!md) return null; const n = parseFloat(String(md.description || "").replace(/[^\d.\-]+/g, " ").trim().split(" ")[0]); return Number.isFinite(n) ? n : null; };
+  const out = [];
+  for (const w of (weights || [])) { const v = valOf(w.statId); if (v != null) out.push({ statId: w.statId, min: Math.floor(v) }); if (out.length >= 3) break; }
+  return out;
+}
+
 function listingPriceFromEntry(entry, currencyRates) {
   const price = entry.listing && entry.listing.price;
   if (!price || !currencyRates[price.currency]) return null;
@@ -2987,7 +2999,7 @@ const server = http.createServer(async (req, res) => {
               const txt = pobItemFromTradeEntry(e, anointLines); if (!txt) continue;
               let st; try { st = await pob.calc(pobSlot, txt); } catch { continue; }
               const price = listingPriceFromEntry(e, rates) || {};
-              cands.push({ pobSlot, raw: txt, name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), base: (e.item && (e.item.typeLine || e.item.baseType)) || "", account: (e.listing && e.listing.account && e.listing.account.name) || "", priceDiv: price.divine || 0, priceEx: price.exalted || 0, dDPS: dpsOfOut(st) - baseDps, dEHP: ehpOfOut(st) - baseEhp, contrib: itemBreakpointContrib(parseItemStats(txt, baseSlot)) });
+              cands.push({ pobSlot, raw: txt, name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), base: (e.item && (e.item.typeLine || e.item.baseType)) || "", account: (e.listing && e.listing.account && e.listing.account.name) || "", mods: linkModsFromEntry(e, w.weights), priceDiv: price.divine || 0, priceEx: price.exalted || 0, dDPS: dpsOfOut(st) - baseDps, dEHP: ehpOfOut(st) - baseEhp, contrib: itemBreakpointContrib(parseItemStats(txt, baseSlot)) });
             }
           }
           pools.push({ slotId, pobSlot, slotName: slot.label || slotId, candidates: dominationPrune(cands) });
@@ -3039,7 +3051,7 @@ const server = http.createServer(async (req, res) => {
         legal.sort((a, b) => b.dDPS - a.dDPS);
         const results = legal.slice(0, 5).map((L) => ({
           dDPS: L.dDPS, dEHP: L.dEHP, priceDiv: L.priceDiv, have: L.have,
-          picks: L.combo.map((c, i) => ({ slot: pools[i].slotId, keep: !!c.keep, name: c.name, base: c.base || "", account: c.account || "", priceDiv: c.priceDiv || 0, dDPS: Math.round(c.dDPS), contrib: c.contrib })),
+          picks: L.combo.map((c, i) => ({ slot: pools[i].slotId, keep: !!c.keep, name: c.name, base: c.base || "", account: c.account || "", mods: c.mods || [], priceDiv: c.priceDiv || 0, dDPS: Math.round(c.dDPS), contrib: c.contrib })),
         }));
         send(res, 200, JSON.stringify({ available: true, baseDps: Math.round(baseDps), baseEhp: Math.round(baseEhp), floors, cur: floors._cur, slots: pools.map((p) => ({ slotId: p.slotId, slotName: p.slotName, pool: p.candidates.length })), inBudget, screened, combos: inBudget, evaluated, capped: screened > COMBO_CAP, legal: legal.length, results, partial: !!fetchErr }), "application/json; charset=utf-8");
       } catch (err) {
@@ -3244,6 +3256,10 @@ const server = http.createServer(async (req, res) => {
       const account = String(input.account || "").trim();
       if (!base || !account) { send(res, 400, JSON.stringify({ error: "need base + account" }), "application/json; charset=utf-8"); return; }
       const q = { query: { status: { option: GEAR_TRADE_STATUS }, type: base, filters: { trade_filters: { filters: { account: { input: account } } } } }, sort: { price: "asc" } };
+      // Narrow to the exact item with its mods (a seller may list several of the same base
+      // type — especially jewels, whose base alone matches many of their listings).
+      const linkMods = gearStatFilters(input.mods, 3);
+      if (linkMods.length) q.query.stats = gearStatGroup(linkMods);
       try {
         const { search, league: used } = await gearTradeSearch(q, league);
         const url2 = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(used) + "/" + search.id : "";

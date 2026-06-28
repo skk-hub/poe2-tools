@@ -44,10 +44,10 @@ window.__viewInit["gear-finder"] = function () {
 
   // Open one listing on the trade site by base+account (per-item link). Opens a blank
   // tab synchronously (keeps it out of the popup blocker), then redirects it.
-  async function openItemListing(base, account, fallbackUrl) {
+  async function openItemListing(base, account, fallbackUrl, mods) {
     if (!base || !account) { if (fallbackUrl) window.open(fallbackUrl, "_blank", "noopener"); return; }
     const w = window.open("about:blank", "_blank");
-    const d = await api("/api/gear/item-link", { league: state.league, base, account }).catch(() => null);
+    const d = await api("/api/gear/item-link", { league: state.league, base, account, mods: mods || [] }).catch(() => null);
     const dest = d && d.url ? d.url : fallbackUrl;
     if (dest && w) { try { w.opener = null; } catch {} w.location = dest; }
     else { if (w) w.close(); setStatus(d && d.limited ? "Trade2 is rate-limited — try again shortly." : "Couldn't open that listing.", true); }
@@ -183,7 +183,7 @@ window.__viewInit["gear-finder"] = function () {
       <div class="gf-optcard${i === 0 ? " best" : ""}">
         <div class="gf-opthead">${i === 0 ? "★ " : ""}<b>+${fmt(r.dDPS)} DPS</b> · ${deltaSpan(r.dEHP, "EHP")} · <b>${fmt(r.priceDiv)} div</b></div>
         <div class="gf-optbks">${bkRow(r.have)}</div>
-        <table class="gf-opttbl"><tbody>${r.picks.map((p) => { const link = !p.keep && p.base && p.account; return `<tr${link ? ` class="gf-opt-link" role="link" tabindex="0" data-base="${esc(p.base)}" data-account="${esc(p.account)}" title="open this listing on the trade site"` : ""}><td>${esc(slotLabel(p.slot))}</td><td>${p.keep ? "<span class='muted'>keep current</span>" : "<b>" + esc(p.name || "item") + "</b>"}</td><td>${p.keep ? "" : deltaSpan(p.dDPS, "DPS")}</td><td>${p.keep ? "" : fmt(p.priceDiv) + " div"}</td></tr>`; }).join("")}</tbody></table>
+        <table class="gf-opttbl"><tbody>${r.picks.map((p) => { const link = !p.keep && p.base && p.account; return `<tr${link ? ` class="gf-opt-link" role="link" tabindex="0" data-base="${esc(p.base)}" data-account="${esc(p.account)}" data-mods="${esc(JSON.stringify(p.mods || []))}" title="open this listing on the trade site"` : ""}><td>${esc(slotLabel(p.slot))}</td><td>${p.keep ? "<span class='muted'>keep current</span>" : "<b>" + esc(p.name || "item") + "</b>"}</td><td>${p.keep ? "" : deltaSpan(p.dDPS, "DPS")}</td><td>${p.keep ? "" : fmt(p.priceDiv) + " div"}</td></tr>`; }).join("")}</tbody></table>
       </div>`).join("");
   }
 
@@ -368,7 +368,7 @@ window.__viewInit["gear-finder"] = function () {
       const check = (c.mods && c.mods.length && c.priceDiv >= 1 && c.dDPS > 0) ? ` <button type="button" class="gf-check" data-idx="${idx}" title="score cheaper instant-buyout items in PoB — is any as good for less?">best price?</button><span class="gf-verdict"></span>` : "";
       const inner = `<button type="button" class="gf-pin" data-idx="${idx}" title="pin to the comparison board">📌</button> <b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${roiHtml}${best}${check}`;
       const canOpen = (c.base && c.account) || state.realSearchUrl;
-      return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
+      return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-idx="${idx}" data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
     }).join("");
   }
 
@@ -484,7 +484,7 @@ window.__viewInit["gear-finder"] = function () {
   els.optRun.addEventListener("click", optimize);
   els.optSlots.addEventListener("change", optSyncHint);
   // Click an optimizer pick row → open that listing on trade (same per-item link as the ranked rows).
-  els.optOut.addEventListener("click", (ev) => { const row = ev.target.closest(".gf-opt-link"); if (row) openItemListing(row.dataset.base, row.dataset.account, ""); });
+  els.optOut.addEventListener("click", (ev) => { const row = ev.target.closest(".gf-opt-link"); if (!row) return; let mods = []; try { mods = JSON.parse(row.dataset.mods || "[]"); } catch {} openItemListing(row.dataset.base, row.dataset.account, "", mods); });
   // Preserve EHP is a PRE-scan setting (applied server-side before ranking), so changing it
   // after results prompts a re-rank rather than silently re-filtering — no surprise re-fetch.
   els.preserveBox.addEventListener("change", () => {
@@ -558,7 +558,8 @@ window.__viewInit["gear-finder"] = function () {
       return;
     }
     const row = ev.target.closest(".gf-srow-link"); if (!row) return;
-    openItemListing(row.dataset.base, row.dataset.account, state.realSearchUrl);
+    const c = state.realCands[+row.dataset.idx] || {};
+    openItemListing(c.base || row.dataset.base, c.account || row.dataset.account, state.realSearchUrl, c.mods);
   });
   els.scoreBtn.addEventListener("click", scoreItems);
   els.copyQuery.addEventListener("click", () => {
