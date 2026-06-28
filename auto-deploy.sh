@@ -10,6 +10,8 @@
 #     echo "* * * * * flock -n /tmp/poe-deploy.lock $(pwd)/auto-deploy.sh >> /tmp/poe-deploy.log 2>&1") | crontab -
 # Watch it:  tail -f /tmp/poe-deploy.log
 set -eu
+# cron runs with a bare PATH — make sure docker/git resolve.
+export PATH="/usr/local/bin:/usr/bin:/bin:/snap/bin:$PATH"
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
 git fetch -q origin main
