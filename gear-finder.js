@@ -216,6 +216,11 @@ window.__viewInit["gear-finder"] = function () {
     els.weights.innerHTML = `<p class="gf-metric">For your build, a better <b>${esc(state.curSlot)}</b> is ranked by <b>${metricTxt}</b>. Highest-value stats:</p>` +
       state.weights.map((w) => `<div class="gf-wrow"><span class="gf-wlabel">${esc(w.label || w.key)}</span><span class="gf-wbar"><span style="width:${Math.round((w.weight / max) * 100)}%"></span></span><span class="gf-wval">×${w.weight}</span></div>`).join("");
     els.actions.hidden = false; els.snippetBox.hidden = true;
+    // "Preserve EHP" is a PRE-scan setting (only for DPS-ranked slots) — tick it before
+    // ranking and the scan itself drops survivability-lowering candidates, so a deeper
+    // EHP-safe upgrade can surface (not just whatever survives filtering the top DPS list).
+    els.preserveEhpRow.hidden = (d.metric !== "dps");
+    els.preserveEhp.checked = state.preserveEhp;
     setStatus("");
   }
 
@@ -227,14 +232,19 @@ window.__viewInit["gear-finder"] = function () {
     // 70% (not 100%) — PoB ΔDPS sorts the rest.
     const mods = state.weights.filter((w) => (w.cur || 0) > 0).slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((w.cur || 1) * 0.7)) }));
     els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
-    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveEhp: state.preserveEhp, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
     els.realRankBtn.disabled = false;
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
     if (d.sessionExpired) markSessionExpired();
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
     const cands = d.candidates || [];
-    if (!cands.length) { setStatus("No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot." + (d.spiritSkipped ? ` (${d.spiritSkipped} skipped — would break your auras on spirit)` : ""), false); return; }
+    if (!cands.length) {
+      const why = (state.preserveEhp && d.ehpDropped)
+        ? `All ${d.ehpDropped} matching candidate(s) would lower your EHP — untick “Preserve EHP” to see them.`
+        : "No listings matched on your top stats — your current rolls may already be near best-in-slot for this slot." + (d.spiritSkipped ? ` (${d.spiritSkipped} skipped — would break your auras on spirit)` : "");
+      setStatus(why, false); return;
+    }
     const hasDps = (d.metric || (d.baseDps > 0 ? "dps" : "ehp")) === "dps";
     state.realHasDps = hasDps;
     state.realSearchUrl = d.searchUrl || "";   // fallback when an item lacks base/account
@@ -242,27 +252,25 @@ window.__viewInit["gear-finder"] = function () {
     els.preserveEhpRow.hidden = !hasDps;       // "preserve EHP" only meaningful when ranking by DPS
     els.preserveEhp.checked = state.preserveEhp;
     renderRealCands();
-    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.`);
+    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${state.preserveEhp && d.ehpDropped ? ` — Preserve EHP dropped ${d.ehpDropped}` : ""}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.`);
   }
 
-  // Render the realrank pool: optionally drop EHP-lowering items (Preserve EHP), sort by the
-  // slot's gain metric, show the top 10. data-idx stays the index into state.realCands so the
-  // pin / best-price / open-listing handlers keep working after filtering.
+  // Render the realrank pool: sort by the slot's gain metric, show the top 10. The Preserve-EHP
+  // drop happens SERVER-side before ranking (so a deeper EHP-safe upgrade can surface), so this
+  // just renders. data-idx stays the index into state.realCands so the pin / best-price /
+  // open-listing handlers keep working.
   function renderRealCands() {
     const all = state.realCands || [];
     const hasDps = state.realHasDps;
     const gainOf = (c) => (hasDps ? c.dDPS : c.dEHP);
     const roi = (c) => (gainOf(c) > 0 && c.priceDiv > 0 ? gainOf(c) / c.priceDiv : 0);
     const fmtRoi = (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(1) + "k" : Math.round(v);
-    const preserve = hasDps && state.preserveEhp;
     let list = all.map((c, idx) => ({ c, idx }));
-    if (preserve) list = list.filter(({ c }) => (c.dEHP || 0) >= 0);   // keep only EHP-neutral-or-better
     list.sort((a, b) => gainOf(b.c) - gainOf(a.c));
     const top = list.slice(0, 10);
-    if (!top.length) { els.realOut.innerHTML = `<p class="status">No DPS upgrade keeps your EHP — untick “Preserve EHP” to see survivability-cost options.</p>`; return; }
+    if (!top.length) { els.realOut.innerHTML = ""; return; }
     let bestK = -1, bestVal = 0;
     top.forEach(({ c }, k) => { const g = gainOf(c); if (g > 0 && c.priceEx > 0 && g / c.priceEx > bestVal) { bestVal = g / c.priceEx; bestK = k; } });
-    const hidden = preserve ? all.length - list.length : 0;
     els.realOut.innerHTML = top.map(({ c, idx }, k) => {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
       // No seller-status badge: these are instant-buyout (async) listings, buyable even
@@ -276,7 +284,7 @@ window.__viewInit["gear-finder"] = function () {
       const inner = `<button type="button" class="gf-pin" data-idx="${idx}" title="pin to the comparison board">📌</button> <b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${roiHtml}${best}${check}`;
       const canOpen = (c.base && c.account) || state.realSearchUrl;
       return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
-    }).join("") + (hidden ? `<p class="gf-note" style="margin-top:6px">Preserve EHP: hid ${hidden} DPS upgrade${hidden > 1 ? "s" : ""} that lower your survivability.</p>` : "");
+    }).join("");
   }
 
   // Scan EVERY slot and rank them by upgrade ROI (gain per divine). Per slot:
@@ -388,7 +396,12 @@ window.__viewInit["gear-finder"] = function () {
   els.scanOut.addEventListener("click", (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { selectSlot(tr.dataset.slot); els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); analyzeSlot(); } });
   els.analyze.addEventListener("click", analyzeSlot);
   els.realRankBtn.addEventListener("click", realRank);
-  els.preserveEhp.addEventListener("change", () => { state.preserveEhp = els.preserveEhp.checked; renderRealCands(); });
+  // Preserve EHP is a PRE-scan setting (applied server-side before ranking), so changing it
+  // after results prompts a re-rank rather than silently re-filtering — no surprise re-fetch.
+  els.preserveEhp.addEventListener("change", () => {
+    state.preserveEhp = els.preserveEhp.checked;
+    if (state.realCands && state.realCands.length) setStatus(`Preserve EHP ${state.preserveEhp ? "on" : "off"} — click “Rank by real DPS” to apply.`);
+  });
   if (els.pinBody) els.pinBody.addEventListener("click", async (ev) => {
     // Score all pins together in one PoB calc (real compounded gain).
     const combo = ev.target.closest("#gfComboBtn");

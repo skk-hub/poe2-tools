@@ -2876,7 +2876,7 @@ const server = http.createServer(async (req, res) => {
         const baseSlot = slot.baseId || String(input.slot || "");
         const anointLines = baseSlot === "amulet" ? extractAnoint(input.current && input.current.raw) : [];
         let spiritSkipped = 0;
-        const cands = [];
+        let cands = [];
         let fetchErr = null;
         for (let i = 0; i < pick.length; i += 10) {   // Trade2 fetch caps at 10 ids/call
           let fetched;
@@ -2911,12 +2911,21 @@ const server = http.createServer(async (req, res) => {
           }
         }
         if (!cands.length && fetchErr) throw fetchErr;   // total failure → outer catch (rate-limit msg etc.)
+        // Preserve EHP (pre-scan toggle, DPS slots): drop any candidate that lowers survivability
+        // BEFORE ranking, so a slightly-lower-DPS but EHP-safe item still surfaces in the top 25
+        // (a client-side post-filter on the top-DPS list would miss it).
+        let scoredCount = cands.length, ehpDropped = 0;
+        if (input.preserveEhp && metric === "dps") {
+          const kept = cands.filter((c) => (c.dEHP || 0) >= 0);
+          ehpDropped = cands.length - kept.length;
+          cands = kept;
+        }
         const gainOf = (c) => metric === "ehp" ? c.dEHP : c.dDPS;   // rank by the slot's metric
         cands.sort((a, b) => (gainOf(b) - gainOf(a)) || (b.dEHP - a.dEHP));
         // The build-weighted/price search this came from — opening it lands on these
         // candidates (no per-item permalink exists on PoE trade). Each row links here.
         const searchUrl = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(usedLeague) + "/" + search.id : "";
-        send(res, 200, JSON.stringify({ available: true, weighted, sessionExpired, metric, spiritSkipped, searchUrl, scored: cands.length, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, weighted, sessionExpired, metric, spiritSkipped, ehpDropped, searchUrl, scored: scoredCount, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         const msg = String(err.message);
