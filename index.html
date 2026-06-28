@@ -373,6 +373,14 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <div class="pagehead">
         <h1>Gear Upgrade Finder</h1>
         <p class="sub">Import your Path of Building build, then find trade upgrades ranked by real DPS/EHP gain. <span id="gfMode" class="gf-badge"></span></p>
+        <details class="gf-session" id="gfSessionBox">
+          <summary>🔑 Session cookie <span id="gfSessionStat" class="sub"></span></summary>
+          <p class="sub">POESESSID unlocks the build-weighted trade sort and expires every few weeks. Paste a fresh one here — takes effect immediately, no restart. To get it: log into <b>pathofexile.com</b>, F12 → Application → Cookies → copy the <b>POESESSID</b> value (it's HttpOnly, so devtools, not the console).</p>
+          <div class="gf-row">
+            <input id="gfSessionIn" type="password" placeholder="paste POESESSID…" autocomplete="off" style="width:24em">
+            <button class="btn btn-primary" id="gfSessionSave" type="button">Save session</button>
+          </div>
+        </details>
       </div>
       <div class="gf-row" id="gfSavedRow" hidden>
         <span class="gf-contents" id="gfMyBuilds" hidden>

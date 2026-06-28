@@ -13,6 +13,7 @@ window.__viewInit["gear-finder"] = function () {
     optRow: $("gfOptRow"), optSlots: $("gfOptSlots"), optBreaks: $("gfOptBreaks"), optBudget: $("gfOptBudget"), optRun: $("gfOptRun"), optHint: $("gfOptHint"), optOut: $("gfOptOut"), preserveBox: $("gfPreserveBox"), preserveRow: $("gfPreserveRow"), preserveLabel: $("gfPreserveLabel"), preserveSub: $("gfPreserveSub"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
     item: $("gfItem"), scoreBtn: $("gfScoreBtn"), scoreOut: $("gfScoreOut"),
     pins: $("gfPins"), pinCount: $("gfPinCount"), pinBody: $("gfPinBody"),
+    sessionBox: $("gfSessionBox"), sessionIn: $("gfSessionIn"), sessionSave: $("gfSessionSave"), sessionStat: $("gfSessionStat"),
   };
   const PINS_KEY = "poe2.gearFinder.pins";
   const loadPins = () => { try { return JSON.parse(localStorage.getItem(PINS_KEY)) || []; } catch { return []; } };
@@ -76,7 +77,18 @@ window.__viewInit["gear-finder"] = function () {
   function markSessionExpired() {
     els.mode.className = "gf-badge fallback";
     els.mode.textContent = (state.headless ? "Headless DPS" : "Stat-only") + " · POESESSID expired";
-    els.mode.title = "Your logged-in session expired (GGG logged it out) — the search fell back to price-ranked (still finds upgrades). Paste a FRESH POESESSID into .env and RESTART the server to re-enable the build-value search.";
+    els.mode.title = "Your logged-in session expired (GGG logged it out) — the search fell back to price-ranked (still finds upgrades). Paste a FRESH POESESSID into 🔑 Session cookie above to re-enable the build-value search (no restart).";
+    refreshSession();
+  }
+
+  // POESESSID status pill + runtime paste (no restart). GET reports set/expired; Save POSTs
+  // a fresh cookie that takes effect immediately and persists across redeploys.
+  async function refreshSession() {
+    const d = await api("/api/session").catch(() => null);
+    if (!d || !els.sessionStat) return;
+    els.sessionStat.textContent = d.set ? (d.expired ? "⚠ expired" : "✓ set") : "— none set (price-only)";
+    els.sessionStat.className = "sub " + (d.set && !d.expired ? "ok" : d.set ? "err" : "");
+    if (d.set && d.expired && els.sessionBox) els.sessionBox.open = true;   // pop it open so the refresh is obvious
   }
 
   // The saved-builds row holds two things: "My builds" (only if any saved) and a
@@ -476,6 +488,15 @@ window.__viewInit["gear-finder"] = function () {
   els.scanOut.addEventListener("click", (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { selectSlot(tr.dataset.slot); els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); analyzeSlot(); } });
   els.analyze.addEventListener("click", analyzeSlot);
   els.realRankBtn.addEventListener("click", realRank);
+  els.sessionSave.addEventListener("click", async () => {
+    const v = (els.sessionIn.value || "").trim();
+    if (!v) { els.sessionStat.textContent = "paste a POESESSID first"; els.sessionStat.className = "sub err"; return; }
+    els.sessionSave.disabled = true;
+    const d = await api("/api/session", { poesessid: v }).catch(() => null);
+    els.sessionSave.disabled = false;
+    if (d && d.ok) { els.sessionIn.value = ""; els.sessionStat.textContent = "✓ saved"; els.sessionStat.className = "sub ok"; loadBuildsList(); }
+    else { els.sessionStat.textContent = (d && d.error) || "save failed"; els.sessionStat.className = "sub err"; }
+  });
   els.optRun.addEventListener("click", optimize);
   els.optSlots.addEventListener("change", optSyncHint);
   // Click an optimizer pick row → open that listing on trade (same per-item link as the ranked rows).
@@ -586,4 +607,5 @@ window.__viewInit["gear-finder"] = function () {
 
   refreshSaved();
   loadBuildsList();
+  refreshSession();
 };

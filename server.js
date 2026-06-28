@@ -42,12 +42,27 @@ const TRADE_MIN_GAP_MS = 3000;
 // unlocks the build-weighted `statgroup` sort that 400s anonymously, so realrank can
 // fetch the BEST candidates for the build instead of a price spread. Use a throwaway
 // account: this cookie = full account access.
-const POESESSID = (process.env.POESESSID || "").trim();
+// Set at boot from env/.env AND swappable at runtime via POST /api/session (persisted to
+// DATA_DIR so it survives restarts/redeploys). The cookie dies every few weeks; editing
+// .env on two boxes + rebuilding the container was the cumbersome part — now it's a paste.
+// Runtime-set (file) wins over env: it's the fresher one you just pasted.
+const SESSION_FILE = path.join(DATA_DIR, ".poesessid.json");
+let sessionId = (process.env.POESESSID || "").trim();
+let sessionExpiredFlag = false;   // flipped true when a weighted query 400s (GGG logged us out); surfaced in the UI
+try { const s = JSON.parse(fs.readFileSync(SESSION_FILE, "utf8")); if (s && s.poesessid) sessionId = String(s.poesessid).trim(); } catch {}
 const TRADE_HEADERS = {
   "Content-Type": "application/json",
   "User-Agent": "poe-tools-local/0.1 (contact: " + (process.env.POE_CONTACT || "unset") + ")",
-  ...(POESESSID ? { "Cookie": "POESESSID=" + POESESSID } : {}),
+  ...(sessionId ? { "Cookie": "POESESSID=" + sessionId } : {}),
 };
+// Mutate TRADE_HEADERS in place — the trade queue spreads it per-request, so the new
+// cookie takes effect immediately with no restart.
+function setSessionId(val) {
+  sessionId = String(val || "").trim();
+  if (sessionId) { TRADE_HEADERS.Cookie = "POESESSID=" + sessionId; sessionExpiredFlag = false; }
+  else { delete TRADE_HEADERS.Cookie; }
+  try { fs.writeFileSync(SESSION_FILE, JSON.stringify({ poesessid: sessionId })); } catch {}
+}
 const TRADE_TIMEOUT_MS = 3500;
 // Record/replay Trade2 traffic so the tool develops + tests with zero live GGG
 // calls (the legit alternative to IP-rotation evasion). POE_RECORD=1 captures real
@@ -2618,6 +2633,23 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // POESESSID: GET whether one is set + last-known liveness; POST to swap it at runtime
+    // (persisted, no restart — see setSessionId). Same trust model as /api/vpn: the cookie
+    // is full account access, so this is reachable only on your trusted LAN/Tailscale.
+    if (url.pathname === "/api/session") {
+      const J = "application/json; charset=utf-8";
+      if (req.method === "POST") {
+        const input = await readJson(req);
+        const v = String(input.poesessid || "").trim().replace(/^POESESSID=/i, "");
+        if (v.length < 10) { send(res, 400, JSON.stringify({ error: "paste a POESESSID value" }), J); return; }
+        setSessionId(v);
+        send(res, 200, JSON.stringify({ ok: true, set: true }), J);
+        return;
+      }
+      send(res, 200, JSON.stringify({ set: !!sessionId, expired: sessionExpiredFlag }), J);
+      return;
+    }
+
     // VPN exit-country: GET current, POST to switch (see gluetun helper above).
     if (url.pathname === "/api/vpn") {
       const J = "application/json; charset=utf-8";
@@ -2746,7 +2778,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── Gear Upgrade Finder (PoB-driven) ──────────────────────────────────
     if (url.pathname === "/api/gear/builds") {
-      send(res, 200, JSON.stringify({ dir: POB_BUILDS_DIR, builds: listPobBuilds(), headless: await pob.ready(), poesessid: !!POESESSID }), "application/json; charset=utf-8");
+      send(res, 200, JSON.stringify({ dir: POB_BUILDS_DIR, builds: listPobBuilds(), headless: await pob.ready(), poesessid: !!sessionId }), "application/json; charset=utf-8");
       return;
     }
 
@@ -3005,7 +3037,7 @@ const server = http.createServer(async (req, res) => {
       // and score the genuinely-best candidates. Logged-out that sort 400s, so fall back to
       // a stat-floor + price-spread. Weights come from the client's /api/gear/weights result.
       const weights = (Array.isArray(input.weights) ? input.weights : []).filter((w) => w && /^(explicit\.stat_\d+|pseudo\.[a-z0-9_]+)$/.test(w.statId) && Number(w.weight) > 0);
-      let weighted = !!POESESSID && weights.length > 0;
+      let weighted = !!sessionId && weights.length > 0;
       // Sort DESC by default: without a POESESSID value-sort, the search only sees the
       // first 100 results, and the CHEAPEST 100 of a slot are always junk far below
       // decent gear (→ "no upgrade found"). The priciest 100 are where real upgrades
@@ -3059,7 +3091,7 @@ const server = http.createServer(async (req, res) => {
           // then treats us as logged-out → "too complex"/"log in"). POESESSID IS set here
           // (else weighted would be false), so a 400 means the session died → flag it so
           // the UI can prompt a refresh, and fall back to the non-weighted query.
-          if (weighted && /HTTP 400/.test(String(e && e.message))) { sessionExpired = true; weighted = false; q = buildQ(false); ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
+          if (weighted && /HTTP 400/.test(String(e && e.message))) { sessionExpired = true; sessionExpiredFlag = true; weighted = false; q = buildQ(false); ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
           else throw e;
         }
         const all = search.result || [];
