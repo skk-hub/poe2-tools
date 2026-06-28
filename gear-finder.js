@@ -126,8 +126,9 @@ window.__viewInit["gear-finder"] = function () {
       `<label class="gf-optchk"><input type="checkbox" class="gf-optslot" value="${esc(id)}"> ${esc(id)} <span class="muted">${esc(s.name || "")}</span></label>`).join("");
     const rar = Math.round(((Number(b.EffectiveLootRarityMod) || 1) - 1) * 100);
     const bk = [["fireRes", "Fire", b.FireResist], ["coldRes", "Cold", b.ColdResist], ["lightRes", "Light", b.LightningResist], ["chaosRes", "Chaos", b.ChaosResist], ["spiritFree", "Spirit free", b.SpiritUnreserved], ["rarityPct", "Rarity %", rar]];
-    els.optBreaks.innerHTML = `<span class="sub">Breakpoints (≥, editable — dial down to probe under):</span>` + bk.map(([k, label, v]) =>
-      `<label class="gf-optbk">${label} <input class="gf-optbkin" data-k="${k}" type="number" value="${Math.round(Number(v) || 0)}" style="width:4em"></label>`).join("");
+    els.optBreaks.innerHTML = `<div class="gf-opt-bklabel">Breakpoints — every set must stay <b>at or above</b> these. Editable: dial one down to probe what's hidden just under it.</div>`
+      + `<div class="gf-opt-bkrow">` + bk.map(([k, label, v]) =>
+        `<label class="gf-optbk"><span class="gf-optbk-l">${label}</span><span class="gf-optbk-ge">≥</span><input class="gf-optbkin" data-k="${k}" type="number" value="${Math.round(Number(v) || 0)}" inputmode="numeric"></label>`).join("") + `</div>`;
     els.optRow.hidden = false;
     els.optOut.innerHTML = "";
     optSyncHint();
