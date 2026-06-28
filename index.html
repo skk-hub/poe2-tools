@@ -48,6 +48,10 @@ a:hover{text-decoration:underline}
 .vpnpill.busy{opacity:.7;pointer-events:none}
 .vpnpill.busy .vpnpill-dot{background:var(--gold-bright);animation:vpnpulse 1s ease-in-out infinite}
 .vpnpill.err .vpnpill-dot{background:oklch(65% 0.2 25)}
+.sesspill{cursor:pointer}
+.sesspill .vpnpill-globe{font-size:13px;filter:grayscale(.3)}
+.sesspill input{appearance:none;background:transparent;border:0;outline:0;color:var(--text);font:600 12px var(--font-ui);width:13em}
+.sesspill input[hidden]{display:none}
 @keyframes vpnpulse{0%,100%{opacity:.35}50%{opacity:1}}
 
 h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;line-height:1.06;letter-spacing:-.02em;margin:14px 0 0;text-wrap:balance}
@@ -232,6 +236,11 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <select id="vpnSelect" aria-label="VPN exit country"><option>VPN…</option></select>
         <span class="vpnpill-dot" id="vpnDot" aria-hidden="true"></span>
       </label>
+      <span class="vpnpill sesspill" id="sessPill" hidden title="Trade session (POESESSID) — green = build-weighted search on; red = expired, click to paste a fresh one">
+        <span class="vpnpill-globe" aria-hidden="true">🔑</span>
+        <input id="sessIn" type="password" placeholder="paste POESESSID, Enter" autocomplete="off" hidden>
+        <span class="vpnpill-dot" id="sessDot" aria-hidden="true"></span>
+      </span>
     </nav>
   </div>
 </header>
@@ -373,14 +382,6 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <div class="pagehead">
         <h1>Gear Upgrade Finder</h1>
         <p class="sub">Import your Path of Building build, then find trade upgrades ranked by real DPS/EHP gain. <span id="gfMode" class="gf-badge"></span></p>
-        <details class="gf-session" id="gfSessionBox">
-          <summary>🔑 Session cookie <span id="gfSessionStat" class="sub"></span></summary>
-          <p class="sub">POESESSID unlocks the build-weighted trade sort and expires every few weeks. Paste a fresh one here — takes effect immediately, no restart. To get it: log into <b>pathofexile.com</b>, F12 → Application → Cookies → copy the <b>POESESSID</b> value (it's HttpOnly, so devtools, not the console).</p>
-          <div class="gf-row">
-            <input id="gfSessionIn" type="password" placeholder="paste POESESSID…" autocomplete="off" style="width:24em">
-            <button class="btn btn-primary" id="gfSessionSave" type="button">Save session</button>
-          </div>
-        </details>
       </div>
       <div class="gf-row" id="gfSavedRow" hidden>
         <span class="gf-contents" id="gfMyBuilds" hidden>
@@ -592,6 +593,35 @@ window.__bg=(function(){
       if(!r.ok){ pill.classList.remove("busy"); pill.classList.add("err"); return; }
       poll(from);
     }catch{ pill.classList.remove("busy"); pill.classList.add("err"); }
+  });
+  load();
+})();
+// Trade-session (POESESSID) pill, next to the VPN pill. Green = set & not expired;
+// red = expired/none → click to reveal an inline paste field. Expires every few weeks;
+// pasting a fresh cookie takes effect immediately (no restart). HttpOnly, so you copy it
+// from devtools (F12 → Application → Cookies → POESESSID).
+(function(){
+  const pill=document.getElementById("sessPill"); if(!pill) return;
+  const inp=document.getElementById("sessIn");
+  function paint(d){
+    pill.hidden=false; pill.classList.remove("busy");
+    const ok=d&&d.set&&!d.expired;
+    pill.classList.toggle("ok",ok); pill.classList.toggle("err",!ok);
+  }
+  async function load(){ try{ paint(await(await fetch("/api/session")).json()); }catch{ pill.hidden=true; } }
+  window.__sessRefresh=load;   // gear-finder calls this when a search detects expiry
+  pill.addEventListener("click",e=>{
+    if(e.target===inp) return;
+    inp.hidden=!inp.hidden; if(!inp.hidden){ inp.focus(); }
+  });
+  inp.addEventListener("keydown",async e=>{
+    if(e.key!=="Enter") return;
+    const v=inp.value.trim(); if(v.length<10) return;
+    pill.classList.remove("ok","err"); pill.classList.add("busy");
+    try{
+      const r=await fetch("/api/session",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({poesessid:v})});
+      inp.value=""; inp.hidden=true; if(r.ok) paint({set:true,expired:false}); else { paint({set:true,expired:true}); }
+    }catch{ paint({set:true,expired:true}); }
   });
   load();
 })();
