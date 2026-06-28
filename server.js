@@ -2848,7 +2848,7 @@ const server = http.createServer(async (req, res) => {
       const slotIds = (Array.isArray(input.slots) ? input.slots : []).map(String).filter(Boolean).slice(0, 3);
       if (slotIds.length < 2) { send(res, 400, JSON.stringify({ error: "Pick 2-3 slots" }), "application/json; charset=utf-8"); return; }
       let parsed; try { parsed = parsePobBuild(buildXml); } catch (e) { send(res, 400, JSON.stringify({ error: "Not a PoB build: " + e.message }), "application/json; charset=utf-8"); return; }
-      const POOL = 12, COMBO_CAP = 300;
+      const POOL = 10, COMBO_CAP = 300;   // Trade2 /fetch caps at 10 ids per call
       try {
         let fetchErr = null;
         const pools = [];
