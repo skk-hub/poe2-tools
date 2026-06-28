@@ -7,7 +7,7 @@ window.__viewInit["gear-finder"] = function () {
     code: $("gfCode"), importBtn: $("gfImport"), paste: $("gfPaste"), saveName: $("gfSaveName"), saveBuild: $("gfSaveBuild"), saveBox: $("gfSaveBox"), saveConfirm: $("gfSaveConfirm"),
     build: $("gfBuild"), slots: $("gfSlots"),
     scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
-    panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), analyze: $("gfAnalyze"),
+    panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), budgetMin: $("gfBudgetMin"), analyze: $("gfAnalyze"),
     status: $("gfStatus"), weights: $("gfWeights"),
     actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"),
     optRow: $("gfOptRow"), optSlots: $("gfOptSlots"), optBreaks: $("gfOptBreaks"), optBudget: $("gfOptBudget"), optRun: $("gfOptRun"), optHint: $("gfOptHint"), optOut: $("gfOptOut"), preserveBox: $("gfPreserveBox"), preserveRow: $("gfPreserveRow"), preserveLabel: $("gfPreserveLabel"), preserveSub: $("gfPreserveSub"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
@@ -38,6 +38,17 @@ window.__viewInit["gear-finder"] = function () {
     return r.json();
   }
   function setStatus(t, err) { els.status.className = "status" + (err ? " err" : ""); els.status.textContent = t || ""; }
+
+  // Open one listing on the trade site by base+account (per-item link). Opens a blank
+  // tab synchronously (keeps it out of the popup blocker), then redirects it.
+  async function openItemListing(base, account, fallbackUrl) {
+    if (!base || !account) { if (fallbackUrl) window.open(fallbackUrl, "_blank", "noopener"); return; }
+    const w = window.open("about:blank", "_blank");
+    const d = await api("/api/gear/item-link", { league: state.league, base, account }).catch(() => null);
+    const dest = d && d.url ? d.url : fallbackUrl;
+    if (dest && w) { try { w.opener = null; } catch {} w.location = dest; }
+    else { if (w) w.close(); setStatus(d && d.limited ? "Trade2 is rate-limited — try again shortly." : "Couldn't open that listing.", true); }
+  }
 
   async function copyText(txt) {
     if (navigator.clipboard && window.isSecureContext) { try { await navigator.clipboard.writeText(txt); return true; } catch {} }
@@ -168,7 +179,7 @@ window.__viewInit["gear-finder"] = function () {
       <div class="gf-optcard${i === 0 ? " best" : ""}">
         <div class="gf-opthead">${i === 0 ? "★ " : ""}<b>+${fmt(r.dDPS)} DPS</b> · ${deltaSpan(r.dEHP, "EHP")} · <b>${fmt(r.priceDiv)} div</b></div>
         <div class="gf-optbks">${bkRow(r.have)}</div>
-        <table class="gf-opttbl"><tbody>${r.picks.map((p) => `<tr><td>${esc(p.slot)}</td><td>${p.keep ? "<span class='muted'>keep current</span>" : "<b>" + esc(p.name || "item") + "</b>"}</td><td>${p.keep ? "" : deltaSpan(p.dDPS, "DPS")}</td><td>${p.keep ? "" : fmt(p.priceDiv) + " div"}</td></tr>`).join("")}</tbody></table>
+        <table class="gf-opttbl"><tbody>${r.picks.map((p) => { const link = !p.keep && p.base && p.account; return `<tr${link ? ` class="gf-opt-link" role="link" tabindex="0" data-base="${esc(p.base)}" data-account="${esc(p.account)}" title="open this listing on the trade site"` : ""}><td>${esc(p.slot)}</td><td>${p.keep ? "<span class='muted'>keep current</span>" : "<b>" + esc(p.name || "item") + "</b>"}</td><td>${p.keep ? "" : deltaSpan(p.dDPS, "DPS")}</td><td>${p.keep ? "" : fmt(p.priceDiv) + " div"}</td></tr>`; }).join("")}</tbody></table>
       </div>`).join("");
   }
 
@@ -293,7 +304,7 @@ window.__viewInit["gear-finder"] = function () {
     // 70% (not 100%) — PoB ΔDPS sorts the rest.
     const mods = state.weights.filter((w) => (w.cur || 0) > 0).slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((w.cur || 1) * 0.7)) }));
     els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
-    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, minPriceDiv: Number(els.budgetMin.value) || 0, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
     els.realRankBtn.disabled = false;
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
@@ -329,10 +340,15 @@ window.__viewInit["gear-finder"] = function () {
     const gainOf = (c) => (hasDps ? c.dDPS : c.dEHP);
     const roi = (c) => (gainOf(c) > 0 && c.priceDiv > 0 ? gainOf(c) / c.priceDiv : 0);
     const fmtRoi = (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(1) + "k" : Math.round(v);
-    let list = all.map((c, idx) => ({ c, idx }));
+    // Drop downgrades — only show real upgrades (positive gain on the slot's metric).
+    let list = all.map((c, idx) => ({ c, idx })).filter(({ c }) => gainOf(c) > 0);
     list.sort((a, b) => gainOf(b.c) - gainOf(a.c));
     const top = list.slice(0, 10);
-    if (!top.length) { els.realOut.innerHTML = ""; return; }
+    if (!top.length) {
+      const unit = hasDps ? "DPS" : "EHP";
+      els.realOut.innerHTML = `<p class="status">All ${all.length} in-budget listing(s) were ${unit} downgrades — your current ${state.curSlot} is likely near best-in-slot here. Try a higher Max div or dial a breakpoint down.</p>`;
+      return;
+    }
     let bestK = -1, bestVal = 0;
     top.forEach(({ c }, k) => { const g = gainOf(c); if (g > 0 && c.priceEx > 0 && g / c.priceEx > bestVal) { bestVal = g / c.priceEx; bestK = k; } });
     els.realOut.innerHTML = top.map(({ c, idx }, k) => {
@@ -462,6 +478,8 @@ window.__viewInit["gear-finder"] = function () {
   els.realRankBtn.addEventListener("click", realRank);
   els.optRun.addEventListener("click", optimize);
   els.optSlots.addEventListener("change", optSyncHint);
+  // Click an optimizer pick row → open that listing on trade (same per-item link as the ranked rows).
+  els.optOut.addEventListener("click", (ev) => { const row = ev.target.closest(".gf-opt-link"); if (row) openItemListing(row.dataset.base, row.dataset.account, ""); });
   // Preserve EHP is a PRE-scan setting (applied server-side before ranking), so changing it
   // after results prompts a re-rank rather than silently re-filtering — no surprise re-fetch.
   els.preserveBox.addEventListener("change", () => {
@@ -535,13 +553,7 @@ window.__viewInit["gear-finder"] = function () {
       return;
     }
     const row = ev.target.closest(".gf-srow-link"); if (!row) return;
-    const base = row.dataset.base, account = row.dataset.account;
-    if (!base || !account) { if (state.realSearchUrl) window.open(state.realSearchUrl, "_blank", "noopener"); return; }
-    const w = window.open("about:blank", "_blank");   // sync open keeps it out of the popup blocker
-    const d = await api("/api/gear/item-link", { league: state.league, base, account }).catch(() => null);
-    const dest = d && d.url ? d.url : state.realSearchUrl;
-    if (dest && w) { try { w.opener = null; } catch {} w.location = dest; }
-    else { if (w) w.close(); setStatus(d && d.limited ? "Trade2 is rate-limited — try again shortly." : "Couldn't open that listing.", true); }
+    openItemListing(row.dataset.base, row.dataset.account, state.realSearchUrl);
   });
   els.scoreBtn.addEventListener("click", scoreItems);
   els.copyQuery.addEventListener("click", () => {
