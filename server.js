@@ -671,6 +671,32 @@ function fmtSidePx(px, tag) {
 // Masterwork Rune: bulk floor 1 div vs real 0.25 div). This is the PRIMARY price
 // source now; the Trade2 bulk exchange (exchangePriceEx) stays for live offers +
 // as a fallback when the proxy is unreachable.
+// ── VPN country switch (gluetun control server) ──────────────────────────────
+// poe-tools shares the gluetun container's network namespace (compose:
+// network_mode "service:vpn"), so its control server is on localhost:8000.
+// PUT /v1/vpn/settings auto-reconnects to the new country (gluetun's SetSettings
+// does Stopped→Running on change) — no manual status cycle needed.
+// ponytail: in-container control API is the only runtime switch — server.js
+// can't recreate the container to change SERVER_COUNTRIES.
+const GLUETUN_URL = process.env.GLUETUN_URL || "http://127.0.0.1:8000";
+// EU realm: keep the exit in/near EU. NordVPN/gluetun country names (full names).
+const VPN_COUNTRIES = ["Netherlands", "Germany", "France", "United Kingdom", "Sweden", "Poland", "Spain", "Italy", "Switzerland", "Finland", "Norway", "Denmark", "Ireland", "Czech Republic", "Austria", "Belgium"];
+async function gluetun(p, method = "GET", body) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const r = await fetch(GLUETUN_URL + p, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    });
+    const text = await r.text();
+    let json; try { json = JSON.parse(text); } catch { json = text; }
+    return { ok: r.ok, status: r.status, json };
+  } finally { clearTimeout(t); }
+}
+
 const EE2_PROXY_BASE = process.env.EE2_PROXY_BASE || "https://api.exiledexchange2.dev/proxy";
 const EE2_PROXY_FILE = path.join(DATA_DIR, ".ee2-proxy.json");
 const EE2_PROXY_TTL_MS = 25 * 60 * 1000;   // EE2 itself refreshes ~31 min; we cache 25
@@ -2589,6 +2615,29 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/trade-status") {
       send(res, 200, JSON.stringify(tradeStatus()), "application/json; charset=utf-8");
+      return;
+    }
+
+    // VPN exit-country: GET current, POST to switch (see gluetun helper above).
+    if (url.pathname === "/api/vpn") {
+      const J = "application/json; charset=utf-8";
+      if (req.method === "POST") {
+        const input = await readJson(req);
+        const country = String(input.country || "").trim();
+        if (!VPN_COUNTRIES.includes(country)) { send(res, 400, JSON.stringify({ error: "unknown country" }), J); return; }
+        const upd = await gluetun("/v1/vpn/settings", "PUT", { provider: { server_selection: { countries: [country] } } });
+        if (!upd.ok) { send(res, 502, JSON.stringify({ error: "gluetun: " + (upd.json && upd.json.error || upd.status) }), J); return; }
+        send(res, 200, JSON.stringify({ ok: true, country }), J);
+        return;
+      }
+      const ip = await gluetun("/v1/publicip/ip").catch((e) => ({ ok: false, json: String(e && e.message || e) }));
+      send(res, 200, JSON.stringify({
+        ok: !!ip.ok,
+        country: (ip.json && ip.json.country) || null,
+        city: (ip.json && ip.json.city) || null,
+        ip: (ip.json && ip.json.public_ip) || null,
+        countries: VPN_COUNTRIES,
+      }), J);
       return;
     }
 

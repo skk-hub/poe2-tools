@@ -23,6 +23,12 @@ services:
     # The app's port is published HERE (poe-tools shares this container's network).
     ports:
       - "17777:17777"
+    # Control server auth: gluetun requires auth config for its control API.
+    # poe-tools reaches it on localhost (shared netns) to switch exit-country
+    # from the UI, so the two routes it uses are opened unauthenticated. The
+    # control server isn't published, so it's only reachable inside the netns.
+    volumes:
+      - ./gluetun-auth.toml:/gluetun/auth/config.toml:ro
     restart: unless-stopped
 
   poe-tools:

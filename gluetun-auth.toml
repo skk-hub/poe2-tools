@@ -1,0 +1,8 @@
+# gluetun control server auth. poe-tools (shared net namespace) calls these two
+# routes on localhost:8000 to read + switch the VPN exit country from the UI.
+# The control server port isn't published, so it's only reachable inside the
+# netns — opening these routes is local-only, not internet-exposed.
+[[roles]]
+name = "poe-tools"
+routes = ["GET /v1/publicip/ip", "PUT /v1/vpn/settings"]
+auth = "none"

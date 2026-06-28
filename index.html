@@ -36,6 +36,19 @@ a:hover{text-decoration:underline}
 .navbtn:hover{color:var(--text);background:var(--surface-2);text-decoration:none}
 .navbtn.active{color:var(--gold-bright);background:var(--gold-soft)}
 .navbtn.active::after{content:"";position:absolute;left:13px;right:13px;bottom:-9px;height:2px;border-radius:2px;background:var(--gold)}
+.vpnpill{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 11px;border-radius:var(--r);background:var(--surface-2);border:1px solid var(--border);cursor:pointer;transition:border-color var(--t),background var(--t)}
+.vpnpill[hidden]{display:none}
+.vpnpill:hover{border-color:var(--gold);background:var(--gold-soft)}
+.vpnpill-globe{display:grid;place-items:center;color:var(--text-muted)}
+.vpnpill-globe svg{width:15px;height:15px;display:block}
+.vpnpill select{appearance:none;-webkit-appearance:none;background:transparent;border:0;outline:0;color:var(--text);font:600 12.5px var(--font-ui);cursor:pointer;padding-right:2px;max-width:11em}
+.vpnpill select option{background:var(--surface-2);color:var(--text)}
+.vpnpill-dot{width:7px;height:7px;border-radius:50%;background:var(--text-faint);flex:none;transition:background var(--t)}
+.vpnpill.ok .vpnpill-dot{background:oklch(72% 0.17 150)}
+.vpnpill.busy{opacity:.7;pointer-events:none}
+.vpnpill.busy .vpnpill-dot{background:var(--gold-bright);animation:vpnpulse 1s ease-in-out infinite}
+.vpnpill.err .vpnpill-dot{background:oklch(65% 0.2 25)}
+@keyframes vpnpulse{0%,100%{opacity:.35}50%{opacity:1}}
 
 h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;line-height:1.06;letter-spacing:-.02em;margin:14px 0 0;text-wrap:balance}
 
@@ -214,6 +227,11 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Regex Cheat Sheet</a>
       <a class="navbtn" href="#filter-helper" data-view-link="filter-helper">Filter Helper</a>
       <a class="navbtn" href="#gear-finder" data-view-link="gear-finder">Gear Finder</a>
+      <label class="vpnpill" id="vpnPill" hidden title="VPN exit country — the IP this app's trade calls go out on (separate from your game client)">
+        <span class="vpnpill-globe" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18Z"/></svg></span>
+        <select id="vpnSelect" aria-label="VPN exit country"><option>VPN…</option></select>
+        <span class="vpnpill-dot" id="vpnDot" aria-hidden="true"></span>
+      </label>
     </nav>
   </div>
 </header>
@@ -529,6 +547,44 @@ window.__bg=(function(){
   window.addEventListener("storage",e=>{ if(!e||e.key===PIN_KEY) render(); });
   window.addEventListener("focus",render);
   render();
+})();
+// VPN exit-country selector (appbar). Reads/sets gluetun via /api/vpn. Hidden when
+// no VPN is present (local dev) so it only shows on the deployed VPN'd container.
+(function(){
+  const pill=document.getElementById("vpnPill"); if(!pill) return;
+  const sel=document.getElementById("vpnSelect");
+  let current=null;
+  function show(d){
+    pill.classList.remove("busy");
+    if(!d||!d.ok){ pill.hidden=true; return; }
+    pill.hidden=false; pill.classList.remove("err"); pill.classList.add("ok");
+    current=d.country||null;
+    if(Array.isArray(d.countries)&&sel.dataset.filled!=="1"){
+      sel.innerHTML=d.countries.map(c=>`<option>${c}</option>`).join("");
+      sel.dataset.filled="1";
+    }
+    if(current){
+      if([...sel.options].some(o=>o.value===current)) sel.value=current;
+      pill.title="VPN exit: "+current+(d.city?" — "+d.city:"")+(d.ip?" · "+d.ip:"");
+    }
+  }
+  async function load(){ try{ show(await(await fetch("/api/vpn")).json()); }catch{ show(null); } }
+  async function poll(from){ // tunnel reconnect takes ~10-30s; wait for country to change
+    for(let i=0;i<15;i++){ await new Promise(r=>setTimeout(r,3000));
+      try{ const d=await(await fetch("/api/vpn")).json();
+        if(d&&d.ok&&d.country&&d.country!==from){ show(d); return; } }catch{} }
+    load();
+  }
+  sel.addEventListener("change",async()=>{
+    const country=sel.value, from=current;
+    pill.classList.remove("ok","err"); pill.classList.add("busy");
+    try{
+      const r=await fetch("/api/vpn",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({country})});
+      if(!r.ok){ pill.classList.remove("busy"); pill.classList.add("err"); return; }
+      poll(from);
+    }catch{ pill.classList.remove("busy"); pill.classList.add("err"); }
+  });
+  load();
 })();
 function currentView(){ const key=(location.hash||"#home").slice(1); return views.some(v=>v.dataset.view===key)?key:"home"; }
 function showView(userNav){
