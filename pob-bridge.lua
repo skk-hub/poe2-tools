@@ -239,7 +239,10 @@ local function treeMoves(maxDepth)
 				local out = calcFunc({ addNodes = pn })
 				local dd, de = dps(out) - baseDps, ehp(out) - baseEhp
 				if dd > 0.5 or de > 0.5 then add[#add + 1] = { name = node.dn or tostring(id), dist = node.pathDist, dDPS = dd, dEHP = de } end
-			elseif node.alloc and node.depends then
+			-- Skip Weapon-Set-2-only nodes (allocMode 2): they belong to the OTHER weapon
+			-- set (a support set), don't affect the active set's DPS, and aren't what the
+			-- user wants to respec. allocMode 0 = both sets, 1 = set 1, 2 = set 2.
+			elseif node.alloc and node.depends and (node.allocMode or 0) ~= 2 then
 				local dn, cnt = {}, 0; for _, p in pairs(node.depends) do dn[p] = true; cnt = cnt + 1 end
 				local out = calcFunc({ removeNodes = dn })
 				rem[#rem + 1] = { name = node.dn or tostring(id), dist = cnt, dDPS = baseDps - dps(out), dEHP = baseEhp - ehp(out) }
