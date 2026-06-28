@@ -48,10 +48,15 @@ a:hover{text-decoration:underline}
 .vpnpill.busy{opacity:.7;pointer-events:none}
 .vpnpill.busy .vpnpill-dot{background:var(--gold-bright);animation:vpnpulse 1s ease-in-out infinite}
 .vpnpill.err .vpnpill-dot{background:oklch(65% 0.2 25)}
-.sesspill{cursor:pointer}
+.sesspill{cursor:pointer;position:relative}
 .sesspill .vpnpill-globe{font-size:13px;filter:grayscale(.3)}
 .sesspill input{appearance:none;background:transparent;border:0;outline:0;color:var(--text);font:600 12px var(--font-ui);width:13em}
 .sesspill input[hidden]{display:none}
+.vpnpill.warn .vpnpill-dot{background:oklch(78% 0.15 85)}
+.sess-help{appearance:none;border:1px solid var(--border);background:transparent;color:var(--text-muted);width:16px;height:16px;border-radius:50%;font:700 10px var(--font-ui);line-height:1;cursor:pointer;padding:0;display:grid;place-items:center}
+.sess-help:hover{border-color:var(--gold);color:var(--text)}
+.sess-pop{position:absolute;right:14px;top:46px;z-index:30;max-width:24em;padding:10px 12px;border-radius:var(--r);background:var(--surface-2);border:1px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.35);font:400 12px/1.5 var(--font-ui);color:var(--text)}
+.sess-pop[hidden]{display:none}
 @keyframes vpnpulse{0%,100%{opacity:.35}50%{opacity:1}}
 
 h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;line-height:1.06;letter-spacing:-.02em;margin:14px 0 0;text-wrap:balance}
@@ -236,11 +241,18 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <select id="vpnSelect" aria-label="VPN exit country"><option>VPN…</option></select>
         <span class="vpnpill-dot" id="vpnDot" aria-hidden="true"></span>
       </label>
-      <span class="vpnpill sesspill" id="sessPill" hidden title="Trade session (POESESSID) — green = build-weighted search on; red = expired, click to paste a fresh one">
+      <span class="vpnpill sesspill" id="sessPill" hidden title="Trade session (POESESSID) — click to paste a fresh one">
         <span class="vpnpill-globe" aria-hidden="true">🔑</span>
         <input id="sessIn" type="password" placeholder="paste POESESSID, Enter" autocomplete="off" hidden>
         <span class="vpnpill-dot" id="sessDot" aria-hidden="true"></span>
+        <button type="button" class="sess-help" id="sessHelp" aria-label="What's this?">?</button>
       </span>
+      <div class="sess-pop" id="sessPop" hidden>
+        <b>Trade session (POESESSID)</b> — unlocks the build-weighted upgrade search.<br>
+        🟢 confirmed working &nbsp;·&nbsp; 🟡 set, not checked yet — run any Gear&nbsp;Finder search &nbsp;·&nbsp; 🔴 expired or none set.<br>
+        <b>To fix red/amber:</b> click the 🔑 pill, paste a fresh <b>POESESSID</b>, press Enter. It expires every few weeks; cheaper/better upgrades stay hidden until it's green.<br>
+        <b>Get it:</b> log into <b>pathofexile.com</b> → F12 → Application → Cookies → copy <b>POESESSID</b> (it's HttpOnly, so devtools — not the console).
+      </div>
     </nav>
   </div>
 </header>
@@ -602,16 +614,19 @@ window.__bg=(function(){
 // from devtools (F12 → Application → Cookies → POESESSID).
 (function(){
   const pill=document.getElementById("sessPill"); if(!pill) return;
-  const inp=document.getElementById("sessIn");
+  const inp=document.getElementById("sessIn"), help=document.getElementById("sessHelp"), pop=document.getElementById("sessPop");
+  // Green ONLY when a weighted search has actually succeeded (never just "set"), red when
+  // one failed or nothing's set, amber when set-but-unchecked. So green never lies.
   function paint(d){
-    pill.hidden=false; pill.classList.remove("busy");
-    const ok=d&&d.set&&!d.expired;
-    pill.classList.toggle("ok",ok); pill.classList.toggle("err",!ok);
+    pill.hidden=false; pill.classList.remove("busy","ok","err","warn");
+    pill.classList.add(d&&d.verified?"ok":(!d||!d.set||d.expired)?"err":"warn");
   }
   async function load(){ try{ paint(await(await fetch("/api/session")).json()); }catch{ pill.hidden=true; } }
-  window.__sessRefresh=load;   // gear-finder calls this when a search detects expiry
+  window.__sessRefresh=load;   // gear-finder calls this after any search (success → green, 400 → red)
+  if(help) help.addEventListener("click",e=>{ e.stopPropagation(); if(pop) pop.hidden=!pop.hidden; });
+  document.addEventListener("click",e=>{ if(pop&&!pop.hidden&&!pop.contains(e.target)&&e.target!==help) pop.hidden=true; });
   pill.addEventListener("click",e=>{
-    if(e.target===inp) return;
+    if(e.target===inp||e.target===help) return;
     inp.hidden=!inp.hidden; if(!inp.hidden){ inp.focus(); }
   });
   inp.addEventListener("keydown",async e=>{

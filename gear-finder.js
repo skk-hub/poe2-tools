@@ -313,6 +313,7 @@ window.__viewInit["gear-finder"] = function () {
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
     if (d.sessionExpired) markSessionExpired();
+    else if (window.__sessRefresh) window.__sessRefresh();   // weighted search succeeded → pill confirms green
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
     const secLabel = (d.metric === "ehp" || (d.metric == null && !(d.baseDps > 0))) ? "DPS" : "EHP";
     const cands = d.candidates || [];

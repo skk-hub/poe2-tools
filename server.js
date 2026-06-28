@@ -49,6 +49,7 @@ const TRADE_MIN_GAP_MS = 3000;
 const SESSION_FILE = path.join(DATA_DIR, ".poesessid.json");
 let sessionId = (process.env.POESESSID || "").trim();
 let sessionExpiredFlag = false;   // flipped true when a weighted query 400s (GGG logged us out); surfaced in the UI
+let sessionVerifiedFlag = false;  // flipped true when a weighted query SUCCEEDS — green only ever means "confirmed working", never just "set"
 try { const s = JSON.parse(fs.readFileSync(SESSION_FILE, "utf8")); if (s && s.poesessid) sessionId = String(s.poesessid).trim(); } catch {}
 const TRADE_HEADERS = {
   "Content-Type": "application/json",
@@ -61,6 +62,7 @@ function setSessionId(val) {
   sessionId = String(val || "").trim();
   if (sessionId) { TRADE_HEADERS.Cookie = "POESESSID=" + sessionId; sessionExpiredFlag = false; }
   else { delete TRADE_HEADERS.Cookie; }
+  sessionVerifiedFlag = false;   // a freshly-pasted cookie is unverified until a search proves it (amber, not green)
   try { fs.writeFileSync(SESSION_FILE, JSON.stringify({ poesessid: sessionId })); } catch {}
 }
 const TRADE_TIMEOUT_MS = 3500;
@@ -2672,7 +2674,7 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, JSON.stringify({ ok: true, set: true }), J);
         return;
       }
-      send(res, 200, JSON.stringify({ set: !!sessionId, expired: sessionExpiredFlag }), J);
+      send(res, 200, JSON.stringify({ set: !!sessionId, expired: sessionExpiredFlag, verified: sessionVerifiedFlag }), J);
       return;
     }
 
@@ -3120,6 +3122,8 @@ const server = http.createServer(async (req, res) => {
           if (weighted && /HTTP 400/.test(String(e && e.message))) { sessionExpired = true; sessionExpiredFlag = true; weighted = false; q = buildQ(false); ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
           else throw e;
         }
+        // Weighted query went through (no 400) → the cookie is confirmed live this session.
+        if (weighted) { sessionVerifiedFlag = true; sessionExpiredFlag = false; }
         const all = search.result || [];
         if (!all.length) { send(res, 200, JSON.stringify({ available: true, candidates: [], total: 0 }), "application/json; charset=utf-8"); return; }
         // Score a DEEPER pool through PoB and return the real winners — don't trust the
