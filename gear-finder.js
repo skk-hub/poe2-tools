@@ -10,7 +10,8 @@ window.__viewInit["gear-finder"] = function () {
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), budgetMin: $("gfBudgetMin"), analyze: $("gfAnalyze"),
     status: $("gfStatus"), weights: $("gfWeights"),
     actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"),
-    optRow: $("gfOptRow"), optSlots: $("gfOptSlots"), optBreaks: $("gfOptBreaks"), optBudget: $("gfOptBudget"), optRun: $("gfOptRun"), optHint: $("gfOptHint"), optOut: $("gfOptOut"), preserveBox: $("gfPreserveBox"), preserveRow: $("gfPreserveRow"), preserveLabel: $("gfPreserveLabel"), preserveSub: $("gfPreserveSub"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
+    optRow: $("gfOptRow"), optSlots: $("gfOptSlots"), optBreaks: $("gfOptBreaks"), optBudget: $("gfOptBudget"), optRun: $("gfOptRun"), optHint: $("gfOptHint"), optOut: $("gfOptOut"),
+    treeRow: $("gfTreeRow"), treeDepth: $("gfTreeDepth"), treeRun: $("gfTreeRun"), treeHint: $("gfTreeHint"), treeOut: $("gfTreeOut"), preserveBox: $("gfPreserveBox"), preserveRow: $("gfPreserveRow"), preserveLabel: $("gfPreserveLabel"), preserveSub: $("gfPreserveSub"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
     item: $("gfItem"), scoreBtn: $("gfScoreBtn"), scoreOut: $("gfScoreOut"),
     pins: $("gfPins"), pinCount: $("gfPinCount"), pinBody: $("gfPinBody"),
   };
@@ -129,6 +130,7 @@ window.__viewInit["gear-finder"] = function () {
       `<button class="gf-slot" type="button" data-slot="${esc(id)}">${esc(slotLabel(id))}<span class="gf-slot-name">${esc(s.name || "—")}</span></button>`).join("");
     els.scanRow.hidden = !Object.keys(state.slots).length;
     renderOptimizer(b);
+    if (els.treeRow) { els.treeRow.hidden = false; els.treeOut.innerHTML = ""; }
     els.panel.hidden = true; setStatus("");
   }
 
@@ -185,6 +187,38 @@ window.__viewInit["gear-finder"] = function () {
         <div class="gf-optbks">${bkRow(r.have)}</div>
         <table class="gf-opttbl"><tbody>${r.picks.map((p) => { const link = !p.keep && p.base && p.account; return `<tr${link ? ` class="gf-opt-link" role="link" tabindex="0" data-base="${esc(p.base)}" data-account="${esc(p.account)}" data-mods="${esc(JSON.stringify(p.mods || []))}" title="open this listing on the trade site"` : ""}><td>${esc(slotLabel(p.slot))}</td><td>${p.keep ? "<span class='muted'>keep current</span>" : "<b>" + esc(p.name || "item") + "</b>"}</td><td>${p.keep ? "" : deltaSpan(p.dDPS, "DPS")}</td><td>${p.keep ? "" : fmt(p.priceDiv) + " div"}</td></tr>`; }).join("")}</tbody></table>
       </div>`).join("");
+  }
+
+  // Passive-tree move planner: value reachable notables (DPS to path to them) + your
+  // allocated notables (DPS lost if removed). Pure PoB, no trade.
+  async function analyzeTree() {
+    if (!state.xml) { els.treeHint.textContent = "import a build first"; return; }
+    const depth = Math.min(8, Math.max(1, Number(els.treeDepth.value) || 4));
+    els.treeRun.disabled = true;
+    els.treeOut.innerHTML = `<p class="status">Asking Path of Building to value every node within ${depth} points… (a few seconds)</p>`;
+    const d = await api("/api/gear/tree-moves", { buildXml: state.xml, maxDepth: depth }).catch((e) => ({ error: String(e) }));
+    els.treeRun.disabled = false;
+    if (d.available === false) { els.treeOut.innerHTML = `<p class="status err">Headless Path of Building isn't available.</p>`; return; }
+    if (d.error) { els.treeOut.innerHTML = `<p class="status err">Failed: ${esc(d.error)}</p>`; return; }
+    els.treeOut.innerHTML = renderTree(d);
+  }
+  function renderTree(d) {
+    const add = (d.add || []), rem = (d.remove || []);
+    if (!add.length && !rem.length) { return `<p class="status">No notables found within range — try a larger search radius.</p>`; }
+    const perPt = (a) => a.dDPS / Math.max(1, a.pts);
+    const adds = add.slice(0, 15).map((a) => `<tr><td><b>${esc(a.name)}</b></td><td>${deltaSpan(a.dDPS, "DPS")}</td><td>${a.pts} pt</td><td class="muted">${fmt(perPt(a))}/pt</td></tr>`).join("");
+    const have = rem.slice(0, 15).map((r) => `<tr class="${r.dDPS <= 0 ? "gf-tree-dead" : ""}"><td><b>${esc(r.name)}</b></td><td>${r.dDPS > 0 ? deltaSpan(-r.dDPS, "DPS") : "<span class='muted'>no DPS</span>"}</td><td>${r.pts} pt</td></tr>`).join("");
+    // Rough respec hint: free your dead (0-DPS) allocated notables, take the top reachable one.
+    const dead = rem.filter((r) => r.dDPS <= 0);
+    const deadPts = dead.reduce((s, r) => s + (r.pts || 1), 0);
+    const top = add[0];
+    const summary = (deadPts && top)
+      ? `<div class="gf-pinsum">Free up ~${deadPts} dead point${deadPts > 1 ? "s" : ""} (${dead.slice(0, 3).map((r) => esc(r.name)).join(", ")}${dead.length > 3 ? "…" : ""}) → e.g. <b>${esc(top.name)}</b> for <b><span class="gf-delta up">+${fmt(top.dDPS)} DPS</span></b> (${top.pts} pt). <span class="gf-note" title="Gains are exact PoB calcs done one node at a time. Pairing freed points with a new notable is a suggestion — confirm the actual respec path is legal in Path of Building (and that several moves together compound differently).">ⓘ</span></div>`
+      : "";
+    return summary + `<div class="gf-tree-cols">
+      <div><p class="gf-scan-h">Move points INTO — best DPS within ${d.maxDepth} pts</p><table class="gf-opttbl"><tbody>${adds || "<tr><td class='muted'>none</td></tr>"}</tbody></table></div>
+      <div><p class="gf-scan-h">Your allocated notables — weakest first</p><table class="gf-opttbl"><tbody>${have || "<tr><td class='muted'>none</td></tr>"}</tbody></table></div>
+    </div>`;
   }
 
   // Comparison board: pinned candidates (persisted), each with an old-vs-new stat diff.
@@ -482,6 +516,7 @@ window.__viewInit["gear-finder"] = function () {
   els.analyze.addEventListener("click", analyzeSlot);
   els.realRankBtn.addEventListener("click", realRank);
   els.optRun.addEventListener("click", optimize);
+  els.treeRun.addEventListener("click", analyzeTree);
   els.optSlots.addEventListener("change", optSyncHint);
   // Click an optimizer pick row → open that listing on trade (same per-item link as the ranked rows).
   els.optOut.addEventListener("click", (ev) => { const row = ev.target.closest(".gf-opt-link"); if (!row) return; let mods = []; try { mods = JSON.parse(row.dataset.mods || "[]"); } catch {} openItemListing(row.dataset.base, row.dataset.account, "", mods); });

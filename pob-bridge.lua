@@ -217,6 +217,46 @@ local function calcMulti(payload)
 	if ok then return res else return nil, tostring(res) end
 end
 
+-- Passive-tree what-if: value MOVING points, using the same misc calculator as item
+-- swaps. Unallocated notables within maxDepth → DPS/EHP gained by allocating them
+-- (addNodes over node.path); allocated notables → DPS/EHP lost by removing them
+-- (removeNodes over node.depends, whose size = points freed). Jewel sockets are type
+-- "Socket" (not "Notable"), so they're excluded for free. Returns a JSON string.
+local function treeMoves(maxDepth)
+	maxDepth = maxDepth or 5
+	local spec = build.spec
+	pcall(function() spec:BuildAllDependsAndPaths() end)
+	local calcFunc = build.calcsTab:GetMiscCalculator()
+	local function dps(o) local s = getStatsFrom(o); if (s.FullDPS or 0) > 0 then return s.FullDPS end return (s.CombinedDPS or s.TotalDPS or 0) end
+	local function ehp(o) return (getStatsFrom(o).TotalEHP) or 0 end
+	local base0 = calcFunc({})
+	local baseDps, baseEhp = dps(base0), ehp(base0)
+	local add, rem = {}, {}
+	for id, node in pairs(spec.nodes) do
+		if node.type == "Notable" and node.modKey and node.modKey ~= "" then
+			if not node.alloc and node.path and (node.pathDist or 1000) >= 1 and (node.pathDist or 1000) <= maxDepth then
+				local pn = {}; for _, p in pairs(node.path) do pn[p] = true end
+				local out = calcFunc({ addNodes = pn })
+				local dd, de = dps(out) - baseDps, ehp(out) - baseEhp
+				if dd > 0.5 or de > 0.5 then add[#add + 1] = { name = node.dn or tostring(id), dist = node.pathDist, dDPS = dd, dEHP = de } end
+			elseif node.alloc and node.depends then
+				local dn, cnt = {}, 0; for _, p in pairs(node.depends) do dn[p] = true; cnt = cnt + 1 end
+				local out = calcFunc({ removeNodes = dn })
+				rem[#rem + 1] = { name = node.dn or tostring(id), dist = cnt, dDPS = baseDps - dps(out), dEHP = baseEhp - ehp(out) }
+			end
+		end
+	end
+	local function esc(s) return (tostring(s):gsub('[\\"]', '\\%0'):gsub('[\n\r\t]', ' ')) end
+	local function arr(list)
+		local parts = {}
+		for _, it in ipairs(list) do
+			parts[#parts + 1] = string.format('{"name":"%s","pts":%d,"dDPS":%d,"dEHP":%d}', esc(it.name), it.dist or 0, math.floor(it.dDPS + 0.5), math.floor((it.dEHP or 0) + 0.5))
+		end
+		return "[" .. table.concat(parts, ",") .. "]"
+	end
+	return string.format('{"baseDps":%d,"baseEhp":%d,"add":%s,"remove":%s}', math.floor(baseDps + 0.5), math.floor(baseEhp + 0.5), arr(add), arr(rem))
+end
+
 -- minimal flat-table JSON (numbers/strings only) — no dep
 local function jsonEncode(t)
 	local parts = {}
@@ -234,6 +274,14 @@ if mode == "--stats" then
 	local xml = f:read("*a"); f:close()
 	loadBuildXML(xml)
 	io.write(jsonEncode(getStats()) .. "\n")
+	os.exit(0)
+end
+
+-- --treemoves <buildfile> [maxDepth]  : passive-tree move values (JSON), for testing
+if mode == "--treemoves" then
+	local f = assert(io.open(BRIDGE_ARG2, "r")); local xml = f:read("*a"); f:close()
+	loadBuildXML(xml)
+	io.write(treeMoves(tonumber(arg[3]) or 5) .. "\n")
 	os.exit(0)
 end
 
@@ -282,6 +330,9 @@ if mode == "--rpc" then
 			elseif cmd == "CALCM" then
 				local stats, err = calcMulti(payload)
 				if stats then reply("OK", jsonEncode(stats)) else reply("ERR", tostring(err)) end
+				elseif cmd == "TREE" then
+					local ok, res = pcall(treeMoves, tonumber(payload) or 5)
+					if ok then reply("OK", res) else reply("ERR", tostring(res)) end
 			else reply("ERR", "unknown cmd " .. cmd) end
 		end
 	end

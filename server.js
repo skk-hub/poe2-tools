@@ -2960,6 +2960,28 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Passive-tree move planner: which points to MOVE for DPS. Pure PoB (no Trade2) — asks
+    // the headless engine to value every reachable unallocated notable (DPS/EHP gained by
+    // pathing to it) and every allocated notable (DPS/EHP lost by removing it). Lets you find
+    // "respec these dead points → these high-value notables → net +X DPS". Jewel sockets are
+    // excluded by the engine (they're tree Sockets, not Notables). Slow (~20-40s): one PoB
+    // calc per candidate, so it's an on-demand analysis, not a hot path.
+    if (url.pathname === "/api/gear/tree-moves" && req.method === "POST") {
+      const J = "application/json; charset=utf-8";
+      const input = await readJson(req, 8 * 1024 * 1024);
+      if (!(await pob.ready())) { send(res, 200, JSON.stringify({ available: false }), J); return; }
+      const buildXml = String(input.buildXml || "");
+      const maxDepth = Math.min(8, Math.max(1, Number(input.maxDepth) || 4));
+      try {
+        await pob.load(buildXml);
+        const d = await pob.tree(maxDepth);
+        const add = (d.add || []).filter((x) => x.dDPS > 0).sort((a, b) => b.dDPS - a.dDPS);
+        const remove = (d.remove || []).sort((a, b) => a.dDPS - b.dDPS);   // weakest first = respec-out candidates
+        send(res, 200, JSON.stringify({ available: true, maxDepth, baseDps: d.baseDps, baseEhp: d.baseEhp, add, remove }), J);
+      } catch (e) { send(res, 200, JSON.stringify({ error: String(e.message) }), J); }
+      return;
+    }
+
     // Set Optimizer (multi-slot): pick 2-3 slots, fetch a pool each, then try EVERY
     // in-budget combination (incl. keep-current per slot) — score each set with one real
     // calcMulti and keep only those that hold ALL breakpoints (res/spirit/rarity, each an

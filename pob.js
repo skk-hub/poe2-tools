@@ -116,6 +116,9 @@ async function localCalcMulti(pairs) {
   });
   return send("CALCM", parts.join("\n"), 30000);
 }
+// Passive-tree move values for the loaded build (call after load). maxDepth = how many
+// points away to scan unallocated notables. Slow (one PoB calc per candidate) → long timeout.
+async function localTree(maxDepth) { return send("TREE", String(maxDepth || 5), 180000); }
 function shutdown() { if (proc) { try { send("QUIT").catch(() => {}); } catch {} setTimeout(kill, 500); } }
 
 // ── Remote mode ────────────────────────────────────────────────────────────
@@ -149,5 +152,6 @@ async function ready() {
 async function load(buildXml) { return REMOTE ? remoteCall("/pob/load", { xml: buildXml }, 30000) : localLoad(buildXml); }
 async function calc(slot, itemText) { return REMOTE ? remoteCall("/pob/calc", { slot, itemText }) : localCalc(slot, itemText); }
 async function calcMulti(pairs) { return REMOTE ? remoteCall("/pob/calcmulti", { pairs }, 30000) : localCalcMulti(pairs); }
+async function tree(maxDepth) { return REMOTE ? remoteCall("/pob/tree", { maxDepth }, 180000) : localTree(maxDepth); }
 
-module.exports = { available, ready, load, calc, calcMulti, shutdown, localAvailable, luajitPath, POB_DIR, BRIDGE, REMOTE };
+module.exports = { available, ready, load, calc, calcMulti, tree, shutdown, localAvailable, luajitPath, POB_DIR, BRIDGE, REMOTE };

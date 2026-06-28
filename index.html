@@ -431,6 +431,17 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         </div>
         <div id="gfOptOut" class="gf-opt-out"></div>
       </details>
+      <details class="gf-opt gf-tree" id="gfTreeRow" hidden>
+        <summary>🌳 Passive Tree — which points to move for DPS</summary>
+        <p class="sub">Pure Path of Building, no trade. Values every reachable notable (DPS gained by pathing to it) and every allocated notable (DPS lost if removed) — so you can spot dead points to respec out and high-value notables to grab. Jewel sockets ignored.</p>
+        <div class="gf-opt-actions">
+          <label>Search radius <input id="gfTreeDepth" type="number" min="1" max="8" value="4" style="width:4em" title="how many passive points away to scan for notables — higher = more options but slower"></label>
+          <span class="muted">points</span>
+          <button class="btn btn-primary" id="gfTreeRun" type="button">Analyze tree</button>
+          <span class="sub" id="gfTreeHint"></span>
+        </div>
+        <div id="gfTreeOut" class="gf-tree-out"></div>
+      </details>
       <div id="gfSlots" class="gf-slots"></div>
       <div class="gf-search" id="gfSearchPanel" hidden>
         <div class="gf-row">

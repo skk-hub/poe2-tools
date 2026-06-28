@@ -48,6 +48,10 @@
   .toolroot-gear .gf-bk{font:11px var(--ff-mono);color:var(--mu);border:1px solid var(--bd);border-radius:var(--r-sm);padding:1px 6px}
   .toolroot-gear .gf-opttbl{width:100%;font:12px var(--ff-mono)}
   .toolroot-gear .gf-opttbl td{padding:2px 6px;border-top:1px solid var(--bd)}
+  .toolroot-gear .gf-tree-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}
+  @media (max-width:720px){ .toolroot-gear .gf-tree-cols{grid-template-columns:1fr} }
+  .toolroot-gear .gf-tree-dead{opacity:.55}
+  .toolroot-gear .gf-tree-dead b{text-decoration:line-through}
   .toolroot-gear .gf-opt-link{cursor:pointer;transition:background .12s}
   .toolroot-gear .gf-opt-link:hover{background:var(--surface-2)}
   .toolroot-gear .gf-opt-link b{text-decoration:underline;text-decoration-color:var(--border-gold)}
