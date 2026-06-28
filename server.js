@@ -2177,6 +2177,14 @@ function gearSearchSlots() {
   return slots;
 }
 
+// Resolve a slot's search config. Tree-jewel slot ids are dynamic ("jewel<nodeId>",
+// one per socket) so they aren't in the static map — they all share the "jewel" config
+// (category/baseId/stat list); the per-socket identity only matters for the PoB slot name.
+function gearSlotCfg(slotId) {
+  const slots = gearSearchSlots();
+  return slots[slotId] || (/^jewel\d+$/.test(slotId) ? slots.jewel : undefined);
+}
+
 function statLabel(key) {
   const labels = {
     dps: "DPS",
@@ -2273,6 +2281,7 @@ const TOOL_TO_POB_SLOT = {
   quiver: "Weapon 2", focus: "Weapon 2", shield: "Weapon 2", buckler: "Weapon 2",
 };
 function toolSlotToPob(slotId) {
+  const jm = /^jewel(\d+)$/.exec(slotId); if (jm) return "Jewel " + jm[1];   // tree socket → PoB slot name
   return TOOL_TO_POB_SLOT[slotId] ||
     (/(bow|crossbow|wand|staff|sceptre|spear|mace|sword|axe|dagger|flail|focus|shield)/i.test(slotId) ? "Weapon 1" : slotId);
 }
@@ -2340,6 +2349,23 @@ function parsePobBuild(xml) {
     const raw = items[itemId];
     const baseSlot = slotId === "ring1" || slotId === "ring2" ? "ring" : slotId;
     slots[slotId] = { pobSlot: name, name: (raw.split("\n")[1] || raw.split("\n")[0] || "").trim(), raw, stats: parseItemStats(raw, baseSlot) };
+  }
+  // Tree-socketed jewels live in <Socket nodeId itemId>, not <Slot>. Surface the RARE
+  // ones as optimizer slots "jewel<nodeId>" — uniques are build-defining (skipped, like
+  // unique gear); Time-Lost jewels are uniques too, so they fall out here. PoB exposes each
+  // socket as a real slot named "Jewel <nodeId>", so the headless calc swaps it like gear.
+  const seenJewel = new Set();
+  const sockRe = /<Socket\b([^>]*?)\/?>/g;
+  while ((m = sockRe.exec(xml))) {
+    const nodeId = (m[1].match(/\bnodeId="(\d+)"/) || [])[1];
+    const itemId = (m[1].match(/\bitemId="(\d+)"/) || [])[1];
+    if (!nodeId || !itemId || itemId === "0" || !items[itemId] || seenJewel.has(itemId)) continue;
+    const raw = items[itemId];
+    if (/Rarity:\s*UNIQUE/i.test(raw)) continue;
+    seenJewel.add(itemId);
+    const slotId = "jewel" + nodeId;
+    if (slots[slotId]) continue;
+    slots[slotId] = { pobSlot: "Jewel " + nodeId, name: (raw.split("\n")[1] || raw.split("\n")[0] || "").trim(), raw, stats: parseItemStats(raw, "jewel"), jewel: true };
   }
   // PoB computed stats — <PlayerStat value="X" stat="Y"/> (value first)
   const build = {};
@@ -2814,7 +2840,7 @@ const server = http.createServer(async (req, res) => {
       const input = await readJson(req, 8 * 1024 * 1024);
       if (!pob.available()) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
       const slotId = String(input.slot || "");
-      const slot = gearSearchSlots()[slotId];
+      const slot = gearSlotCfg(slotId);
       if (!slot) { send(res, 400, JSON.stringify({ error: "Unknown slot" }), "application/json; charset=utf-8"); return; }
       const pobSlot = String(input.pobSlot || toolSlotToPob(slotId));
       const league = sanitizeLeague(input.league || "Runes of Aldur");
@@ -2832,7 +2858,7 @@ const server = http.createServer(async (req, res) => {
     // so requiring every top stat at once doesn't return zero.
     if (url.pathname === "/api/gear/basic-link" && req.method === "POST") {
       const input = await readJson(req, 1 * 1024 * 1024);
-      const slot = gearSearchSlots()[String(input.slot || "")];
+      const slot = gearSlotCfg(String(input.slot || ""));
       if (!slot) { send(res, 400, JSON.stringify({ error: "Unknown slot" }), "application/json; charset=utf-8"); return; }
       if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), "application/json; charset=utf-8"); return; }
       const league = sanitizeLeague(input.league || "Runes of Aldur");
@@ -2934,7 +2960,7 @@ const server = http.createServer(async (req, res) => {
         let fetchErr = null;
         const pools = [];
         for (const slotId of slotIds) {
-          const slot = gearSearchSlots()[slotId];
+          const slot = gearSlotCfg(slotId);
           if (!slot) continue;
           const pobSlot = toolSlotToPob(slotId);
           const baseSlot = slot.baseId || slotId;
@@ -3027,7 +3053,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/gear/realrank" && req.method === "POST") {
       const input = await readJson(req, 8 * 1024 * 1024);
       if (!(await pob.ready())) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
-      const slot = gearSearchSlots()[String(input.slot || "")];
+      const slot = gearSlotCfg(String(input.slot || ""));
       if (!slot) { send(res, 400, JSON.stringify({ error: "Unknown slot" }), "application/json; charset=utf-8"); return; }
       if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
       const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
@@ -3228,7 +3254,7 @@ const server = http.createServer(async (req, res) => {
       const input = await readJson(req, 8 * 1024 * 1024);
       if (!(await pob.ready())) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
       if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true }), "application/json; charset=utf-8"); return; }
-      const slot = gearSearchSlots()[String(input.slot || "")];
+      const slot = gearSlotCfg(String(input.slot || ""));
       if (!slot) { send(res, 400, JSON.stringify({ error: "Unknown slot" }), "application/json; charset=utf-8"); return; }
       const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
       const league = sanitizeLeague(input.league || "Runes of Aldur");

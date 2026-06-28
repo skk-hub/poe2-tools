@@ -18,6 +18,9 @@ window.__viewInit["gear-finder"] = function () {
   const loadPins = () => { try { return JSON.parse(localStorage.getItem(PINS_KEY)) || []; } catch { return []; } };
   const savePins = () => { try { localStorage.setItem(PINS_KEY, JSON.stringify(state.pinned)); } catch {} };
   const prettyStat = (k) => k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
+  // Tree-jewel slot ids are "jewel<nodeId>" (one per socket) — show "jewel"; the jewel's
+  // item name (rendered alongside) is what tells the sockets apart.
+  const slotLabel = (id) => /^jewel\d+$/.test(id) ? "jewel" : id;
   // One-time bookmarklet: reads the {league,query} you copied and runs the
   // weighted search in your logged-in pathofexile.com session. Static, so it's
   // dragged to the bookmarks bar once; "Copy search" supplies the per-slot query.
@@ -123,7 +126,7 @@ window.__viewInit["gear-finder"] = function () {
       els.build.innerHTML += `<span class="gf-warn" title="Toggle off the auras you don't actually run in Path of Building so the build matches your in-game character, then re-import. Until then, DPS/EHP and spirit-based filtering use an unrunnable aura setup.">⚠ over-reserved spirit by ${fmt(-b.SpiritUnreserved)} — auras exceed your Spirit; DPS/EHP inflated. Fix toggles in PoB &amp; re-import.</span>`;
     }
     els.slots.innerHTML = Object.entries(state.slots).map(([id, s]) =>
-      `<button class="gf-slot" type="button" data-slot="${esc(id)}">${esc(id)}<span class="gf-slot-name">${esc(s.name || "—")}</span></button>`).join("");
+      `<button class="gf-slot" type="button" data-slot="${esc(id)}">${esc(slotLabel(id))}<span class="gf-slot-name">${esc(s.name || "—")}</span></button>`).join("");
     els.scanRow.hidden = !Object.keys(state.slots).length;
     renderOptimizer(b);
     els.panel.hidden = true; setStatus("");
@@ -135,7 +138,7 @@ window.__viewInit["gear-finder"] = function () {
     const slots = Object.entries(state.slots);
     if (!slots.length) { els.optRow.hidden = true; return; }
     els.optSlots.innerHTML = slots.map(([id, s]) =>
-      `<label class="gf-optchk"><input type="checkbox" class="gf-optslot" value="${esc(id)}"> ${esc(id)} <span class="muted">${esc(s.name || "")}</span></label>`).join("");
+      `<label class="gf-optchk"><input type="checkbox" class="gf-optslot" value="${esc(id)}"> ${esc(slotLabel(id))} <span class="muted">${esc(s.name || "")}</span></label>`).join("");
     const rar = Math.round(((Number(b.EffectiveLootRarityMod) || 1) - 1) * 100);
     const bk = [["fireRes", "Fire", b.FireResist], ["coldRes", "Cold", b.ColdResist], ["lightRes", "Light", b.LightningResist], ["chaosRes", "Chaos", b.ChaosResist], ["spiritFree", "Spirit free", b.SpiritUnreserved], ["rarityPct", "Rarity %", rar]];
     els.optBreaks.innerHTML = `<div class="gf-opt-bklabel">Breakpoints — every set must stay <b>at or above</b> these. Editable: dial one down to probe what's hidden just under it.</div>`
@@ -180,7 +183,7 @@ window.__viewInit["gear-finder"] = function () {
       <div class="gf-optcard${i === 0 ? " best" : ""}">
         <div class="gf-opthead">${i === 0 ? "★ " : ""}<b>+${fmt(r.dDPS)} DPS</b> · ${deltaSpan(r.dEHP, "EHP")} · <b>${fmt(r.priceDiv)} div</b></div>
         <div class="gf-optbks">${bkRow(r.have)}</div>
-        <table class="gf-opttbl"><tbody>${r.picks.map((p) => { const link = !p.keep && p.base && p.account; return `<tr${link ? ` class="gf-opt-link" role="link" tabindex="0" data-base="${esc(p.base)}" data-account="${esc(p.account)}" title="open this listing on the trade site"` : ""}><td>${esc(p.slot)}</td><td>${p.keep ? "<span class='muted'>keep current</span>" : "<b>" + esc(p.name || "item") + "</b>"}</td><td>${p.keep ? "" : deltaSpan(p.dDPS, "DPS")}</td><td>${p.keep ? "" : fmt(p.priceDiv) + " div"}</td></tr>`; }).join("")}</tbody></table>
+        <table class="gf-opttbl"><tbody>${r.picks.map((p) => { const link = !p.keep && p.base && p.account; return `<tr${link ? ` class="gf-opt-link" role="link" tabindex="0" data-base="${esc(p.base)}" data-account="${esc(p.account)}" title="open this listing on the trade site"` : ""}><td>${esc(slotLabel(p.slot))}</td><td>${p.keep ? "<span class='muted'>keep current</span>" : "<b>" + esc(p.name || "item") + "</b>"}</td><td>${p.keep ? "" : deltaSpan(p.dDPS, "DPS")}</td><td>${p.keep ? "" : fmt(p.priceDiv) + " div"}</td></tr>`; }).join("")}</tbody></table>
       </div>`).join("");
   }
 
