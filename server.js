@@ -1037,12 +1037,14 @@ function readWaystoneWeights() {
   catch { return null; }
 }
 
-// Robust floor: dodge a single AFK/mispriced listing by preferring the 2nd
-// cheapest when the cheapest is less than half of it.
+// Robust floor: dodge an obvious AFK/troll listing far below the rest. Use a TIGHT
+// gap (cheapest < 20% of the 2nd) — the old <50% threshold discarded GENUINE cheap
+// floors on naturally wide spreads (e.g. a pure-Pack-40 map at 30ex sitting under a
+// Pack-47 at 150ex → 30 was wrongly dropped, overstating the floor as 150).
 function robustWaystoneFloor(prices) {
   const sorted = prices.slice().sort((a, b) => a - b);
   if (!sorted.length) return null;
-  if (sorted.length >= 2 && sorted[0] < sorted[1] * 0.5) return sorted[1];
+  if (sorted.length >= 2 && sorted[0] < sorted[1] * 0.2) return sorted[1];
   return sorted[0];
 }
 
