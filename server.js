@@ -1058,7 +1058,12 @@ async function waystoneFloor(league, mapFilters, prop) {
       status: { option: "any" },
       filters: {
         type_filters: { filters: { category: { option: "map.waystone" } } },
-        map_filters: { filters: Object.assign({ map_tier: { min: WAYSTONE_SWEEP.tier, max: WAYSTONE_SWEEP.tier } }, mapFilters) },
+        // Gate to the REAL buyable class (corrupted + 0 revives = fully juiced), the same gate
+        // the dump filter trusts. Ungated, a single-stat floor is contaminated: a "pack ≥40"
+        // map that's ALSO rarity-juiced blames its whole combo price on pack (the 150ex pack
+        // artifact). Gating isolates the class the user actually farms → trustworthy floors.
+        map_filters: { filters: Object.assign({ map_tier: { min: WAYSTONE_SWEEP.tier, max: WAYSTONE_SWEEP.tier }, map_revives: { max: 0 } }, mapFilters) },
+        misc_filters: { filters: { corrupted: { option: "true" } } },
         trade_filters: { filters: { price: { option: "exalted" } } },
       },
     },
@@ -1113,11 +1118,11 @@ async function runWaystoneSweep(league) {
   for (const st of stats) st.weight = Math.round((st.peakEx / maxPeak) * 100) / 100;
   stats.sort((a, b) => b.peakEx - a.peakEx);
   return {
-    source: "PoE2 Trade2 — Waystone (Tier " + WAYSTONE_SWEEP.tier + ") price-vs-% curve sweep (live refresh)",
+    source: "PoE2 Trade2 — Waystone (Tier " + WAYSTONE_SWEEP.tier + ") price-vs-% sweep, gated corrupted+0-revives (live refresh)",
     analyzed: new Date().toISOString().slice(0, 10),
     league,
     baselineEx: Math.round(base),
-    note: "Value depends on the rolled %, not just which stat. Read each stat's curve.",
+    note: "Value depends on the rolled %, not just which stat. Read each stat's curve. Gated to corrupted + 0-revives (fully juiced) — the real buyable class, so single-stat floors aren't contaminated by combo maps.",
     stats,
     updated: new Date().toISOString(),
   };
