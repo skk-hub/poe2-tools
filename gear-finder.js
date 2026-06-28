@@ -9,7 +9,7 @@ window.__viewInit["gear-finder"] = function () {
     scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), analyze: $("gfAnalyze"),
     status: $("gfStatus"), weights: $("gfWeights"),
-    actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
+    actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"), preserveEhp: $("gfPreserveEhp"), preserveEhpRow: $("gfPreserveEhpRow"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
     item: $("gfItem"), scoreBtn: $("gfScoreBtn"), scoreOut: $("gfScoreOut"),
     pins: $("gfPins"), pinCount: $("gfPinCount"), pinBody: $("gfPinBody"),
   };
@@ -28,7 +28,7 @@ window.__viewInit["gear-finder"] = function () {
   const dpsOf = (s) => (s && (s.FullDPS || s.CombinedDPS || s.TotalDPS)) || 0;
   const deltaSpan = (d, unit) => { const c = d > 0 ? "up" : d < 0 ? "down" : "flat"; return `<span class="gf-delta ${c}">${d > 0 ? "+" : ""}${fmt(d)} ${unit}</span>`; };
 
-  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], pinned: [] };
+  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], preserveEhp: false, pinned: [] };
   const isUnique = (raw) => /rarity:\s*unique/i.test(String(raw || ""));
   state.pinned = loadPins();
 
@@ -161,7 +161,7 @@ window.__viewInit["gear-finder"] = function () {
     els.item.value = ""; els.scoreOut.innerHTML = "";
     // Clear the previous slot's "Rank by real DPS" results + their state — else the stale
     // rows stay visible and pinning one records it under the NEW slot (wrong-slot pins).
-    els.realOut.innerHTML = ""; state.realCands = []; state.realSearchUrl = ""; state.realHasDps = false;
+    els.realOut.innerHTML = ""; state.realCands = []; state.realSearchUrl = ""; state.realHasDps = false; els.preserveEhpRow.hidden = true;
     setStatus("Set a budget and analyze this slot — or paste an item below to score it directly.");
   }
 
@@ -239,29 +239,44 @@ window.__viewInit["gear-finder"] = function () {
     state.realHasDps = hasDps;
     state.realSearchUrl = d.searchUrl || "";   // fallback when an item lacks base/account
     state.realCands = cands;                   // referenced by the value-check + pin handlers
-    // Best value = most gain (DPS, else EHP) per exalted spent, among upgrades. Free —
-    // we already have real gain + price for every candidate, no extra trade call.
+    els.preserveEhpRow.hidden = !hasDps;       // "preserve EHP" only meaningful when ranking by DPS
+    els.preserveEhp.checked = state.preserveEhp;
+    renderRealCands();
+    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.`);
+  }
+
+  // Render the realrank pool: optionally drop EHP-lowering items (Preserve EHP), sort by the
+  // slot's gain metric, show the top 10. data-idx stays the index into state.realCands so the
+  // pin / best-price / open-listing handlers keep working after filtering.
+  function renderRealCands() {
+    const all = state.realCands || [];
+    const hasDps = state.realHasDps;
     const gainOf = (c) => (hasDps ? c.dDPS : c.dEHP);
-    // ROI = gain per divine spent. Compact (k/M) since cheap items give huge ratios.
     const roi = (c) => (gainOf(c) > 0 && c.priceDiv > 0 ? gainOf(c) / c.priceDiv : 0);
     const fmtRoi = (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(1) + "k" : Math.round(v);
-    let bestIdx = -1, bestVal = 0;
-    cands.forEach((c, i) => { const g = gainOf(c); if (g > 0 && c.priceEx > 0 && g / c.priceEx > bestVal) { bestVal = g / c.priceEx; bestIdx = i; } });
-    els.realOut.innerHTML = cands.map((c, i) => {
+    const preserve = hasDps && state.preserveEhp;
+    let list = all.map((c, idx) => ({ c, idx }));
+    if (preserve) list = list.filter(({ c }) => (c.dEHP || 0) >= 0);   // keep only EHP-neutral-or-better
+    list.sort((a, b) => gainOf(b.c) - gainOf(a.c));
+    const top = list.slice(0, 10);
+    if (!top.length) { els.realOut.innerHTML = `<p class="status">No DPS upgrade keeps your EHP — untick “Preserve EHP” to see survivability-cost options.</p>`; return; }
+    let bestK = -1, bestVal = 0;
+    top.forEach(({ c }, k) => { const g = gainOf(c); if (g > 0 && c.priceEx > 0 && g / c.priceEx > bestVal) { bestVal = g / c.priceEx; bestK = k; } });
+    const hidden = preserve ? all.length - list.length : 0;
+    els.realOut.innerHTML = top.map(({ c, idx }, k) => {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
       // No seller-status badge: these are instant-buyout (async) listings, buyable even
       // when the seller is offline, so online/afk/offline would just mislead.
       const r = roi(c);
       const roiHtml = r > 0 ? ` <span class="gf-roi" title="${hasDps ? "DPS" : "EHP"} gained per divine — your ROI">${fmtRoi(r)}/div</span>` : "";
-      const best = i === bestIdx ? ` <span class="gf-best" title="most ${hasDps ? "DPS" : "EHP"} per exalted of these upgrades">★ best value</span>` : "";
+      const best = k === bestK ? ` <span class="gf-best" title="most ${hasDps ? "DPS" : "EHP"} per exalted of these upgrades">★ best value</span>` : "";
       // "Best price?" scores cheaper instant-buyout items in PoB — is any as good for less?
       // Only worth it for items costing ≥1 div (cheap ones aren't worth a price hunt).
-      const check = (c.mods && c.mods.length && c.priceDiv >= 1 && c.dDPS > 0) ? ` <button type="button" class="gf-check" data-idx="${i}" title="score cheaper instant-buyout items in PoB — is any as good for less?">best price?</button><span class="gf-verdict"></span>` : "";
-      const inner = `<button type="button" class="gf-pin" data-idx="${i}" title="pin to the comparison board">📌</button> <b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${roiHtml}${best}${check}`;
+      const check = (c.mods && c.mods.length && c.priceDiv >= 1 && c.dDPS > 0) ? ` <button type="button" class="gf-check" data-idx="${idx}" title="score cheaper instant-buyout items in PoB — is any as good for less?">best price?</button><span class="gf-verdict"></span>` : "";
+      const inner = `<button type="button" class="gf-pin" data-idx="${idx}" title="pin to the comparison board">📌</button> <b>${esc(c.name || "Item")}</b> ${hasDps ? deltaSpan(c.dDPS, "DPS") : ""} ${deltaSpan(c.dEHP, "EHP")} <span class="gf-price">${price}</span>${roiHtml}${best}${check}`;
       const canOpen = (c.base && c.account) || state.realSearchUrl;
       return `<div class="gf-srow${canOpen ? " gf-srow-link" : ""}"${canOpen ? ' role="link" tabindex="0"' : ""} data-base="${esc(c.base || "")}" data-account="${esc(c.account || "")}">${inner}</div>`;
-    }).join("");
-    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB, showing the top ${cands.length}${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.`);
+    }).join("") + (hidden ? `<p class="gf-note" style="margin-top:6px">Preserve EHP: hid ${hidden} DPS upgrade${hidden > 1 ? "s" : ""} that lower your survivability.</p>` : "");
   }
 
   // Scan EVERY slot and rank them by upgrade ROI (gain per divine). Per slot:
@@ -373,6 +388,7 @@ window.__viewInit["gear-finder"] = function () {
   els.scanOut.addEventListener("click", (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { selectSlot(tr.dataset.slot); els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); analyzeSlot(); } });
   els.analyze.addEventListener("click", analyzeSlot);
   els.realRankBtn.addEventListener("click", realRank);
+  els.preserveEhp.addEventListener("change", () => { state.preserveEhp = els.preserveEhp.checked; renderRealCands(); });
   if (els.pinBody) els.pinBody.addEventListener("click", async (ev) => {
     // Score all pins together in one PoB calc (real compounded gain).
     const combo = ev.target.closest("#gfComboBtn");
