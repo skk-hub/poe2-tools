@@ -351,7 +351,7 @@ window.__viewInit["gear-finder"] = function () {
     const top = list.slice(0, 10);
     if (!top.length) {
       const unit = hasDps ? "DPS" : "EHP";
-      els.realOut.innerHTML = `<p class="status">All ${all.length} in-budget listing(s) were ${unit} downgrades — your current ${state.curSlot} is likely near best-in-slot here. Try a higher Max div or dial a breakpoint down.</p>`;
+      els.realOut.innerHTML = `<p class="status">All ${all.length} in-budget listing(s) were ${unit} downgrades — your current ${slotLabel(state.curSlot)} is likely near best-in-slot here. Try a higher Max div or dial a breakpoint down.</p>`;
       return;
     }
     let bestK = -1, bestVal = 0;
