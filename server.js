@@ -3065,7 +3065,13 @@ const server = http.createServer(async (req, res) => {
       // and score the genuinely-best candidates. Logged-out that sort 400s, so fall back to
       // a stat-floor + price-spread. Weights come from the client's /api/gear/weights result.
       const weights = (Array.isArray(input.weights) ? input.weights : []).filter((w) => w && /^(explicit\.stat_\d+|pseudo\.[a-z0-9_]+)$/.test(w.statId) && Number(w.weight) > 0);
-      let weighted = !!sessionId && weights.length > 0;
+      // Jewels skip the weighted (statgroup) sort: it's anchored by the defence/preserve
+      // floors that hold a candidate's core value, but jewels have NEITHER, so a pure
+      // weighted-sum ranks attack-speed-heavy / low-crit jewels top — which PoB scores as
+      // downgrades vs a strong-crit current jewel. The price-desc + 70%-current-roll floor
+      // path (same as the optimizer) surfaces the real upgrades instead.
+      const isJewel = /^jewel\d+$/.test(String(input.slot || ""));
+      let weighted = !!sessionId && weights.length > 0 && !isJewel;
       // Sort DESC by default: without a POESESSID value-sort, the search only sees the
       // first 100 results, and the CHEAPEST 100 of a slot are always junk far below
       // decent gear (→ "no upgrade found"). The priciest 100 are where real upgrades
