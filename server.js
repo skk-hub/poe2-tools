@@ -2845,10 +2845,10 @@ const server = http.createServer(async (req, res) => {
       const buildXml = String(input.buildXml || "");
       const league = sanitizeLeague(input.league || "Runes of Aldur");
       const maxPriceDiv = Number(input.maxPriceDiv) || 0;
-      const slotIds = (Array.isArray(input.slots) ? input.slots : []).map(String).filter(Boolean).slice(0, 3);
-      if (slotIds.length < 2) { send(res, 400, JSON.stringify({ error: "Pick 2-3 slots" }), "application/json; charset=utf-8"); return; }
+      const slotIds = (Array.isArray(input.slots) ? input.slots : []).map(String).filter(Boolean).slice(0, 5);
+      if (slotIds.length < 2) { send(res, 400, JSON.stringify({ error: "Pick 2-5 slots" }), "application/json; charset=utf-8"); return; }
       let parsed; try { parsed = parsePobBuild(buildXml); } catch (e) { send(res, 400, JSON.stringify({ error: "Not a PoB build: " + e.message }), "application/json; charset=utf-8"); return; }
-      const POOL = 10, COMBO_CAP = 300;   // Trade2 /fetch caps at 10 ids per call
+      const POOL = 10, COMBO_CAP = 450;   // Trade2 /fetch caps at 10 ids per call; cap PoB verifies
       try {
         let fetchErr = null;
         const pools = [];
@@ -2894,8 +2894,27 @@ const server = http.createServer(async (req, res) => {
         let combos = [[]];
         for (const p of pools) { const next = []; for (const c of combos) for (const cand of p.candidates) next.push(c.concat([cand])); combos = next; }
         combos = combos.filter((combo) => combo.some((c) => !c.keep) && combo.reduce((s, c) => s + (c.priceDiv || 0), 0) <= (maxPriceDiv > 0 ? maxPriceDiv : Infinity));
+        const inBudget = combos.length;
+        // ADDITIVE PRE-SCREEN (so 4-5 slots stay feasible): breakpoint contributions sum
+        // across gear, so estimate each combo's combined breakpoints cheaply (base + Σ(new −
+        // current contribution per changed slot) and drop ones that clearly fail — BEFORE
+        // spending a PoB calc. Spirit/Rarity are uncapped → accurate, screen at floor−10.
+        // Resists are CAPPED (base hides overcap) → screen LENIENTLY (floor−50) so an
+        // overcapped-but-dropping set is never wrongly cut; calcMulti makes the precise call.
+        const baseBp = floors._cur;
+        const keepContrib = pools.map((p) => ((p.candidates.find((c) => c.keep) || {}).contrib) || {});
+        const RES = ["fireRes", "coldRes", "lightRes", "chaosRes"];
+        const additiveLegal = (combo) => {
+          const a = Object.assign({}, baseBp);
+          for (let i = 0; i < combo.length; i++) { const kc = keepContrib[i], cc = combo[i].contrib || {}; for (const k in a) a[k] += (cc[k] || 0) - (kc[k] || 0); }
+          if (a.spiritFree < floors.spiritFree - 10 || a.rarityPct < floors.rarityPct - 10) return false;
+          for (const r of RES) if (a[r] < floors[r] - 50) return false;
+          return true;
+        };
+        combos = combos.filter(additiveLegal);
+        const screened = combos.length;
         // Rank by APPROX combined DPS (sum of single-swap deltas) only to choose which to
-        // verify when over the cap; ≤cap means EVERY combo is really scored (no approximation).
+        // verify when over the cap; ≤cap means EVERY screened combo is really scored.
         combos.sort((a, b) => b.reduce((s, c) => s + c.dDPS, 0) - a.reduce((s, c) => s + c.dDPS, 0));
         const verifyN = Math.min(combos.length, COMBO_CAP);
         const legal = [];
@@ -2913,7 +2932,7 @@ const server = http.createServer(async (req, res) => {
           dDPS: L.dDPS, dEHP: L.dEHP, priceDiv: L.priceDiv, have: L.have,
           picks: L.combo.map((c, i) => ({ slot: pools[i].slotId, keep: !!c.keep, name: c.name, base: c.base || "", account: c.account || "", priceDiv: c.priceDiv || 0, dDPS: Math.round(c.dDPS), contrib: c.contrib })),
         }));
-        send(res, 200, JSON.stringify({ available: true, baseDps: Math.round(baseDps), baseEhp: Math.round(baseEhp), floors, cur: floors._cur, slots: pools.map((p) => ({ slotId: p.slotId, slotName: p.slotName, pool: p.candidates.length })), combos: combos.length, evaluated, legal: legal.length, results, partial: !!fetchErr }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, baseDps: Math.round(baseDps), baseEhp: Math.round(baseEhp), floors, cur: floors._cur, slots: pools.map((p) => ({ slotId: p.slotId, slotName: p.slotName, pool: p.candidates.length })), inBudget, screened, combos: inBudget, evaluated, capped: screened > COMBO_CAP, legal: legal.length, results, partial: !!fetchErr }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         send(res, 200, JSON.stringify({ available: true, error: String(err && err.message) }), "application/json; charset=utf-8");

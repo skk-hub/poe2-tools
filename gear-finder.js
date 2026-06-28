@@ -136,16 +136,16 @@ window.__viewInit["gear-finder"] = function () {
   function optSelected() { return Array.from(els.optSlots.querySelectorAll(".gf-optslot:checked")).map((c) => c.value); }
   function optSyncHint() {
     const n = optSelected().length;
-    els.optHint.textContent = (n < 2 || n > 3) ? "select 2–3 slots" : `${n} slots selected — ready`;
+    els.optHint.textContent = (n < 2 || n > 5) ? "select 2–5 slots" : `${n} slots selected — ready${n >= 4 ? " (4–5 takes 1–2 min)" : ""}`;
   }
 
   async function optimize() {
     const picked = optSelected();
-    if (picked.length < 2 || picked.length > 3) { els.optHint.textContent = "pick 2–3 slots"; return; }
+    if (picked.length < 2 || picked.length > 5) { els.optHint.textContent = "pick 2–5 slots"; return; }
     const breakpoints = {};
     els.optBreaks.querySelectorAll(".gf-optbkin").forEach((i) => { if (i.value !== "") breakpoints[i.dataset.k] = Number(i.value); });
     els.optRun.disabled = true;
-    els.optOut.innerHTML = `<p class="status">Fetching ${picked.length} pools + scoring every combination in Path of Building… (~30s)</p>`;
+    els.optOut.innerHTML = `<p class="status">Fetching ${picked.length} pools + scoring combinations in Path of Building… ${picked.length >= 4 ? "(4–5 slots: ~1–2 min, lots of Trade2 calls)" : "(~30s)"}</p>`;
     const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.optBudget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
     els.optRun.disabled = false;
     if (d.available === false) { els.optOut.innerHTML = `<p class="status err">Headless Path of Building isn't available.</p>`; return; }
@@ -162,7 +162,8 @@ window.__viewInit["gear-finder"] = function () {
   function renderOptResults(d) {
     const bkRow = (have) => [["Fire", "fireRes"], ["Cold", "coldRes"], ["Light", "lightRes"], ["Chaos", "chaosRes"], ["Spirit", "spiritFree"], ["Rarity%", "rarityPct"]]
       .map(([lab, k]) => `<span class="gf-bk">${lab} ${have[k]}</span>`).join("");
-    const head = `<p class="status">Evaluated ${d.evaluated}/${d.combos} in-budget combos · ${d.legal} held every breakpoint. Pools: ${d.slots.map((s) => esc(s.slotId) + " (" + s.pool + ")").join(", ")}.${d.evaluated < d.combos ? " (capped — re-run with a tighter budget for full coverage)" : ""}</p>`;
+    const funnel = `${d.inBudget} in-budget → ${d.screened} plausible → ${d.evaluated} PoB-scored → <b>${d.legal} legal</b>`;
+    const head = `<p class="status">${funnel}. Pools: ${d.slots.map((s) => esc(s.slotId) + " (" + s.pool + ")").join(", ")}.${d.capped ? " (capped at " + d.evaluated + " PoB scores by best approx-DPS — tighten budget or fewer slots for full coverage)" : ""}</p>`;
     return head + d.results.map((r, i) => `
       <div class="gf-optcard${i === 0 ? " best" : ""}">
         <div class="gf-opthead">${i === 0 ? "★ " : ""}<b>+${fmt(r.dDPS)} DPS</b> · ${deltaSpan(r.dEHP, "EHP")} · <b>${fmt(r.priceDiv)} div</b></div>
