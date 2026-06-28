@@ -132,7 +132,10 @@ local STAT_KEYS = { "FullDPS", "CombinedDPS", "TotalDPS", "TotalDotDPS", "Averag
 	-- Spirit (PoE2): a candidate that drops Spirit below what auras/persistent gems
 	-- reserve makes SpiritUnreserved go NEGATIVE — PoB still counts those buffs in DPS,
 	-- so such an item is a fake upgrade. The ranker rejects/flags a spirit deficit.
-	"Spirit", "SpiritReserved", "SpiritUnreserved" }
+	"Spirit", "SpiritReserved", "SpiritUnreserved",
+	-- Set Optimizer breakpoints: rarity + attributes (resists/spirit above). EffectiveLootRarityMod
+	-- is a multiplier (1.73 = +73%); Str/Dex/Int are totals (for req-thresholds + "per N attribute").
+	"EffectiveLootRarityMod", "EffectiveMovementSpeedMod", "Str", "Dex", "Int" }
 local function getStatsFrom(out)
 	local t = {}
 	out = out or {}

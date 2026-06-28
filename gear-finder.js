@@ -9,7 +9,8 @@ window.__viewInit["gear-finder"] = function () {
     scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), analyze: $("gfAnalyze"),
     status: $("gfStatus"), weights: $("gfWeights"),
-    actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"), preserveBox: $("gfPreserveBox"), preserveRow: $("gfPreserveRow"), preserveLabel: $("gfPreserveLabel"), preserveSub: $("gfPreserveSub"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
+    actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"),
+    optRow: $("gfOptRow"), optSlots: $("gfOptSlots"), optBreaks: $("gfOptBreaks"), optBudget: $("gfOptBudget"), optRun: $("gfOptRun"), optHint: $("gfOptHint"), optOut: $("gfOptOut"), preserveBox: $("gfPreserveBox"), preserveRow: $("gfPreserveRow"), preserveLabel: $("gfPreserveLabel"), preserveSub: $("gfPreserveSub"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
     item: $("gfItem"), scoreBtn: $("gfScoreBtn"), scoreOut: $("gfScoreOut"),
     pins: $("gfPins"), pinCount: $("gfPinCount"), pinBody: $("gfPinBody"),
   };
@@ -112,7 +113,61 @@ window.__viewInit["gear-finder"] = function () {
     els.slots.innerHTML = Object.entries(state.slots).map(([id, s]) =>
       `<button class="gf-slot" type="button" data-slot="${esc(id)}">${esc(id)}<span class="gf-slot-name">${esc(s.name || "—")}</span></button>`).join("");
     els.scanRow.hidden = !Object.keys(state.slots).length;
+    renderOptimizer(b);
     els.panel.hidden = true; setStatus("");
+  }
+
+  // Set Optimizer: slot checkboxes + editable breakpoint floors (default to your current
+  // build values). Hidden until a build loads.
+  function renderOptimizer(b) {
+    const slots = Object.entries(state.slots);
+    if (!slots.length) { els.optRow.hidden = true; return; }
+    els.optSlots.innerHTML = slots.map(([id, s]) =>
+      `<label class="gf-optchk"><input type="checkbox" class="gf-optslot" value="${esc(id)}"> ${esc(id)} <span class="muted">${esc(s.name || "")}</span></label>`).join("");
+    const rar = Math.round(((Number(b.EffectiveLootRarityMod) || 1) - 1) * 100);
+    const bk = [["fireRes", "Fire", b.FireResist], ["coldRes", "Cold", b.ColdResist], ["lightRes", "Light", b.LightningResist], ["chaosRes", "Chaos", b.ChaosResist], ["spiritFree", "Spirit free", b.SpiritUnreserved], ["rarityPct", "Rarity %", rar]];
+    els.optBreaks.innerHTML = `<span class="sub">Breakpoints (≥, editable — dial down to probe under):</span>` + bk.map(([k, label, v]) =>
+      `<label class="gf-optbk">${label} <input class="gf-optbkin" data-k="${k}" type="number" value="${Math.round(Number(v) || 0)}" style="width:4em"></label>`).join("");
+    els.optRow.hidden = false;
+    els.optOut.innerHTML = "";
+    optSyncHint();
+  }
+  function optSelected() { return Array.from(els.optSlots.querySelectorAll(".gf-optslot:checked")).map((c) => c.value); }
+  function optSyncHint() {
+    const n = optSelected().length;
+    els.optHint.textContent = (n < 2 || n > 3) ? "select 2–3 slots" : `${n} slots selected — ready`;
+  }
+
+  async function optimize() {
+    const picked = optSelected();
+    if (picked.length < 2 || picked.length > 3) { els.optHint.textContent = "pick 2–3 slots"; return; }
+    const breakpoints = {};
+    els.optBreaks.querySelectorAll(".gf-optbkin").forEach((i) => { if (i.value !== "") breakpoints[i.dataset.k] = Number(i.value); });
+    els.optRun.disabled = true;
+    els.optOut.innerHTML = `<p class="status">Fetching ${picked.length} pools + scoring every combination in Path of Building… (~30s)</p>`;
+    const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.optBudget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
+    els.optRun.disabled = false;
+    if (d.available === false) { els.optOut.innerHTML = `<p class="status err">Headless Path of Building isn't available.</p>`; return; }
+    if (d.limited) { els.optOut.innerHTML = `<p class="status err">Trade2 is rate-limited — try again shortly.</p>`; return; }
+    if (d.error) { els.optOut.innerHTML = `<p class="status err">Failed: ${esc(d.error)}</p>`; return; }
+    if (d.sessionExpired) markSessionExpired();
+    if (!d.results || !d.results.length) {
+      els.optOut.innerHTML = `<p class="status">No legal set found — every in-budget combination either lost a breakpoint or there were no upgrades. Evaluated ${d.evaluated || 0}/${d.combos || 0} combos. Try a bigger budget or dial a breakpoint down.</p>`;
+      return;
+    }
+    els.optOut.innerHTML = renderOptResults(d);
+  }
+
+  function renderOptResults(d) {
+    const bkRow = (have) => [["Fire", "fireRes"], ["Cold", "coldRes"], ["Light", "lightRes"], ["Chaos", "chaosRes"], ["Spirit", "spiritFree"], ["Rarity%", "rarityPct"]]
+      .map(([lab, k]) => `<span class="gf-bk">${lab} ${have[k]}</span>`).join("");
+    const head = `<p class="status">Evaluated ${d.evaluated}/${d.combos} in-budget combos · ${d.legal} held every breakpoint. Pools: ${d.slots.map((s) => esc(s.slotId) + " (" + s.pool + ")").join(", ")}.${d.evaluated < d.combos ? " (capped — re-run with a tighter budget for full coverage)" : ""}</p>`;
+    return head + d.results.map((r, i) => `
+      <div class="gf-optcard${i === 0 ? " best" : ""}">
+        <div class="gf-opthead">${i === 0 ? "★ " : ""}<b>+${fmt(r.dDPS)} DPS</b> · ${deltaSpan(r.dEHP, "EHP")} · <b>${fmt(r.priceDiv)} div</b></div>
+        <div class="gf-optbks">${bkRow(r.have)}</div>
+        <table class="gf-opttbl"><tbody>${r.picks.map((p) => `<tr><td>${esc(p.slot)}</td><td>${p.keep ? "<span class='muted'>keep current</span>" : "<b>" + esc(p.name || "item") + "</b>"}</td><td>${p.keep ? "" : deltaSpan(p.dDPS, "DPS")}</td><td>${p.keep ? "" : fmt(p.priceDiv) + " div"}</td></tr>`).join("")}</tbody></table>
+      </div>`).join("");
   }
 
   // Comparison board: pinned candidates (persisted), each with an old-vs-new stat diff.
@@ -403,6 +458,8 @@ window.__viewInit["gear-finder"] = function () {
   els.scanOut.addEventListener("click", (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { selectSlot(tr.dataset.slot); els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); analyzeSlot(); } });
   els.analyze.addEventListener("click", analyzeSlot);
   els.realRankBtn.addEventListener("click", realRank);
+  els.optRun.addEventListener("click", optimize);
+  els.optSlots.addEventListener("change", optSyncHint);
   // Preserve EHP is a PRE-scan setting (applied server-side before ranking), so changing it
   // after results prompts a re-rank rather than silently re-filtering — no surprise re-fetch.
   els.preserveBox.addEventListener("change", () => {

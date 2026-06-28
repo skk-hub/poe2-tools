@@ -380,6 +380,18 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <span class="sub">ranks every slot by upgrade value per divine — no budget cap; uniques & spirit-breaking items are skipped</span>
       </div>
       <div id="gfScanOut" class="gf-scanout"></div>
+      <details class="gf-opt" id="gfOptRow" hidden>
+        <summary>🎯 Set Optimizer — preserve breakpoints, gain DPS</summary>
+        <p class="sub">Pick 2–3 slots. The tool tries every in-budget combination (incl. keeping a slot) and shows only sets that hold your breakpoints — so it can break a resist/spirit on one slot and recover it on another for a net DPS gain. Dial a breakpoint down to probe what's hidden just under it.</p>
+        <div class="gf-opt-slots" id="gfOptSlots"></div>
+        <div class="gf-opt-breaks" id="gfOptBreaks"></div>
+        <div class="gf-opt-actions">
+          <label>Budget (div) <input id="gfOptBudget" type="number" min="0" step="1" placeholder="any" style="width:6em"></label>
+          <button class="btn btn-primary" id="gfOptRun" type="button">Optimize set</button>
+          <span class="sub" id="gfOptHint">select 2–3 slots</span>
+        </div>
+        <div id="gfOptOut" class="gf-opt-out"></div>
+      </details>
       <div id="gfSlots" class="gf-slots"></div>
       <div class="gf-search" id="gfSearchPanel" hidden>
         <div class="gf-row">

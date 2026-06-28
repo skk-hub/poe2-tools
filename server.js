@@ -2497,6 +2497,67 @@ function reconstructItem(currentRaw, candidateRaw) {
   return `Rarity: RARE\nPasted Candidate\n${base}\nItem Level: ${ilvl}\nImplicits: ${implLine ? 1 : 0}\n${implLine ? implLine + "\n" : ""}${mods.join("\n")}`;
 }
 
+// ── Set Optimizer (multi-slot, breakpoint-preserving) ──────────────────────
+// The breakpoints a candidate SET must hold, read off the build's PoB stats. Each
+// floor defaults to your CURRENT value (so a set never makes a breakpoint worse) but
+// is OVERRIDABLE per-run (the user dials one down to probe what's hidden just under).
+function optimizeBreakpoints(base, targets) {
+  const t = targets || {};
+  const cur = {
+    fireRes: Math.round(Number(base.FireResist) || 0),
+    coldRes: Math.round(Number(base.ColdResist) || 0),
+    lightRes: Math.round(Number(base.LightningResist) || 0),
+    chaosRes: Math.round(Number(base.ChaosResist) || 0),
+    spiritFree: Math.round(Number(base.SpiritUnreserved) || 0),  // relative: don't lose aura headroom
+    rarityPct: Math.round(((Number(base.EffectiveLootRarityMod) || 1) - 1) * 100),
+  };
+  const num = (v, d) => (v == null || v === "" || isNaN(Number(v))) ? d : Number(v);
+  const floors = {};
+  for (const k of Object.keys(cur)) floors[k] = num(t[k], cur[k]);
+  floors._cur = cur;
+  return floors;
+}
+
+// Read the same breakpoint stats off any calc output → the set's combined state.
+function breakpointStats(stats) {
+  return {
+    fireRes: Math.round(Number(stats.FireResist) || 0),
+    coldRes: Math.round(Number(stats.ColdResist) || 0),
+    lightRes: Math.round(Number(stats.LightningResist) || 0),
+    chaosRes: Math.round(Number(stats.ChaosResist) || 0),
+    spiritFree: Math.round(Number(stats.SpiritUnreserved) || 0),
+    rarityPct: Math.round(((Number(stats.EffectiveLootRarityMod) || 1) - 1) * 100),
+  };
+}
+// An item's OWN contribution to each breakpoint (from its rolled mods, via parseItemStats).
+// NB parseItemStats keys lightning as `lightningRes` (not `lightRes`) and spirit as `spirit`.
+function itemBreakpointContrib(st) {
+  st = st || {};
+  return { fireRes: st.fireRes || 0, coldRes: st.coldRes || 0, lightRes: st.lightningRes || 0, chaosRes: st.chaosRes || 0, spiritFree: st.spirit || 0, rarityPct: st.rarity || 0 };
+}
+const BP_LABELS = { fireRes: "Fire", coldRes: "Cold", lightRes: "Light", chaosRes: "Chaos", spiritFree: "Spirit free", rarityPct: "Rarity%" };
+function checkBreakpoints(stats, floors) {
+  const have = breakpointStats(stats);
+  const violations = [];
+  for (const k of Object.keys(BP_LABELS)) if (have[k] < floors[k] - 0.5) violations.push({ key: k, label: BP_LABELS[k], have: have[k], need: floors[k] });
+  return { ok: !violations.length, violations, have };
+}
+
+// Drop strictly-DOMINATED candidates: another option in the same slot is ≥ on DPS AND
+// every breakpoint contribution AND ≤ price. A dominated item can never be in the best
+// set, so this trims the combo space WITHOUT hiding any real winner. `keep` (current item)
+// is never pruned. `contrib` = this item's own breakpoint-stat contribution (from its rolls).
+function dominationPrune(pool) {
+  const keys = ["fireRes", "coldRes", "lightRes", "chaosRes", "spiritFree", "rarityPct"];
+  const dominates = (a, b) => {
+    if (b.keep) return false;                         // never drop "keep current"
+    if (!(a.dDPS >= b.dDPS && (a.priceDiv || 0) <= (b.priceDiv || 0))) return false;
+    for (const k of keys) if ((a.contrib[k] || 0) < (b.contrib[k] || 0)) return false;
+    return (a.dDPS > b.dDPS) || (a.priceDiv || 0) < (b.priceDiv || 0) || keys.some((k) => (a.contrib[k] || 0) > (b.contrib[k] || 0));
+  };
+  return pool.filter((b) => !pool.some((a) => a !== b && dominates(a, b)));
+}
+
 // GGG's listing.account.online is null when offline, otherwise an object that
 // may carry status "afk"/"dnd" (absent = plain online). Note: this reflects the
 // seller, not whether the item is still in their stash.
@@ -2768,6 +2829,95 @@ const server = http.createServer(async (req, res) => {
           baseDps: dpsOfOut(base),
         }), "application/json; charset=utf-8");
       } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
+      return;
+    }
+
+    // Set Optimizer (multi-slot): pick 2-3 slots, fetch a pool each, then try EVERY
+    // in-budget combination (incl. keep-current per slot) — score each set with one real
+    // calcMulti and keep only those that hold ALL breakpoints (res/spirit/rarity, each an
+    // editable floor). Finds "break a breakpoint on slot A, recover it on slot B, net DPS up"
+    // that single-slot ranking can't. Cheap on trade (one search/slot); the combinatorics are
+    // local PoB calcs. Domination-pruned pools keep it exhaustive for 2-3 slots.
+    if (url.pathname === "/api/gear/optimize-set" && req.method === "POST") {
+      const input = await readJson(req, 8 * 1024 * 1024);
+      if (!(await pob.ready())) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
+      if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
+      const buildXml = String(input.buildXml || "");
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
+      const maxPriceDiv = Number(input.maxPriceDiv) || 0;
+      const slotIds = (Array.isArray(input.slots) ? input.slots : []).map(String).filter(Boolean).slice(0, 3);
+      if (slotIds.length < 2) { send(res, 400, JSON.stringify({ error: "Pick 2-3 slots" }), "application/json; charset=utf-8"); return; }
+      let parsed; try { parsed = parsePobBuild(buildXml); } catch (e) { send(res, 400, JSON.stringify({ error: "Not a PoB build: " + e.message }), "application/json; charset=utf-8"); return; }
+      const POOL = 12, COMBO_CAP = 300;
+      try {
+        let fetchErr = null;
+        const pools = [];
+        for (const slotId of slotIds) {
+          const slot = gearSearchSlots()[slotId];
+          if (!slot) continue;
+          const pobSlot = toolSlotToPob(slotId);
+          const baseSlot = slot.baseId || slotId;
+          const currentRaw = (parsed.slots[slotId] && parsed.slots[slotId].raw) || "";
+          const w = await computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw);   // loads the build
+          const base = await pob.calc(pobSlot, "");
+          const baseDps = dpsOfOut(base), baseEhp = ehpOfOut(base);
+          const mods = (w.weights || []).filter((x) => (x.cur || 0) > 0).slice(0, 3).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
+          const q = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(gearStatFilters(mods)) }, sort: { price: "desc" } };
+          if (maxPriceDiv > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
+          const pf = gearStatFilters(w.preserve, 4);
+          if (pf.length) { q.query.stats = q.query.stats || []; let andG = q.query.stats.find((g) => g && g.type === "and"); if (!andG) { andG = { type: "and", filters: [] }; q.query.stats.push(andG); } const have = new Set(andG.filters.map((f) => f.id)); for (const f of pf) if (!have.has(f.id)) andG.filters.push(f); }
+          const cands = [{ keep: true, pobSlot, raw: currentRaw, name: "(keep current)", base: "", account: "", priceDiv: 0, priceEx: 0, dDPS: 0, dEHP: 0, contrib: itemBreakpointContrib(parseItemStats(currentRaw, baseSlot)) }];
+          let search, usedLeague;
+          try { ({ search, league: usedLeague } = await gearTradeSearch(q, league)); } catch (e) { fetchErr = e; pools.push({ slotId, pobSlot, slotName: slot.label || slotId, candidates: dominationPrune(cands) }); break; }
+          const ids = (search.result || []).slice(0, POOL);
+          if (ids.length) {
+            const rates = await getExchangeRates(usedLeague || league).catch(() => ({}));
+            const anointLines = baseSlot === "amulet" ? extractAnoint(currentRaw) : [];
+            let fetched; try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id)); } catch (e) { fetchErr = e; fetched = null; }
+            for (const e of (fetched && fetched.result) || []) {
+              const txt = pobItemFromTradeEntry(e, anointLines); if (!txt) continue;
+              let st; try { st = await pob.calc(pobSlot, txt); } catch { continue; }
+              const price = listingPriceFromEntry(e, rates) || {};
+              cands.push({ pobSlot, raw: txt, name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), base: (e.item && (e.item.typeLine || e.item.baseType)) || "", account: (e.listing && e.listing.account && e.listing.account.name) || "", priceDiv: price.divine || 0, priceEx: price.exalted || 0, dDPS: dpsOfOut(st) - baseDps, dEHP: ehpOfOut(st) - baseEhp, contrib: itemBreakpointContrib(parseItemStats(txt, baseSlot)) });
+            }
+          }
+          pools.push({ slotId, pobSlot, slotName: slot.label || slotId, candidates: dominationPrune(cands) });
+          if (fetchErr) break;
+        }
+        if (pools.length < 2) { if (fetchErr) throw fetchErr; send(res, 200, JSON.stringify({ available: true, error: "Couldn't build pools for 2+ slots" }), "application/json; charset=utf-8"); return; }
+        // Clean base + breakpoint floors (editable; default to current).
+        await pob.load(buildXml);
+        const base = await pob.calc(pools[0].pobSlot, "");
+        const baseDps = dpsOfOut(base), baseEhp = ehpOfOut(base);
+        const floors = optimizeBreakpoints(base, input.breakpoints || {});
+        // Cartesian product → in-budget combos that change ≥1 slot.
+        let combos = [[]];
+        for (const p of pools) { const next = []; for (const c of combos) for (const cand of p.candidates) next.push(c.concat([cand])); combos = next; }
+        combos = combos.filter((combo) => combo.some((c) => !c.keep) && combo.reduce((s, c) => s + (c.priceDiv || 0), 0) <= (maxPriceDiv > 0 ? maxPriceDiv : Infinity));
+        // Rank by APPROX combined DPS (sum of single-swap deltas) only to choose which to
+        // verify when over the cap; ≤cap means EVERY combo is really scored (no approximation).
+        combos.sort((a, b) => b.reduce((s, c) => s + c.dDPS, 0) - a.reduce((s, c) => s + c.dDPS, 0));
+        const verifyN = Math.min(combos.length, COMBO_CAP);
+        const legal = [];
+        let evaluated = 0;
+        for (let i = 0; i < verifyN; i++) {
+          const changed = combos[i].filter((c) => !c.keep);
+          let combined; try { combined = await pob.calcMulti(changed.map((c) => ({ slot: c.pobSlot, itemText: c.raw }))); } catch { continue; }
+          evaluated++;
+          const bp = checkBreakpoints(combined, floors);
+          if (!bp.ok) continue;
+          legal.push({ combo: combos[i], dDPS: Math.round(dpsOfOut(combined) - baseDps), dEHP: Math.round(ehpOfOut(combined) - baseEhp), priceDiv: Math.round(combos[i].reduce((s, c) => s + (c.priceDiv || 0), 0) * 100) / 100, have: bp.have });
+        }
+        legal.sort((a, b) => b.dDPS - a.dDPS);
+        const results = legal.slice(0, 5).map((L) => ({
+          dDPS: L.dDPS, dEHP: L.dEHP, priceDiv: L.priceDiv, have: L.have,
+          picks: L.combo.map((c, i) => ({ slot: pools[i].slotId, keep: !!c.keep, name: c.name, base: c.base || "", account: c.account || "", priceDiv: c.priceDiv || 0, dDPS: Math.round(c.dDPS), contrib: c.contrib })),
+        }));
+        send(res, 200, JSON.stringify({ available: true, baseDps: Math.round(baseDps), baseEhp: Math.round(baseEhp), floors, cur: floors._cur, slots: pools.map((p) => ({ slotId: p.slotId, slotName: p.slotName, pool: p.candidates.length })), combos: combos.length, evaluated, legal: legal.length, results, partial: !!fetchErr }), "application/json; charset=utf-8");
+      } catch (err) {
+        if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
+        send(res, 200, JSON.stringify({ available: true, error: String(err && err.message) }), "application/json; charset=utf-8");
+      }
       return;
     }
 
@@ -3127,6 +3277,7 @@ module.exports = {
   parsePobBuild,
   listPobBuilds,
   computeGearWeights,
+  optimizeBreakpoints, checkBreakpoints, dominationPrune, itemBreakpointContrib,
   buildWeightedGearQuery,
   ee2SidePrices,
   exchangePriceEx,
