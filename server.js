@@ -1381,7 +1381,14 @@ async function fetchRunePrices(text, league, forceFresh) {
         const min = parsed.qty > 1 ? parsed.qty : 0;   // EE2 stack filter — drop 1-item par-spam
         const cacheKey = cat.id + "|" + min;
         let p = ee2Cached(league, cacheKey);
-        if ((!p || forceFresh) && liveExchangeCalls < MAX_LIVE_EXCHANGE && !tradeStatus().limited) {
+        // Only spend a BLOCKING live Trade2 call when it's needed for the VALUE (poe.ninja
+        // missed) or the user explicitly asked for fresh. When poe.ninja already priced the
+        // item, the bulk read is just a secondary "live offers" side line — serve it from
+        // cache or background-fill it, so the check returns instantly instead of waiting on
+        // up to 20 sequential Trade2 calls (poe.ninja is now the primary, accurate source).
+        const proxyHasPrice = !!(pv && pv.ex > 0);
+        const needLive = forceFresh || (!p && !proxyHasPrice);
+        if (needLive && liveExchangeCalls < MAX_LIVE_EXCHANGE && !tradeStatus().limited) {
           liveExchangeCalls++;
           const live = await exchangePriceEx(league, cat.id, currencyRates.divine || 0, currencyRates.chaos || 0, min);
           writeEe2Cache(league, cacheKey, live || { ex: 0 });
