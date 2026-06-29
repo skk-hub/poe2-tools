@@ -2644,7 +2644,13 @@ function optimizeBreakpoints(base, targets) {
   };
   const num = (v, d) => (v == null || v === "" || isNaN(Number(v))) ? d : Number(v);
   const floors = {};
-  for (const k of Object.keys(cur)) floors[k] = num(t[k], cur[k]);
+  // A breakpoint floor is "don't drop below this" — it must never exceed your CURRENT value,
+  // or the set is unsatisfiable (you'd have to GAIN the stat while upgrading). The client's
+  // default can come out higher than the live calc (a stale/over-reserved resident PoB
+  // reports e.g. Fire 75/Rarity 80 while the optimizer measures 68/73), which made every set
+  // illegal. Clamp to the optimizer's own current reading, so "hold current" is always
+  // achievable; dialing a floor DOWN to probe still works.
+  for (const k of Object.keys(cur)) floors[k] = Math.min(num(t[k], cur[k]), cur[k]);
   floors._cur = cur;
   return floors;
 }
@@ -3057,6 +3063,20 @@ const server = http.createServer(async (req, res) => {
           const mods = (w.weights || []).filter((x) => (x.cur || 0) > 0).slice(0, 3).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
           const rf = rarityFloor(baseSlot, Number(input.rarityMin) || 0);   // require rarity items in the pool
           if (rf) (w.preserve = w.preserve || []).push(rf);
+          // Preserve the RESISTANCES this slot already provides — the search otherwise
+          // ignores res, so swapping (say) your fire-res gloves pulls non-fire gloves and
+          // the set drops below the Fire breakpoint. Require a replacement to match what
+          // this piece contributes, but only for res the user is actually holding
+          // (breakpoint > 0). Capped at 70% so a near-match still enters the pool; the real
+          // combined breakpoint check makes the precise call.
+          const curStats = parseItemStats(currentRaw, baseSlot);
+          for (const [bpKey, statKey] of [["fireRes", "fireRes"], ["coldRes", "coldRes"], ["lightRes", "lightningRes"], ["chaosRes", "chaosRes"]]) {
+            const have = Math.round(curStats[statKey] || 0);
+            if (have > 0 && (Number((input.breakpoints || {})[bpKey]) || 0) > 0) {
+              const id = gearStatId(statKey, baseSlot);
+              if (id) (w.preserve = w.preserve || []).push({ statId: id, min: Math.floor(have * 0.7) });
+            }
+          }
           const q = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(gearStatFilters(mods)) }, sort: { price: "desc" } };
           if (maxPriceDiv > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
           const pf = gearStatFilters(w.preserve, 4);
@@ -3081,7 +3101,7 @@ const server = http.createServer(async (req, res) => {
           if (fetchErr) break;
         }
         if (pools.length < 2) { if (fetchErr) throw fetchErr; send(res, 200, JSON.stringify({ available: true, error: "Couldn't build pools for 2+ slots" }), "application/json; charset=utf-8"); return; }
-        // Clean base + breakpoint floors (editable; default to current).
+        // Base = your full equipped build (empty itemText = keep the slot's current item).
         await pob.load(buildXml);
         const base = await pob.calc(pools[0].pobSlot, "");
         const baseDps = dpsOfOut(base), baseEhp = ehpOfOut(base);
