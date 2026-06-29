@@ -7,10 +7,11 @@ window.__viewInit["gear-finder"] = function () {
     code: $("gfCode"), importBtn: $("gfImport"), paste: $("gfPaste"), saveName: $("gfSaveName"), saveBuild: $("gfSaveBuild"), saveBox: $("gfSaveBox"), saveConfirm: $("gfSaveConfirm"),
     build: $("gfBuild"), slots: $("gfSlots"),
     scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
-    panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), budgetMin: $("gfBudgetMin"), analyze: $("gfAnalyze"),
+    panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), budgetMin: $("gfBudgetMin"),
+    findBar: $("gfFindBar"), find: $("gfFind"), findHint: $("gfFindHint"),
     status: $("gfStatus"), weights: $("gfWeights"),
     actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"),
-    optRow: $("gfOptRow"), optSlots: $("gfOptSlots"), optBreaks: $("gfOptBreaks"), optBudget: $("gfOptBudget"), optRun: $("gfOptRun"), optHint: $("gfOptHint"), optOut: $("gfOptOut"),
+    optBreaks: $("gfOptBreaks"), optOut: $("gfOptOut"),
     treeRow: $("gfTreeRow"), treeDepth: $("gfTreeDepth"), treeRun: $("gfTreeRun"), treeHint: $("gfTreeHint"), treeOut: $("gfTreeOut"), preserveBox: $("gfPreserveBox"), preserveRow: $("gfPreserveRow"), preserveLabel: $("gfPreserveLabel"), preserveSub: $("gfPreserveSub"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
     item: $("gfItem"), scoreBtn: $("gfScoreBtn"), scoreOut: $("gfScoreOut"),
     pins: $("gfPins"), pinCount: $("gfPinCount"), pinBody: $("gfPinBody"),
@@ -33,7 +34,7 @@ window.__viewInit["gear-finder"] = function () {
   const dpsOf = (s) => (s && (s.FullDPS || s.CombinedDPS || s.TotalDPS)) || 0;
   const deltaSpan = (d, unit) => { const c = d > 0 ? "up" : d < 0 ? "down" : "flat"; return `<span class="gf-delta ${c}">${d > 0 ? "+" : ""}${fmt(d)} ${unit}</span>`; };
 
-  const state = { xml: null, slots: {}, headless: false, curSlot: null, weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], preserveOther: false, pinned: [] };
+  const state = { xml: null, slots: {}, headless: false, curSlot: null, sel: new Set(), weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], preserveOther: false, pinned: [] };
   const isUnique = (raw) => /rarity:\s*unique/i.test(String(raw || ""));
   state.pinned = loadPins();
 
@@ -129,42 +130,66 @@ window.__viewInit["gear-finder"] = function () {
     els.slots.innerHTML = Object.entries(state.slots).map(([id, s]) =>
       `<button class="gf-slot" type="button" data-slot="${esc(id)}">${esc(slotLabel(id))}<span class="gf-slot-name">${esc(s.name || "—")}</span></button>`).join("");
     els.scanRow.hidden = !Object.keys(state.slots).length;
-    renderOptimizer(b);
+    state.sel = new Set();
+    renderBreaks(b);
+    els.findBar.hidden = !Object.keys(state.slots).length;
+    els.optOut.innerHTML = "";
+    updateFindUI();
     if (els.treeRow) { els.treeRow.hidden = false; els.treeOut.innerHTML = ""; }
     els.panel.hidden = true; setStatus("");
   }
 
-  // Set Optimizer: slot checkboxes + editable breakpoint floors (default to your current
-  // build values). Hidden until a build loads.
-  function renderOptimizer(b) {
-    const slots = Object.entries(state.slots);
-    if (!slots.length) { els.optRow.hidden = true; return; }
-    els.optSlots.innerHTML = slots.map(([id, s]) =>
-      `<label class="gf-optchk"><input type="checkbox" class="gf-optslot" value="${esc(id)}"> ${esc(slotLabel(id))} <span class="muted">${esc(s.name || "")}</span></label>`).join("");
+  // Editable breakpoint floors (default to your current build values) — shown in the picker
+  // bar only when 2+ slots are selected (the set optimizer holds them).
+  function renderBreaks(b) {
     const rar = Math.round(((Number(b.EffectiveLootRarityMod) || 1) - 1) * 100);
     const bk = [["fireRes", "Fire", b.FireResist], ["coldRes", "Cold", b.ColdResist], ["lightRes", "Light", b.LightningResist], ["chaosRes", "Chaos", b.ChaosResist], ["spiritFree", "Spirit free", b.SpiritUnreserved], ["rarityPct", "Rarity %", rar]];
     els.optBreaks.innerHTML = `<div class="gf-opt-bklabel">Breakpoints — every set must stay <b>at or above</b> these. Editable: dial one down to probe what's hidden just under it.</div>`
       + `<div class="gf-opt-bkrow">` + bk.map(([k, label, v]) =>
         `<label class="gf-optbk"><span class="gf-optbk-l">${label}</span><span class="gf-optbk-ge">≥</span><input class="gf-optbkin" data-k="${k}" type="number" value="${Math.round(Number(v) || 0)}" inputmode="numeric"></label>`).join("") + `</div>`;
-    els.optRow.hidden = false;
-    els.optOut.innerHTML = "";
-    optSyncHint();
   }
-  function optSelected() { return Array.from(els.optSlots.querySelectorAll(".gf-optslot:checked")).map((c) => c.value); }
-  function optSyncHint() {
-    const n = optSelected().length;
-    els.optHint.textContent = (n < 2 || n > 5) ? "select 2–5 slots" : `${n} slots selected — ready${n >= 4 ? " (4–5 takes 1–2 min)" : ""}`;
+
+  // Unified slot picker: click a chip to toggle it. 1 selected → single-slot rank; 2+ → set
+  // optimizer (breakpoints shown). One "Find upgrades" button dispatches on the count.
+  function toggleSlot(id) {
+    if (state.sel.has(id)) state.sel.delete(id); else state.sel.add(id);
+    updateFindUI();
+  }
+  function updateFindUI() {
+    const n = state.sel.size;
+    els.slots.querySelectorAll(".gf-slot").forEach((b) => b.classList.toggle("on", state.sel.has(b.dataset.slot)));
+    els.optBreaks.hidden = n < 2;
+    els.findHint.textContent = n === 0 ? "select one or more slots"
+      : n === 1 ? "1 slot — ranks the best buyable items for it"
+      : (n > 5 ? "pick at most 5 slots for a set" : `${n} slots — optimizes a set holding your breakpoints${n >= 4 ? " (~1–2 min)" : ""}`);
+  }
+  function optSelected() { return Array.from(state.sel); }
+
+  // "Find upgrades": dispatch on how many slots are selected.
+  async function findUpgrades() {
+    const n = state.sel.size;
+    if (n === 0) { els.findHint.textContent = "select one or more slots"; return; }
+    if (n === 1) {
+      els.optOut.innerHTML = "";
+      selectSlot([...state.sel][0]);
+      els.panel.scrollIntoView({ behavior: "smooth", block: "start" });
+      await analyzeSlot();
+      if (state.weights.length) await realRank();
+      return;
+    }
+    els.panel.hidden = true;
+    await optimize();
   }
 
   async function optimize() {
     const picked = optSelected();
-    if (picked.length < 2 || picked.length > 5) { els.optHint.textContent = "pick 2–5 slots"; return; }
+    if (picked.length < 2 || picked.length > 5) { els.findHint.textContent = "pick 2–5 slots"; return; }
     const breakpoints = {};
     els.optBreaks.querySelectorAll(".gf-optbkin").forEach((i) => { if (i.value !== "") breakpoints[i.dataset.k] = Number(i.value); });
-    els.optRun.disabled = true;
+    els.find.disabled = true;
     els.optOut.innerHTML = `<p class="status">Fetching ${picked.length} pools + scoring combinations in Path of Building… ${picked.length >= 4 ? "(4–5 slots: ~1–2 min, lots of Trade2 calls)" : "(~30s)"}</p>`;
-    const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.optBudget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
-    els.optRun.disabled = false;
+    const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
+    els.find.disabled = false;
     if (d.available === false) { els.optOut.innerHTML = `<p class="status err">Headless Path of Building isn't available.</p>`; return; }
     if (d.limited) { els.optOut.innerHTML = `<p class="status err">Trade2 is rate-limited — try again shortly.</p>`; return; }
     if (d.error) { els.optOut.innerHTML = `<p class="status err">Failed: ${esc(d.error)}</p>`; return; }
@@ -273,7 +298,8 @@ window.__viewInit["gear-finder"] = function () {
 
   function selectSlot(id) {
     state.curSlot = id; state.weights = []; state.query = null;
-    els.slots.querySelectorAll(".gf-slot").forEach((b) => b.classList.toggle("on", b.dataset.slot === id));
+    state.sel = new Set([id]);   // focusing one slot (scan/pin click) = single-slot selection
+    updateFindUI();
     els.slot.textContent = id + " — " + ((state.slots[id] && state.slots[id].name) || "");
     els.panel.hidden = false; els.weights.innerHTML = ""; els.actions.hidden = true; els.snippetBox.hidden = true;
     els.item.value = ""; els.scoreOut.innerHTML = "";
@@ -315,12 +341,12 @@ window.__viewInit["gear-finder"] = function () {
 
   async function analyzeSlot() {
     const id = state.curSlot; if (!id) return;
-    els.analyze.disabled = true; setStatus("Asking Path of Building what this slot is worth…");
+    els.find.disabled = true; setStatus("Asking Path of Building what this slot is worth…");
     const d = await api("/api/gear/weights", {
       buildXml: state.xml, slot: id, pobSlot: state.slots[id] && state.slots[id].pobSlot,
       current: { raw: state.slots[id] && state.slots[id].raw }, maxPriceDiv: Number(els.budget.value) || 0, league: state.league,
     }).catch((e) => ({ error: String(e) }));
-    els.analyze.disabled = false;
+    els.find.disabled = false;
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
     if (d.available === false) { setStatus("Headless Path of Building isn't available — install PoB + LuaJIT for build-weighted search.", true); return; }
     state.weights = d.weights || []; state.query = d.query; state.league = d.league || state.league; state.metric = d.metric || "dps"; state.equip = d.equip || null; state.preserve = d.preserve || null;
@@ -522,14 +548,13 @@ window.__viewInit["gear-finder"] = function () {
     delete saves[name]; persistSaves(saves); refreshSaved();
     setStatus(`Deleted "${name}".`);
   });
-  els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) selectSlot(b.dataset.slot); });
+  els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) toggleSlot(b.dataset.slot); });
+  els.find.addEventListener("click", findUpgrades);
   els.scanAll.addEventListener("click", scanAll);
-  els.scanOut.addEventListener("click", (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { selectSlot(tr.dataset.slot); els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); analyzeSlot(); } });
-  els.analyze.addEventListener("click", analyzeSlot);
+  // Click a scanned slot → focus it as a single-slot rank (select + analyze + rank).
+  els.scanOut.addEventListener("click", async (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { els.optOut.innerHTML = ""; selectSlot(tr.dataset.slot); els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); await analyzeSlot(); if (state.weights.length) await realRank(); } });
   els.realRankBtn.addEventListener("click", realRank);
-  els.optRun.addEventListener("click", optimize);
   els.treeRun.addEventListener("click", analyzeTree);
-  els.optSlots.addEventListener("change", optSyncHint);
   // Click an optimizer pick row → open that listing on trade (same per-item link as the ranked rows).
   els.optOut.addEventListener("click", (ev) => { const row = ev.target.closest(".gf-opt-link"); if (!row) return; let mods = []; try { mods = JSON.parse(row.dataset.mods || "[]"); } catch {} openItemListing(row.dataset.base, row.dataset.account, "", mods); });
   // Preserve EHP is a PRE-scan setting (applied server-side before ranking), so changing it

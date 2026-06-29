@@ -419,18 +419,6 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <span class="sub">ranks every slot by upgrade value per divine — no budget cap; uniques & spirit-breaking items are skipped</span>
       </div>
       <div id="gfScanOut" class="gf-scanout"></div>
-      <details class="gf-opt" id="gfOptRow" hidden>
-        <summary>🎯 Set Optimizer — preserve breakpoints, gain DPS</summary>
-        <p class="sub">Pick 2–5 slots. The tool tries in-budget combinations (incl. keeping a slot) and shows only sets that hold your breakpoints — so it can break a resist/spirit on one slot and recover it on another for a net DPS gain. Dial a breakpoint down to probe what's hidden just under it. (4–5 slots take ~1–2 min and many Trade2 calls.)</p>
-        <div class="gf-opt-slots" id="gfOptSlots"></div>
-        <div class="gf-opt-breaks" id="gfOptBreaks"></div>
-        <div class="gf-opt-actions">
-          <label>Budget (div) <input id="gfOptBudget" type="number" min="0" step="1" placeholder="any" style="width:6em"></label>
-          <button class="btn btn-primary" id="gfOptRun" type="button">Optimize set</button>
-          <span class="sub" id="gfOptHint">select 2–3 slots</span>
-        </div>
-        <div id="gfOptOut" class="gf-opt-out"></div>
-      </details>
       <details class="gf-opt gf-tree" id="gfTreeRow" hidden>
         <summary>🌳 Passive Tree — which points to move for DPS</summary>
         <p class="sub">Pure Path of Building, no trade. Values every reachable notable (DPS gained by pathing to it) and every allocated notable (DPS lost if removed) — so you can spot dead points to respec out and high-value notables to grab. Jewel sockets ignored.</p>
@@ -442,14 +430,20 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         </div>
         <div id="gfTreeOut" class="gf-tree-out"></div>
       </details>
+      <p class="sub gf-pickhint">Pick <b>one</b> slot to rank the best buyable items for it, or <b>two or more</b> to optimize a set that holds your breakpoints (it can break a resist on one slot and recover it on another for a net gain).</p>
       <div id="gfSlots" class="gf-slots"></div>
-      <div class="gf-search" id="gfSearchPanel" hidden>
+      <div class="gf-findbar" id="gfFindBar" hidden>
         <div class="gf-row">
-          <label>Slot <b id="gfSlot"></b></label>
           <label>Min div <span class="muted">(optional)</span> <input id="gfBudgetMin" type="number" value="0" min="0" step="0.5" style="width:6em" title="skip items cheaper than this — raises the floor past junk so a real upgrade shows"></label>
           <label>Max div <span class="muted">(0 = any)</span> <input id="gfBudget" type="number" value="0" min="0" step="0.5" style="width:6em" title="cap the upgrade price; 0 = find the best at any price (ROI tells you if it's worth it)"></label>
-          <button class="btn btn-primary" id="gfAnalyze" type="button">Analyze slot</button>
+          <button class="btn btn-primary" id="gfFind" type="button">Find upgrades</button>
+          <span class="sub" id="gfFindHint">select one or more slots</span>
         </div>
+        <div class="gf-opt-breaks" id="gfOptBreaks" hidden></div>
+      </div>
+      <div id="gfOptOut" class="gf-opt-out"></div>
+      <div class="gf-search" id="gfSearchPanel" hidden>
+        <div class="gf-row"><label>Slot <b id="gfSlot"></b></label></div>
         <div id="gfStatus" class="status"></div>
         <div id="gfWeights"></div>
         <div id="gfActions" class="gf-actions" hidden>
