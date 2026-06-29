@@ -8,7 +8,7 @@ window.__viewInit["gear-finder"] = function () {
     build: $("gfBuild"), slots: $("gfSlots"),
     scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), budgetMin: $("gfBudgetMin"),
-    findBar: $("gfFindBar"), find: $("gfFind"), findHint: $("gfFindHint"),
+    findBar: $("gfFindBar"), find: $("gfFind"), findHint: $("gfFindHint"), rarityChk: $("gfRarityChk"), rarityVal: $("gfRarityVal"),
     status: $("gfStatus"), weights: $("gfWeights"),
     actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"),
     optBreaks: $("gfOptBreaks"), optOut: $("gfOptOut"),
@@ -164,6 +164,9 @@ window.__viewInit["gear-finder"] = function () {
       : (n > 5 ? "pick at most 5 slots for a set" : `${n} slots — optimizes a set holding your breakpoints${n >= 4 ? " (~1–2 min)" : ""}`);
   }
   function optSelected() { return Array.from(state.sel); }
+  // User's "Require Item Rarity ≥ N%" — 0 when unchecked. Sent to both search paths so
+  // rarity-bearing items actually surface (the search ignores rarity otherwise).
+  function rarityMin() { return els.rarityChk && els.rarityChk.checked ? Math.max(1, Number(els.rarityVal.value) || 0) : 0; }
 
   // "Find upgrades": dispatch on how many slots are selected.
   async function findUpgrades() {
@@ -188,7 +191,7 @@ window.__viewInit["gear-finder"] = function () {
     els.optBreaks.querySelectorAll(".gf-optbkin").forEach((i) => { if (i.value !== "") breakpoints[i.dataset.k] = Number(i.value); });
     els.find.disabled = true;
     els.optOut.innerHTML = `<p class="status">Fetching ${picked.length} pools + scoring combinations in Path of Building… ${picked.length >= 4 ? "(4–5 slots: ~1–2 min, lots of Trade2 calls)" : "(~30s)"}</p>`;
-    const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league }).catch((e) => ({ error: String(e) }));
     els.find.disabled = false;
     if (d.available === false) { els.optOut.innerHTML = `<p class="status err">Headless Path of Building isn't available.</p>`; return; }
     if (d.limited) { els.optOut.innerHTML = `<p class="status err">Trade2 is rate-limited — try again shortly.</p>`; return; }
@@ -380,7 +383,7 @@ window.__viewInit["gear-finder"] = function () {
     // 70% (not 100%) — PoB ΔDPS sorts the rest.
     const mods = state.weights.filter((w) => (w.cur || 0) > 0).slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((w.cur || 1) * 0.7)) }));
     els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
-    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, minPriceDiv: Number(els.budgetMin.value) || 0, maxPriceDiv: Number(els.budget.value) || 0, league: state.league }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, minPriceDiv: Number(els.budgetMin.value) || 0, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league }).catch((e) => ({ error: String(e) }));
     els.realRankBtn.disabled = false;
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }

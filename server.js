@@ -1687,6 +1687,17 @@ function gearStatId(key, slotId) {
   return UPGRADE_STAT_IDS[key];
 }
 
+// Whether a slot can roll "increased Rarity of Items" (so a rarity search-floor is valid).
+// Weapons/jewels have no rarity stat; every armour piece + jewellery does.
+const slotHasRarity = (baseSlot) => (UPGRADE_SEARCH_STATS[baseSlot === "ring1" || baseSlot === "ring2" ? "ring" : baseSlot] || []).includes("rarity");
+// A rarity preserve-floor entry for the search (so rarity-bearing items actually surface),
+// or null for slots that can't roll it. min is the user's "Item rarity ≥ N%".
+function rarityFloor(baseSlot, rarityMin) {
+  if (!(rarityMin > 0) || !slotHasRarity(baseSlot)) return null;
+  const id = gearStatId("rarity", baseSlot);
+  return id ? { statId: id, min: rarityMin } : null;
+}
+
 // Build the top-2 Trade2 stat filters for a gear search from [{statId,min}].
 // Keep explicit AND pseudo ids — ES/life map to pseudo ids (pseudo.pseudo_total_*),
 // and dropping them left ES/life slots with no filters → an empty "and" group,
@@ -3043,6 +3054,8 @@ const server = http.createServer(async (req, res) => {
           const base = await pob.calc(pobSlot, "");
           const baseDps = dpsOfOut(base), baseEhp = ehpOfOut(base);
           const mods = (w.weights || []).filter((x) => (x.cur || 0) > 0).slice(0, 3).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
+          const rf = rarityFloor(baseSlot, Number(input.rarityMin) || 0);   // require rarity items in the pool
+          if (rf) (w.preserve = w.preserve || []).push(rf);
           const q = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(gearStatFilters(mods)) }, sort: { price: "desc" } };
           if (maxPriceDiv > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
           const pf = gearStatFilters(w.preserve, 4);
@@ -3134,6 +3147,12 @@ const server = http.createServer(async (req, res) => {
       const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
       const league = sanitizeLeague(input.league || "Runes of Aldur");
       const mods = gearStatFilters(input.mods);
+      // Rarity floor (user's "Item rarity ≥ N%"): add it as a preserve gate so the search
+      // REQUIRES rarity-bearing items — even if the current piece has none, so a rarity
+      // upgrade actually surfaces. Only for slots that can roll it; flows into both the
+      // weighted and the price-sort query (both read input.preserve).
+      const rf = rarityFloor(slot.baseId || String(input.slot || ""), Number(input.rarityMin) || 0);
+      if (rf) input.preserve = (Array.isArray(input.preserve) ? input.preserve : []).concat([rf]);
       // With a POESESSID session we can sort the search by BUILD VALUE (weighted statgroup)
       // and score the genuinely-best candidates. Logged-out that sort 400s, so fall back to
       // a stat-floor + price-spread. Weights come from the client's /api/gear/weights result.

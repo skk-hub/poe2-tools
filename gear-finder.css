@@ -33,6 +33,8 @@
   .toolroot-gear .gf-findbar{margin:10px 0;padding:10px 12px;border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--surface-1)}
   .toolroot-gear .gf-findbar[hidden]{display:none}
   .toolroot-gear .gf-pickhint{margin:6px 0 8px;max-width:70ch}
+  .toolroot-gear .gf-rarity{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:9px;font:12px var(--ff-mono)}
+  .toolroot-gear .gf-rarity .sub{flex-basis:100%;margin:0}
   .toolroot-gear .gf-opt-breaks{margin:10px 0}
   .toolroot-gear .gf-opt-breaks[hidden]{display:none}
   .toolroot-gear .gf-opt-bklabel{font-size:12px;color:var(--mu);margin-bottom:7px;max-width:60ch}
