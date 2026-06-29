@@ -2129,35 +2129,37 @@ function extractAnoint(raw) {
   return out;
 }
 
-// Your CURRENT item's rune-granted mod lines (PoB exports them tagged {rune}), markup-
-// stripped. This is "one socket's worth" of YOUR rune — pobItemFromTradeEntry replicates
-// it across a candidate's sockets so an extra rune socket is valued as +1 of your rune
-// (you fill every socket; you said you'll buy the runes). Exact when your current item has
-// 1 socket (the common case); a multi-socket current item folds several runes into this
-// set and would over-credit candidates.
-// ponytail: per-socket rune = current item's {rune} lines; correct for 1-socket-current.
-function extractRuneLines(raw) {
-  const out = [];
+// Your CURRENT item's rune contribution, as PLAIN stackable mod text + how many sockets
+// it spans. PoB exports rune mods tagged {enchant}{rune} (and combines identical runes
+// into one summed line, e.g. 2× Iron → "40% increased AES"); the {enchant} tag makes PoB
+// treat the value as a fixed enchant that WON'T stack on duplication — so we strip all
+// {..} markup (and the "Bonded:" prefix) to plain text, which DOES stack/sum in PoB
+// (verified). `sockets` = filled rune sockets on the current item ("Rune:" lines), so a
+// candidate's rune value can be scaled by candidateSockets/sockets.
+function extractRuneFill(raw) {
+  const lines = [];
   for (const line of String(raw || "").split("\n")) {
     if (!/\{rune\}/i.test(line)) continue;
-    const t = normalizePoeMarkup(line).trim();
-    if (t) out.push(t);
+    const t = line.replace(/\{[^}]*\}/g, "").replace(/^\s*Bonded:\s*/i, "").trim();
+    if (t) lines.push(t);
   }
-  return out;
+  const sockets = (String(raw || "").match(/^\s*Rune:\s/gim) || []).length || (lines.length ? 1 : 0);
+  return { lines, sockets };
 }
 
 // extraImplicits: enchant-section lines to graft on (your anoint, transferred from your
 // current amulet). Added to the implicit block + count so PoB reads them as enchants. Any
 // anoint the candidate ALREADY has is REPLACED with yours — you can only run one anoint and
 // you'd re-anoint whatever you buy with your own notable, so its existing one is irrelevant.
-// runeLines: your per-socket rune (from extractRuneLines). When given, the listing's own
-// runeMods are DROPPED (seller's rune choice + base "Bonded" lines) and EVERY socket is
-// filled with your rune instead — so empty sockets count and an extra socket = +1 rune.
-// sockets.length is the total socket count incl. empty (GGG schema). Omit runeLines to
-// keep the legacy behaviour (score the seller's runes as-is).
-// ponytail: dropping the base Bonded mods slightly undervalues niche Shaman/expedition
-// bases; add those back only if they turn out to matter.
-function pobItemFromTradeEntry(entry, extraImplicits, runeLines) {
+// runeFill {lines, sockets}: your rune contribution from extractRuneFill. When given, the
+// listing's own runeMods are DROPPED (seller's choice + base "Bonded" lines) and the
+// candidate's sockets are filled with YOUR rune instead, scaled by candidateSockets/yours
+// — so an extra socket adds rune value, an unsocketable base loses it. item.sockets.length
+// = total sockets incl. empty (GGG schema). Omit runeFill to keep the legacy behaviour.
+// ponytail: scaling assumes a uniform rune across your sockets (true for the common case
+// of the same rune in every socket); a mix of different runes scales proportionally rather
+// than exactly. Dropping base "Bonded" mods slightly undervalues niche Shaman bases.
+function pobItemFromTradeEntry(entry, extraImplicits, runeFill) {
   const item = (entry && entry.item) || {};
   const base = item.typeLine || item.baseType || "";
   if (!base) return null;
@@ -2167,8 +2169,11 @@ function pobItemFromTradeEntry(entry, extraImplicits, runeLines) {
   // plain string like PoE1. String(obj) → "[object Object]" → PoB parses a blank item
   // (mods dropped) → every candidate scores identically. Pull the actual text.
   const modText = (m) => normalizePoeMarkup(typeof m === "string" ? m : (m && m.description) || "");
-  const fillRunes = runeLines && runeLines.length;
-  const myRunes = fillRunes ? Array(((item.sockets || []).length)).fill(runeLines).flat() : [];
+  const fillRunes = runeFill && runeFill.lines && runeFill.lines.length && runeFill.sockets > 0;
+  const sCand = (item.sockets || []).length;
+  const factor = fillRunes ? sCand / runeFill.sockets : 0;
+  const scale = (line) => line.replace(/\d+(?:\.\d+)?/g, (m) => String(Math.round(parseFloat(m) * factor)));
+  const myRunes = fillRunes && sCand > 0 ? runeFill.lines.map(scale) : [];
   let impl = [].concat(item.enchantMods || [], fillRunes ? [] : (item.runeMods || []), item.implicitMods || []).map(modText).filter(Boolean).concat(myRunes);
   if (extraImplicits && extraImplicits.length) impl = impl.filter((l) => !/Allocates\s/i.test(l)).concat(extraImplicits);
   const expl = [].concat(item.explicitMods || [], item.fracturedMods || [], item.craftedMods || [], item.desecratedMods || []).map(modText).filter(Boolean);
@@ -3049,10 +3054,10 @@ const server = http.createServer(async (req, res) => {
           if (ids.length) {
             const rates = await getExchangeRates(usedLeague || league).catch(() => ({}));
             const anointLines = baseSlot === "amulet" ? extractAnoint(currentRaw) : [];
-            const runeLines = extractRuneLines(currentRaw);   // fill each candidate's sockets with YOUR rune
+            const runeFill = extractRuneFill(currentRaw);   // scale each candidate's sockets to YOUR rune
             let fetched; try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id)); } catch (e) { fetchErr = e; fetched = null; }
             for (const e of (fetched && fetched.result) || []) {
-              const txt = pobItemFromTradeEntry(e, anointLines, runeLines); if (!txt) continue;
+              const txt = pobItemFromTradeEntry(e, anointLines, runeFill); if (!txt) continue;
               let st; try { st = await pob.calc(pobSlot, txt); } catch { continue; }
               const price = listingPriceFromEntry(e, rates) || {};
               cands.push({ pobSlot, raw: txt, name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), base: (e.item && (e.item.typeLine || e.item.baseType)) || "", account: (e.listing && e.listing.account && e.listing.account.name) || "", mods: linkModsFromEntry(e, w.weights), priceDiv: price.divine || 0, priceEx: price.exalted || 0, dDPS: dpsOfOut(st) - baseDps, dEHP: ehpOfOut(st) - baseEhp, contrib: itemBreakpointContrib(parseItemStats(txt, baseSlot)) });
@@ -3236,7 +3241,7 @@ const server = http.createServer(async (req, res) => {
         // constant (apples-to-apples). Amulet only (the only PoE2 anoint slot).
         const baseSlot = slot.baseId || String(input.slot || "");
         const anointLines = baseSlot === "amulet" ? extractAnoint(input.current && input.current.raw) : [];
-        const runeLines = extractRuneLines(input.current && input.current.raw);   // fill each candidate's sockets with YOUR rune
+        const runeFill = extractRuneFill(input.current && input.current.raw);   // scale each candidate's sockets to YOUR rune
         let spiritSkipped = 0;
         let cands = [];
         let fetchErr = null;
@@ -3245,7 +3250,7 @@ const server = http.createServer(async (req, res) => {
           try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + pick.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id)); }
           catch (e) { fetchErr = e; break; }   // rate-limit/error mid-sweep → keep what we scored
           for (const e of fetched.result || []) {
-            const txt = pobItemFromTradeEntry(e, anointLines, runeLines);
+            const txt = pobItemFromTradeEntry(e, anointLines, runeFill);
             if (!txt) continue;
             let stats; try { stats = await pob.calc(pobSlot, txt); } catch { continue; }
             if (spiritGuard && Number(stats.SpiritUnreserved) < baseUnreserved - 0.5) { spiritSkipped++; continue; }   // less spirit headroom than your current build → can't run its auras
@@ -3487,7 +3492,7 @@ module.exports = {
   listPobBuilds,
   computeGearWeights,
   optimizeBreakpoints, checkBreakpoints, dominationPrune, itemBreakpointContrib,
-  pobItemFromTradeEntry, extractRuneLines,
+  pobItemFromTradeEntry, extractRuneFill,
   buildWeightedGearQuery,
   ee2SidePrices,
   exchangePriceEx,
