@@ -1820,7 +1820,10 @@ const PRESERVE_CONTROL_STATS_BY_SLOT = {
   buckler: ["evasion", "energyShield", "life", "str", "dex", "int", "totalAllAttributes", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   chest: ["energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   boots: ["movementSpeed", "energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
-  gloves: ["attackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "manaOnKill", "rarity"],
+  // projectileLevels/projectileDamage: only rollable on gloves with a Marksman rune (Kolr's Hunt,
+  // 0.5) socketed, but on trade they're plain explicits. Self-gating — the weight perturbation gives
+  // ~0 for non-projectile builds, so they only surface marksman gloves for builds that actually use them.
+  gloves: ["attackSpeed", "projectileLevels", "projectileDamage", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "energyShield", "evasion", "armour", "life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "manaOnKill", "rarity"],
   ring: ["life", "mana", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "castSpeed", "manaRegen", "manaOnKill", "str", "dex", "int", "totalAllAttributes", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   belt: ["life", "mana", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   jewel: ["critChance", "critDamage", "attackSpeed", "castSpeed", "projectileDamage", "spellDamage", "manaOnKill", "str", "dex", "int"],
