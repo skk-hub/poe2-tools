@@ -50,6 +50,7 @@ const SESSION_FILE = path.join(DATA_DIR, ".poesessid.json");
 let sessionId = (process.env.POESESSID || "").trim();
 let sessionExpiredFlag = false;   // flipped true when a weighted query 400s (GGG logged us out); surfaced in the UI
 let sessionVerifiedFlag = false;  // flipped true when a weighted query SUCCEEDS — green only ever means "confirmed working", never just "set"
+let gearDefenceSortOk = true;     // trade2 defence sort (ev/ar/es) is undocumented; flipped false on the first 400 so a wrong key wastes at most ONE call, then we revert to the weighted/price sort
 try { const s = JSON.parse(fs.readFileSync(SESSION_FILE, "utf8")); if (s && s.poesessid) sessionId = String(s.poesessid).trim(); } catch {}
 const TRADE_HEADERS = {
   "Content-Type": "application/json",
@@ -3087,6 +3088,14 @@ const server = http.createServer(async (req, res) => {
           // price-desc when logged-out or if the weighted query 400s (dead session).
           const wts = (w.weights || []).filter((x) => x && /^(explicit\.stat_\d+|pseudo\.[a-z0-9_]+)$/.test(x.statId) && Number(x.weight) > 0);
           let weighted = !!sessionId && wts.length > 0 && !/^jewel\d+$/.test(slotId);
+          // Defence slots (chest/helmet/boots/shield, ev/ar/es ≥500, not gloves): sort by the
+          // dominant DEFENCE, not the weighted SUM — same reasoning as realrank (the weighted sum
+          // buries a defence-strong / res-poor EHP upgrade below the fetched pool). Fall back to
+          // the original sort on a 400 (unverified trade2 defence sort key → zero regression).
+          let defK = null, defV = 0;
+          if (w.equip) for (const k of ["ev", "ar", "es"]) { const v = Number(w.equip[k]) || 0; if (v > defV) { defV = v; defK = k; } }
+          const defenceSlot = gearDefenceSortOk && !!defK && defV >= 500 && baseSlot !== "gloves";
+          if (defenceSlot) weighted = false;
           const buildQ = (useW) => {
             const q = useW
               ? buildWeightedGearQuery(slot, wts, league, maxPriceDiv, w.preserve)
@@ -3099,10 +3108,17 @@ const server = http.createServer(async (req, res) => {
             return q;
           };
           const cands = [{ keep: true, pobSlot, raw: currentRaw, name: "(keep current)", base: "", account: "", priceDiv: 0, priceEx: 0, dDPS: 0, dEHP: 0, contrib: itemBreakpointContrib(parseItemStats(currentRaw, baseSlot)) }];
+          let q = buildQ(weighted);
+          const origSort = q.sort;
+          if (defenceSlot) q.sort = { [defK]: "desc" };   // ev/ar/es — equipment_filters key = trade2 defence sort key
           let search, usedLeague;
-          try { ({ search, league: usedLeague } = await gearTradeSearch(buildQ(weighted), league)); }
+          try { ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
           catch (e) {
-            if (weighted && /HTTP 400/.test(String(e && e.message))) {
+            if (defenceSlot && /HTTP 400/.test(String(e && e.message))) {
+              gearDefenceSortOk = false; q.sort = origSort;
+              try { ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
+              catch (e2) { fetchErr = e2; pools.push({ slotId, pobSlot, slotName: slot.label || slotId, candidates: dominationPrune(cands) }); break; }
+            } else if (weighted && /HTTP 400/.test(String(e && e.message))) {
               weighted = false; sessionExpiredFlag = true;
               try { ({ search, league: usedLeague } = await gearTradeSearch(buildQ(false), league)); }
               catch (e2) { fetchErr = e2; pools.push({ slotId, pobSlot, slotName: slot.label || slotId, candidates: dominationPrune(cands) }); break; }
@@ -3253,18 +3269,34 @@ const server = http.createServer(async (req, res) => {
         }
         return q;
       };
+      // Defensive slots (chest/helmet/boots/shield — dominant ev/ar/es ≥500, NOT gloves which are
+      // DPS-ranked) are EHP-driven, and the build-weighted SUM sort BURIES a defence-strong item
+      // that lacks your top-weighted res stat — a pure-evasion chest with 0 chaos res ranks low in
+      // the sum though its real EHP is the highest (the +556 EHP Blood Suit the user found by hand,
+      // missed because it scored 0 on chaos res ×20 + ES ×7). Sort these by the dominant DEFENCE
+      // instead (a plain stat-floored query, no weight group → works logged-out too) so the genuine
+      // EHP upgrades reach the fetched+scored pool. The trade2 defence sort key isn't documented, so
+      // fall back to the original (price) sort on a 400 — zero regression if the key turns out wrong.
+      const bSlot = slot.baseId || String(input.slot || "");
+      let defK = null, defV = 0;
+      if (input.equip && typeof input.equip === "object") for (const k of ["ev", "ar", "es"]) { const v = Number(input.equip[k]) || 0; if (v > defV) { defV = v; defK = k; } }
+      const defenceSlot = gearDefenceSortOk && !!defK && defV >= 500 && bSlot !== "gloves";
+      if (defenceSlot) weighted = false;   // defence sort replaces the weighted sum for these slots
       let q = buildQ(weighted);
+      const origSort = q.sort;
+      if (defenceSlot) q.sort = { [defK]: "desc" };   // ev/ar/es — the equipment_filters key (also the trade2 defence sort key)
       let sessionExpired = false;
       try {
         let search, usedLeague;
         try {
           ({ search, league: usedLeague } = await gearTradeSearch(q, league));
         } catch (e) {
-          // The weighted (statgroup) query 400s when POESESSID is missing/EXPIRED (GGG
-          // then treats us as logged-out → "too complex"/"log in"). POESESSID IS set here
-          // (else weighted would be false), so a 400 means the session died → flag it so
-          // the UI can prompt a refresh, and fall back to the non-weighted query.
-          if (weighted && /HTTP 400/.test(String(e && e.message))) { sessionExpired = true; sessionExpiredFlag = true; weighted = false; q = buildQ(false); ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
+          // (a) Defence-sorted query 400s → sort key unsupported; self-disable for the process,
+          // revert to the original sort and retry. (b) Weighted (statgroup) query 400s when POESESSID
+          // is missing/EXPIRED (GGG treats us as logged-out → "too complex"/"log in"); flag it so the
+          // UI prompts a refresh + drop to price.
+          if (defenceSlot && /HTTP 400/.test(String(e && e.message))) { gearDefenceSortOk = false; q.sort = origSort; ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
+          else if (weighted && /HTTP 400/.test(String(e && e.message))) { sessionExpired = true; sessionExpiredFlag = true; weighted = false; q = buildQ(false); ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
           else throw e;
         }
         // Weighted query went through (no 400) → the cookie is confirmed live this session.
