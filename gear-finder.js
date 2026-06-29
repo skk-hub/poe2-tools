@@ -410,7 +410,8 @@ window.__viewInit["gear-finder"] = function () {
     els.preserveRow.hidden = false;
     els.preserveBox.checked = state.preserveOther;
     renderRealCands();
-    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB${d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)"}${state.preserveOther && d.otherDropped ? ` — Preserve ${secLabel} dropped ${d.otherDropped}` : ""}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.`);
+    const rankNote = d.sortMode === "defence" ? " (ranked by defence — highest-EHP first)" : d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)";
+    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB${rankNote}${state.preserveOther && d.otherDropped ? ` — Preserve ${secLabel} dropped ${d.otherDropped}` : ""}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.`);
   }
 
   // Render the realrank pool: sort by the slot's gain metric, show the top 10. The Preserve-EHP

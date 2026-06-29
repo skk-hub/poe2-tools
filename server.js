@@ -3284,6 +3284,7 @@ const server = http.createServer(async (req, res) => {
       if (defenceSlot) weighted = false;   // defence sort replaces the weighted sum for these slots
       let q = buildQ(weighted);
       const origSort = q.sort;
+      let usedDefenceSort = defenceSlot;
       if (defenceSlot) q.sort = { [defK]: "desc" };   // ev/ar/es — the equipment_filters key (also the trade2 defence sort key)
       let sessionExpired = false;
       try {
@@ -3295,7 +3296,7 @@ const server = http.createServer(async (req, res) => {
           // revert to the original sort and retry. (b) Weighted (statgroup) query 400s when POESESSID
           // is missing/EXPIRED (GGG treats us as logged-out → "too complex"/"log in"); flag it so the
           // UI prompts a refresh + drop to price.
-          if (defenceSlot && /HTTP 400/.test(String(e && e.message))) { gearDefenceSortOk = false; q.sort = origSort; ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
+          if (defenceSlot && /HTTP 400/.test(String(e && e.message))) { gearDefenceSortOk = false; usedDefenceSort = false; q.sort = origSort; ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
           else if (weighted && /HTTP 400/.test(String(e && e.message))) { sessionExpired = true; sessionExpiredFlag = true; weighted = false; q = buildQ(false); ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
           else throw e;
         }
@@ -3315,7 +3316,9 @@ const server = http.createServer(async (req, res) => {
         // live, spanning mirror-tier down to mid-price — the best upgrade is often
         // mid-range, NOT the single priciest, so a spread beats top-m). asc spreads the
         // cheap page (mostly junk, but cheap real upgrades surface if your gear is weak).
-        const pick = weighted ? all.slice(0, m) : Array.from({ length: m }, (_, i) => all[Math.floor((i * all.length) / m)]);
+        // Weighted OR defence-sorted = best-first (highest build-value / highest defence), so take
+        // the top m. Only the plain price fallback samples a spread.
+        const pick = (weighted || usedDefenceSort) ? all.slice(0, m) : Array.from({ length: m }, (_, i) => all[Math.floor((i * all.length) / m)]);
         const rates = await getExchangeRates(league).catch(() => ({}));
         await pob.load(String(input.buildXml || ""));
         const base = await pob.calc(pobSlot, "");
@@ -3392,7 +3395,8 @@ const server = http.createServer(async (req, res) => {
         // The build-weighted/price search this came from — opening it lands on these
         // candidates (no per-item permalink exists on PoE trade). Each row links here.
         const searchUrl = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(usedLeague) + "/" + search.id : "";
-        send(res, 200, JSON.stringify({ available: true, weighted, sessionExpired, metric, spiritSkipped, otherDropped, searchUrl, scored: scoredCount, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
+        const sortMode = usedDefenceSort ? "defence" : (weighted ? "weighted" : "price");
+        send(res, 200, JSON.stringify({ available: true, weighted, sortMode, sessionExpired, metric, spiritSkipped, otherDropped, searchUrl, scored: scoredCount, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         const msg = String(err.message);
