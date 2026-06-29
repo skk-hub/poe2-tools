@@ -1688,8 +1688,9 @@ function gearStatId(key, slotId) {
 }
 
 // Whether a slot can roll "increased Rarity of Items" (so a rarity search-floor is valid).
-// Weapons/jewels have no rarity stat; every armour piece + jewellery does.
-const slotHasRarity = (baseSlot) => (UPGRADE_SEARCH_STATS[baseSlot === "ring1" || baseSlot === "ring2" ? "ring" : baseSlot] || []).includes("rarity");
+// Reads the per-slot valid-affix pool (PRESERVE_CONTROL_STATS_BY_SLOT) — weapons/jewels
+// have no rarity affix; every armour piece + jewellery does.
+const slotHasRarity = (baseSlot) => (PRESERVE_CONTROL_STATS_BY_SLOT[baseSlot === "ring1" || baseSlot === "ring2" ? "ring" : baseSlot] || []).includes("rarity");
 // A rarity preserve-floor entry for the search (so rarity-bearing items actually surface),
 // or null for slots that can't roll it. min is the user's "Item rarity ≥ N%".
 function rarityFloor(baseSlot, rarityMin) {
