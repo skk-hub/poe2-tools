@@ -17,7 +17,11 @@
  * substring/regex against the visible mod text.
  *
  * Sources: mmopixel 0.5 endgame overhaul; aoeah 0.5 currency strats; VULKK regex
- * (2026-05-29); Fextralife Waystones.
+ * (2026-05-29); Fextralife Waystones. Tablet mod WORDING ground-truthed from
+ * odealo's 0.5 precursor-tablet modifier list + a live 0.5.2 Irradiated tablet
+ * tooltip (2026-06-29). Tablet VALUES from community guides (timesaver, mmoexp,
+ * maxroll, 2026-06-29): Ritual extra-reroll ~17div, Temple +Unique-Modifier 45+div,
+ * Breach +Rare-Monster 10-30div paired.
  */
 window.WAYSTONE_DATA = {
   patch: "0.5.2 (Return of the Ancients)",
@@ -60,27 +64,32 @@ window.WAYSTONE_DATA = {
   },
 
   // TABLET mods — used both as Regex Forge chips AND the Tablet Mod Value table.
-  // Tokens are case-insensitive regex substrings (`|` = OR). VALUES are in DIVINE,
-  // ground-truthed from the user's market knowledge (2026-06-22): tablet value is
-  // COMBINATION-driven, so each mod carries `div` (solo), optional `comboDiv` (paired
-  // peak), a `note`, and flags `pairs` (low solo / high paired) or `priceCheck` (value
-  // only emerges stacked — "price-check if 2+"). `tabletGeneral` = generic "juicing"
-  // enablers: low value alone, they multiply the mechanic chase mods.
+  // Tokens are case-insensitive regex SUBSTRINGS of the REAL mod text (`|` = OR), so
+  // a stash Ctrl-F finds the tablet. Rule (2026-06-29 rewrite): use the SHORTEST
+  // distinctive keyword from the actual wording — the old breakage was guessed phrases
+  // ("Stabilised", "Hiveblood", "Summoning Circle") that no live mod contains, so the
+  // search matched nothing. Wording verified vs odealo's 0.5 list + a live 0.5.2 tablet.
+  // VALUES are in DIVINE, COMBINATION-driven: each mod carries `div` (solo), optional
+  // `comboDiv` (paired peak), a `note`, and flags `pairs` (low solo / high paired) or
+  // `priceCheck` (value only emerges stacked). `tabletGeneral` = the shared prefix/suffix
+  // pool every tablet can roll (enablers: low alone, they multiply the mechanic chase).
   tabletGeneral: [
-    { label: "2 Additional Map Modifiers", token: "dditional map modifier|dditional random modifier", div: 1, note: "≈1 div solo; much more stacked with juicing + mechanic mods" },
+    { label: "Additional Random Map Modifier", token: "dditional random modifier|dditional map modifier", div: 1, note: "\"1 additional random Modifier\" — ≈1 div solo; much more stacked with juicing + mechanic mods" },
+    { label: "Unique Monster +Rare Modifier", token: "dditional rare modifier|are modifier", pairs: true, note: "\"Unique Monsters have 1 additional Rare Modifier\" — more rare-mod loot/risk; pairs with rarity" },
     { label: "Item Quantity", token: "uantity of item", enabler: true },
     { label: "Waystone Quantity", token: "uantity of waystone", enabler: true },
     { label: "Item Rarity", token: "arity of item", enabler: true },
     { label: "Pack Size", token: "ack size", enabler: true },
     { label: "Magic Monsters", token: "agic monster", enabler: true },
     { label: "Rare Monsters", token: "are monster", enabler: true },
-    { label: "Irradiated", token: "rradiat", enabler: true },
-    { label: "Effectiveness", token: "ffectiveness", enabler: true },
+    { label: "Monster Effectiveness", token: "ffectiveness", enabler: true },
     { label: "Strongbox chance", token: "trongbox", enabler: true },
-    { label: "Summoning Circle", token: "ummoning circle", enabler: true },
+    { label: "Shrine chance", token: "hrine", enabler: true },
     { label: "Essence chance", token: "ssence", enabler: true },
+    { label: "Azmeri Spirit chance", token: "zmeri", enabler: true },
+    { label: "Rogue Exile chance", token: "ogue exile", enabler: true },
     { label: "Gold found", token: "old found", enabler: true },
-    { label: "Rare Chests", token: "are chest", enabler: true },
+    { label: "Experience gain", token: "xperience gain", enabler: true },
   ],
 
   // The avoid-list shown in the UI (matches `tokens.danger`).
@@ -143,9 +152,10 @@ window.WAYSTONE_DATA = {
       label: "Breach",
       tabletToken: "reach",
       desirable: [
-        { label: "Unstable: +3 Rare Monsters", token: "tabilised|tabilized", div: 3, comboDiv: 30, note: "3 div solo · 10–30 div paired with other Breach mods" }, // spawn 3 additional Rare Monsters when Stabilised
-        { label: "Hiveblood Quantity", token: "iveblood", pairs: true, note: "low solo; good with generic juicing" },
-        { label: "Rare Breach Monster Effectiveness", token: "reach monster", pairs: true, note: "low solo; only worth it with other mods" },
+        { label: "Additional Rare Monster", token: "pawn an additional rare|dditional rare monster", div: 3, comboDiv: 30, note: "\"Breaches spawn an additional Rare Monster\" — ~3 div solo · 10–30 div with Rarity/Effectiveness/extra map mods (was the broken \"Stabilised\" token)" },
+        { label: "Additional Breach(es)", token: "dditional breach", pairs: true, note: "chance to contain extra Breaches; strong with splinter/density mods" },
+        { label: "Breach Splinter Quantity", token: "reach splinter", pairs: true, note: "low solo; scales splinter income with density" },
+        { label: "Additional Clasped Hand", token: "lasped hand", pairs: true, note: "+1 Clasped Hand per Breach" },
       ],
       scalesWith: { packSize: 1.0, monsterRarity: 0.85, itemRarity: 0.4 },
       blurb: "Breaches drop Splinters & Clasped Hands; scale hard with Pack Size, Rare Monsters and Rarity. Stack Breach atlas nodes + Breach tablets.",
@@ -161,10 +171,10 @@ window.WAYSTONE_DATA = {
       tabletToken: "byss",
       valueNote: "Price-check if you have 2+ of these",
       desirable: [
-        { label: "Four Additional Abysses", token: "dditional abyss", priceCheck: true },        // chance to contain four additional Abysses
-        { label: "Effectiveness per Closed Pit", token: "closed pit", priceCheck: true },          // Effectiveness for each closed Pit, up to 100%
+        { label: "Additional Abyss(es)", token: "dditional abyss", priceCheck: true },          // chance to contain additional Abysses
+        { label: "Effectiveness per Closed Pit", token: "losed pit", priceCheck: true },          // Effectiveness for each closed Pit
         { label: "Abyssal Modifiers chance", token: "byssal modifier", priceCheck: true },         // chance for Abyssal monsters to have Abyssal Modifiers
-        { label: "Rare Monsters from Abysses", token: "pawned from abyss|are spawned from", priceCheck: true }, // additional Rare Monsters spawned from Abysses
+        { label: "Rare Monsters from Abysses", token: "rom abyss", priceCheck: true },             // additional Rare Monsters spawned from Abysses
       ],
       scalesWith: { packSize: 1.0, monsterEffectiveness: 0.7 },
       blurb: "Abyss pits lead to Abyssal Depths; reward scales with monster density / pack size. Atlas: From Below, Dark Depths, then Lord of the Pit.",
@@ -180,10 +190,10 @@ window.WAYSTONE_DATA = {
       tabletToken: "eliri",
       valueNote: "Price-check if you have 2+ of these",
       desirable: [
-        { label: "Simulacrum Splinter stack", token: "imulacrum", priceCheck: true },   // increased Stack size of Simulacrum Splinters
-        { label: "Fracturing Mirrors", token: "racturing mirror", priceCheck: true },   // fog spawns increased Fracturing Mirrors
-        { label: "Mirror Shards", token: "irror shard", priceCheck: true },              // fog spawns increased Mirror Shards
-        { label: "Unique Boss chance", token: "nique boss", priceCheck: true },          // more likely to spawn Unique Bosses
+        { label: "Simulacrum Splinter stack", token: "imulacrum", pairs: true },          // increased Stack size of Simulacrum Splinters
+        { label: "Fracturing Mirrors", token: "racturing mirror", pairs: true },          // fog spawns increased Fracturing Mirrors
+        { label: "Additional Reward type", token: "dditional reward type", priceCheck: true }, // chance to generate an additional Reward type
+        { label: "Unique Boss chance", token: "nique boss", priceCheck: true },           // more likely to spawn Unique Bosses
       ],
       scalesWith: { packSize: 1.0, monsterEffectiveness: 0.65 },
       blurb: "Delirium fog grants reward per % progress; scales with Pack Size and monster density. Delirium tablets add Mirrors of Delirium in range.",
@@ -197,9 +207,9 @@ window.WAYSTONE_DATA = {
       label: "Ritual",
       tabletToken: "itual",
       desirable: [
-        { label: "Extra Reroll Favours", token: "olling favours|eroll favour", div: 15, comboDiv: 60, note: "13–17 div solo · 20–60 div paired with other Ritual mods" }, // roll Favours 1–3 additional times (dropped "|dditional time" — it matched "Chain an additional time from terrain")
-        { label: "Reduced Reroll Tribute", token: "educed tribute|eferring", pairs: true, note: "high value paired with rerolls / omens" }, // deferring/rerolling costs reduced Tribute
-        { label: "Omen Chance", token: "be omen", pairs: true, note: "low solo; high paired with Ritual mods" }, // "Ritual Favours...increased chance to be Omens" (was "be omen|men" — the bare "men" matched ELEmental/augMENtation etc.)
+        { label: "Extra Reroll (additional time)", token: "llow rerolling", div: 17, comboDiv: 35, note: "\"Altars allow rerolling Favours an additional time\" — ~17 div solo (top Ritual mod) · ~34 div with omen-chance/tribute mods. Token is \"llow rerolling\" so it doesn't also match the reduced-tribute reroll mod." },
+        { label: "Reduced Reroll/Defer Tribute", token: "educed tribute", pairs: true, note: "rerolling/deferring Favours costs reduced Tribute; strong paired with extra-reroll + omens" },
+        { label: "Favours → Omens chance", token: "o be omen", div: 2, comboDiv: 20, note: "\"Favours...increased chance to be Omens\" — low solo; high paired with reroll mods (omen farming)" },
       ],
       scalesWith: { monsterRarity: 1.0, packSize: 0.6 },
       blurb: "Ritual altars give Tribute to spend; scales with rare-monster density. Ritual tablets add altars / increase Tribute & rerolls.",
@@ -234,9 +244,10 @@ window.WAYSTONE_DATA = {
       label: "Overseer (Map Boss)",
       tabletToken: "verseer",   // base = "Overseer Tablet" (confirmed live); mods buff Map Bosses
       desirable: [
-        { label: "Boss Item Quantity", token: "ropped by" },          // Quantity of Items/Waystones dropped by Map Bosses (confirmed)
-        { label: "Additional Boss Modifier", token: "dditional modifier|dditional .+modifier" }, // Map Bosses have an additional Modifier (confirmed)
-        { label: "Boss Experience", token: "rant.+xperience" },        // Map Bosses grant increased Experience (confirmed)
+        { label: "Boss Item/Waystone Quantity", token: "ropped by map boss", pairs: true },  // Quantity of Items/Waystones dropped by Map Bosses
+        { label: "Boss spawns extra Strongbox/Shrine/Essence", token: "ontain an additional" }, // Areas with Map Bosses contain an additional Strongbox/Shrine/Essence/Azmeri (was the broken "additional Modifier" guess)
+        { label: "Boss Item Rarity", token: "arity of items dropped|arity of .+dropped by", pairs: true }, // increased Rarity of Items dropped by Map Bosses
+        { label: "Boss Experience", token: "rant.+xperience" },        // Map Bosses grant increased Experience
       ],
       scalesWith: { itemRarity: 0.8, monsterRarity: 0.4 },
       blurb: "Overseer Tablets buff Map Bosses — boss item/waystone quantity + extra boss modifiers. Chase the drop-quantity and additional-modifier rolls; pair with high Item Rarity waystones.",
