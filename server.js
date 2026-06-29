@@ -3309,7 +3309,12 @@ const server = http.createServer(async (req, res) => {
         // multiplicative. Weighted search is best-first so take the top SCORE_CAP; the
         // price fallback samples a spread. Capped at SCORE_CAP to bound fetch calls
         // (≤10 ids/call, shared-IP rate limit) and PoB time; bail to partial on a limit.
-        const SCORE_CAP = Math.max(10, Math.min(50, Number(input.scoreCap) || 50));   // 5 fetch calls; a multi-slot scan passes 10 (1 fetch) to stay cheap on the rate limit
+        // Default 100 (the search's full result page) for a deliberate single-slot rank — score the
+        // WHOLE returned page in PoB so a real upgrade the heuristic sort ranks low (e.g. a deflection
+        // chest that's mid-pack on raw evasion but top on real EHP) still gets scored. 100 ids = 10
+        // fetch calls (~30s through the 3s-spaced queue, on the VM's own VPN IP — fine for a user
+        // action). The all-slots SCAN passes scoreCap:10 (1 fetch/slot) to stay cheap across ~12 slots.
+        const SCORE_CAP = Math.max(10, Math.min(100, Number(input.scoreCap) || 100));
         const m = Math.min(all.length, SCORE_CAP);
         // Weighted = best-value-first, score the top m. Otherwise sample a SPREAD across
         // the result page: for price-DESC that's the priciest 100 (where real upgrades
