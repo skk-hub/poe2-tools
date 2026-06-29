@@ -3146,12 +3146,14 @@ const server = http.createServer(async (req, res) => {
           if (!bp.ok) continue;
           legal.push({ combo: combos[i], dDPS: Math.round(dpsOfOut(combined) - baseDps), dEHP: Math.round(ehpOfOut(combined) - baseEhp), priceDiv: Math.round(combos[i].reduce((s, c) => s + (c.priceDiv || 0), 0) * 100) / 100, have: bp.have });
         }
-        legal.sort((a, b) => b.dDPS - a.dDPS);
-        const results = legal.slice(0, 5).map((L) => ({
+        // Only sets that actually IMPROVE the build (DPS or EHP up) are results — a set that
+        // merely holds the breakpoints but is +0 DPS / −EHP is a downgrade, not an upgrade.
+        const upgrades = legal.filter((L) => L.dDPS > 0 || L.dEHP > 0).sort((a, b) => b.dDPS - a.dDPS);
+        const results = upgrades.slice(0, 5).map((L) => ({
           dDPS: L.dDPS, dEHP: L.dEHP, priceDiv: L.priceDiv, have: L.have,
           picks: L.combo.map((c, i) => ({ slot: pools[i].slotId, keep: !!c.keep, name: c.name, base: c.base || "", account: c.account || "", mods: c.mods || [], priceDiv: c.priceDiv || 0, dDPS: Math.round(c.dDPS), contrib: c.contrib })),
         }));
-        send(res, 200, JSON.stringify({ available: true, baseDps: Math.round(baseDps), baseEhp: Math.round(baseEhp), floors, cur: floors._cur, slots: pools.map((p) => ({ slotId: p.slotId, slotName: p.slotName, pool: p.candidates.length })), inBudget, screened, combos: inBudget, evaluated, capped: screened > COMBO_CAP, legal: legal.length, results, partial: !!fetchErr }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, baseDps: Math.round(baseDps), baseEhp: Math.round(baseEhp), floors, cur: floors._cur, slots: pools.map((p) => ({ slotId: p.slotId, slotName: p.slotName, pool: p.candidates.length })), inBudget, screened, combos: inBudget, evaluated, capped: screened > COMBO_CAP, legal: legal.length, upgrades: upgrades.length, results, partial: !!fetchErr }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         send(res, 200, JSON.stringify({ available: true, error: String(err && err.message) }), "application/json; charset=utf-8");

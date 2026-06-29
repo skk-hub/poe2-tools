@@ -198,7 +198,10 @@ window.__viewInit["gear-finder"] = function () {
     if (d.error) { els.optOut.innerHTML = `<p class="status err">Failed: ${esc(d.error)}</p>`; return; }
     if (d.sessionExpired) markSessionExpired();
     if (!d.results || !d.results.length) {
-      els.optOut.innerHTML = `<p class="status">No legal set found — every in-budget combination either lost a breakpoint or there were no upgrades. Evaluated ${d.evaluated || 0}/${d.combos || 0} combos. Try a bigger budget or dial a breakpoint down.</p>`;
+      const msg = (d.legal > 0)
+        ? `${d.legal} set(s) held all your breakpoints, but every one was a DPS/EHP downgrade — your current gear is near best-in-slot for these slots. Raise Max div or dial a breakpoint down to probe what's hidden under it.`
+        : `No legal set found — every in-budget combination lost a breakpoint. Evaluated ${d.evaluated || 0}/${d.combos || 0} combos. Try a bigger budget or dial a breakpoint down.`;
+      els.optOut.innerHTML = `<p class="status">${msg}</p>`;
       return;
     }
     els.optOut.innerHTML = renderOptResults(d);
@@ -207,7 +210,7 @@ window.__viewInit["gear-finder"] = function () {
   function renderOptResults(d) {
     const bkRow = (have) => [["Fire", "fireRes"], ["Cold", "coldRes"], ["Light", "lightRes"], ["Chaos", "chaosRes"], ["Spirit", "spiritFree"], ["Rarity%", "rarityPct"]]
       .map(([lab, k]) => `<span class="gf-bk">${lab} ${have[k]}</span>`).join("");
-    const funnel = `${d.inBudget} in-budget → ${d.screened} plausible → ${d.evaluated} PoB-scored → <b>${d.legal} legal</b>`;
+    const funnel = `${d.inBudget} in-budget → ${d.screened} plausible → ${d.evaluated} PoB-scored → <b>${d.upgrades != null ? d.upgrades : d.legal} upgrade${(d.upgrades != null ? d.upgrades : d.legal) === 1 ? "" : "s"}</b>${d.legal > (d.upgrades != null ? d.upgrades : d.legal) ? ` (${d.legal} held breakpoints)` : ""}`;
     const head = `<p class="status">${funnel}. Pools: ${d.slots.map((s) => esc(s.slotId) + " (" + s.pool + ")").join(", ")}.${d.capped ? " (capped at " + d.evaluated + " PoB scores by best approx-DPS — tighten budget or fewer slots for full coverage)" : ""}</p>`;
     return head + d.results.map((r, i) => `
       <div class="gf-optcard${i === 0 ? " best" : ""}">
