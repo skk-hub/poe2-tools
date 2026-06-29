@@ -3080,13 +3080,34 @@ const server = http.createServer(async (req, res) => {
               if (id) (w.preserve = w.preserve || []).push({ statId: id, min: Math.floor(have * 0.7) });
             }
           }
-          const q = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(gearStatFilters(mods)) }, sort: { price: "desc" } };
-          if (maxPriceDiv > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
-          const pf = gearStatFilters(w.preserve, 4);
-          if (pf.length) { q.query.stats = q.query.stats || []; let andG = q.query.stats.find((g) => g && g.type === "and"); if (!andG) { andG = { type: "and", filters: [] }; q.query.stats.push(andG); } const have = new Set(andG.filters.map((f) => f.id)); for (const f of pf) if (!have.has(f.id)) andG.filters.push(f); }
+          // Pool sort: with a POESESSID + weights, rank by BUILD VALUE (weighted statgroup) —
+          // same as single-slot realrank. The old price-desc sort fetched only the 10 PRICIEST
+          // in-budget items, burying well-priced upgrades (a 235-div chest never made the top 10
+          // under a wall of 400-500-div listings — the user's missed upgrade). Falls back to
+          // price-desc when logged-out or if the weighted query 400s (dead session).
+          const wts = (w.weights || []).filter((x) => x && /^(explicit\.stat_\d+|pseudo\.[a-z0-9_]+)$/.test(x.statId) && Number(x.weight) > 0);
+          let weighted = !!sessionId && wts.length > 0 && !/^jewel\d+$/.test(slotId);
+          const buildQ = (useW) => {
+            const q = useW
+              ? buildWeightedGearQuery(slot, wts, league, maxPriceDiv, w.preserve)
+              : { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(gearStatFilters(mods)) }, sort: { price: "desc" } };
+            if (!useW) {
+              if (maxPriceDiv > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
+              const pf = gearStatFilters(w.preserve, 4);
+              if (pf.length) { q.query.stats = q.query.stats || []; let andG = q.query.stats.find((g) => g && g.type === "and"); if (!andG) { andG = { type: "and", filters: [] }; q.query.stats.push(andG); } const have = new Set(andG.filters.map((f) => f.id)); for (const f of pf) if (!have.has(f.id)) andG.filters.push(f); }
+            }
+            return q;
+          };
           const cands = [{ keep: true, pobSlot, raw: currentRaw, name: "(keep current)", base: "", account: "", priceDiv: 0, priceEx: 0, dDPS: 0, dEHP: 0, contrib: itemBreakpointContrib(parseItemStats(currentRaw, baseSlot)) }];
           let search, usedLeague;
-          try { ({ search, league: usedLeague } = await gearTradeSearch(q, league)); } catch (e) { fetchErr = e; pools.push({ slotId, pobSlot, slotName: slot.label || slotId, candidates: dominationPrune(cands) }); break; }
+          try { ({ search, league: usedLeague } = await gearTradeSearch(buildQ(weighted), league)); }
+          catch (e) {
+            if (weighted && /HTTP 400/.test(String(e && e.message))) {
+              weighted = false; sessionExpiredFlag = true;
+              try { ({ search, league: usedLeague } = await gearTradeSearch(buildQ(false), league)); }
+              catch (e2) { fetchErr = e2; pools.push({ slotId, pobSlot, slotName: slot.label || slotId, candidates: dominationPrune(cands) }); break; }
+            } else { fetchErr = e; pools.push({ slotId, pobSlot, slotName: slot.label || slotId, candidates: dominationPrune(cands) }); break; }
+          }
           const ids = (search.result || []).slice(0, POOL);
           if (ids.length) {
             const rates = await getExchangeRates(usedLeague || league).catch(() => ({}));
