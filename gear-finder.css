@@ -40,10 +40,10 @@
   .toolroot-gear .gf-opt-bklabel{font-size:12px;color:var(--mu);margin-bottom:7px;max-width:60ch}
   .toolroot-gear .gf-opt-bklabel b{color:var(--tx)}
   .toolroot-gear .gf-opt-bkrow{display:flex;flex-wrap:wrap;gap:7px}
-  .toolroot-gear .gf-optbk{display:inline-flex;align-items:center;gap:5px;background:var(--surface-2,var(--surface-1));border:1px solid var(--bd);border-radius:999px;padding:3px 4px 3px 11px}
+  .toolroot-gear .gf-optbk{display:inline-flex;align-items:center;gap:5px;background:var(--surface-2,var(--surface-1));border:1px solid var(--bd);border-radius:10px;padding:3px 7px 3px 11px}
   .toolroot-gear .gf-optbk-l{font:12px var(--ff-ui,inherit);color:var(--tx)}
   .toolroot-gear .gf-optbk-ge{font:11px var(--ff-mono);color:var(--mu)}
-  .toolroot-gear .gf-optbkin{width:3.2em;text-align:center;font:13px var(--ff-mono);color:var(--tx);background:var(--surface-0,#0b0b0d);border:1px solid var(--bd);border-radius:999px;padding:3px 6px;-moz-appearance:textfield;appearance:textfield}
+  .toolroot-gear .gf-optbkin{box-sizing:border-box;width:3.2em;text-align:center;font:13px var(--ff-mono);color:var(--tx);background:var(--surface-0,#0b0b0d);border:1px solid var(--bd);border-radius:6px;padding:3px 6px;-moz-appearance:textfield;appearance:textfield}
   .toolroot-gear .gf-optbkin:focus{outline:none;border-color:var(--gold)}
   .toolroot-gear .gf-optbkin::-webkit-outer-spin-button,.toolroot-gear .gf-optbkin::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   .toolroot-gear .gf-opt-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0}
