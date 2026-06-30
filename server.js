@@ -2452,6 +2452,19 @@ function parsePobBuild(xml) {
   return { slots, build };
 }
 
+// "Ignore Rakiata's Flow" toggle. Rakiata's Flow inverts enemy elemental resistance, which PoB scores
+// against its default high-res enemy → inflates ELEMENTAL damage (~2.8x on the user's build) and makes
+// the Gear Finder over-recommend elemental gear over physical. We can't set enemy res headlessly
+// (FullDPS is computed vs a fixed enemy — the <Config> never reaches it), but DISABLING the gem removes
+// the inversion, so scoring reflects damage WITHOUT the situational elemental boost. Regex matches the
+// XML-escaped nameSpec ("Rakiata&apos;s Flow"). `buildHasRakiata` gates the UI checkbox.
+const RAKIATA_NAME_RE = /nameSpec="[^"]*Rakiata/i;
+const buildHasRakiata = (xml) => RAKIATA_NAME_RE.test(String(xml || ""));
+const disableRakiata = (xml) => String(xml || "").replace(/<Gem\b[^>]*?\/?>/g, (t) => RAKIATA_NAME_RE.test(t) ? t.replace(/enabled="[^"]*"/, 'enabled="false"') : t);
+// The build XML to score with: drops Rakiata's Flow when the caller ticked "ignore" it. Used by every
+// gear endpoint that loads/scores the build, so weights, ranking, set optimize and paste-score agree.
+const prepBuildXml = (input) => { const xml = String((input && input.buildXml) || ""); return (input && input.ignoreRakiata) ? disableRakiata(xml) : xml; };
+
 // List saved PoB builds (name + mtime), newest first. [] if the dir is absent.
 function listPobBuilds() {
   try {
@@ -2914,7 +2927,7 @@ const server = http.createServer(async (req, res) => {
       // predates the spirit keys → spirit floor/guard silently no-op. Flag it LOUDLY instead of
       // shipping no-spirit recommendations. (This cost ~5 debugging passes once; never again.)
       if (headless.stats && headless.stats.Spirit === undefined) headless.staleAgent = true;
-      send(res, 200, JSON.stringify({ slots: parsed.slots, build: parsed.build, headless, xml }), "application/json; charset=utf-8");
+      send(res, 200, JSON.stringify({ slots: parsed.slots, build: parsed.build, headless, xml, hasRakiata: buildHasRakiata(xml) }), "application/json; charset=utf-8");
       return;
     }
 
@@ -2927,7 +2940,7 @@ const server = http.createServer(async (req, res) => {
       const pobSlot = String(input.pobSlot || toolSlotToPob(slotId));
       const league = sanitizeLeague(input.league || "Runes of Aldur");
       try {
-        const w = await computeGearWeights(String(input.buildXml || ""), pobSlot, slot.baseId || slotId, String((input.current && input.current.raw) || ""));
+        const w = await computeGearWeights(prepBuildXml(input), pobSlot, slot.baseId || slotId, String((input.current && input.current.raw) || ""));
         const query = w.weights.length ? buildWeightedGearQuery(slot, w.weights, league, input.maxPriceDiv, w.preserve) : null;
         send(res, 200, JSON.stringify({ available: true, slot: slotId, metric: w.metric, base: w.base, weights: w.weights, equip: w.equip, preserve: w.preserve, league, query }), "application/json; charset=utf-8");
       } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
@@ -2970,7 +2983,7 @@ const server = http.createServer(async (req, res) => {
       const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
       const currentRaw = String((input.current && input.current.raw) || "");
       try {
-        await pob.load(String(input.buildXml || ""));
+        await pob.load(prepBuildXml(input));
         const base = await pob.calc(pobSlot, "");
         const results = [];
         for (const it of (Array.isArray(input.items) ? input.items : []).slice(0, 5)) {
@@ -3008,7 +3021,7 @@ const server = http.createServer(async (req, res) => {
       const dropped = (Array.isArray(input.pins) ? input.pins.length : 0) - swaps.length;
       if (!swaps.length) { send(res, 200, JSON.stringify({ available: true, error: "no scorable pins — re-pin items so they carry the item text" }), "application/json; charset=utf-8"); return; }
       try {
-        const base = await pob.load(String(input.buildXml || ""));
+        const base = await pob.load(prepBuildXml(input));
         // Equip them all through PoB's own item parser (same path as the per-item
         // scores), so the combined gain is consistent + compounds correctly.
         const combined = await pob.calcMulti(swaps.map((p) => ({ slot: p.pobSlot, itemText: p.raw })));
@@ -3031,7 +3044,7 @@ const server = http.createServer(async (req, res) => {
       const J = "application/json; charset=utf-8";
       const input = await readJson(req, 8 * 1024 * 1024);
       if (!(await pob.ready())) { send(res, 200, JSON.stringify({ available: false }), J); return; }
-      const buildXml = String(input.buildXml || "");
+      const buildXml = prepBuildXml(input);
       const maxDepth = Math.min(8, Math.max(1, Number(input.maxDepth) || 4));
       try {
         await pob.load(buildXml);
@@ -3053,7 +3066,7 @@ const server = http.createServer(async (req, res) => {
       const input = await readJson(req, 8 * 1024 * 1024);
       if (!(await pob.ready())) { send(res, 200, JSON.stringify({ available: false }), "application/json; charset=utf-8"); return; }
       if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
-      const buildXml = String(input.buildXml || "");
+      const buildXml = prepBuildXml(input);
       const league = sanitizeLeague(input.league || "Runes of Aldur");
       const maxPriceDiv = Number(input.maxPriceDiv) || 0;
       const slotIds = (Array.isArray(input.slots) ? input.slots : []).map(String).filter(Boolean).slice(0, 5);
@@ -3412,7 +3425,7 @@ const server = http.createServer(async (req, res) => {
           } catch { /* deflection pool is a bonus; never let it break the rank */ }
         }
         const rates = await getExchangeRates(league).catch(() => ({}));
-        await pob.load(String(input.buildXml || ""));
+        await pob.load(prepBuildXml(input));
         const base = await pob.calc(pobSlot, "");
         // Rank metric: the client sends the slot's metric (DPS for damage slots, EHP for
         // pure-defensive ones). Default by whether the build deals damage.
@@ -3553,7 +3566,7 @@ const server = http.createServer(async (req, res) => {
         const ids = (search.result || []).slice(0, 20);   // cheapest 20 under this price, 2 fetch calls
         if (!ids.length) { send(res, 200, JSON.stringify({ best: false, scanned: 0 }), "application/json; charset=utf-8"); return; }
         const rates = await getExchangeRates(league).catch(() => ({}));
-        await pob.load(String(input.buildXml || ""));
+        await pob.load(prepBuildXml(input));
         const baseDps = dpsOfOut(await pob.calc(pobSlot, ""));
         let cheaper = null, scanned = 0;
         for (let i = 0; i < ids.length && !cheaper; i += 10) {

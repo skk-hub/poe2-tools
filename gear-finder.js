@@ -8,7 +8,7 @@ window.__viewInit["gear-finder"] = function () {
     build: $("gfBuild"), slots: $("gfSlots"),
     scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), budgetMin: $("gfBudgetMin"),
-    findBar: $("gfFindBar"), find: $("gfFind"), findHint: $("gfFindHint"), rarityChk: $("gfRarityChk"), rarityVal: $("gfRarityVal"),
+    findBar: $("gfFindBar"), find: $("gfFind"), findHint: $("gfFindHint"), rarityChk: $("gfRarityChk"), rarityVal: $("gfRarityVal"), rakiataRow: $("gfRakiataRow"), ignoreRakiata: $("gfIgnoreRakiata"),
     status: $("gfStatus"), weights: $("gfWeights"),
     actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"),
     optBreaks: $("gfOptBreaks"), optOut: $("gfOptOut"),
@@ -39,6 +39,9 @@ window.__viewInit["gear-finder"] = function () {
   state.pinned = loadPins();
 
   async function api(path, body) {
+    // "Ignore Rakiata's Flow": inject the flag into ANY scoring request (one carrying buildXml) when the
+    // checkbox is on, so weights/rank/optimize/score/scan all drop the gem consistently — one place, not 8.
+    if (body && body.buildXml && els.ignoreRakiata && els.ignoreRakiata.checked) body = { ...body, ignoreRakiata: true };
     let r;
     try {
       r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -120,6 +123,7 @@ window.__viewInit["gear-finder"] = function () {
     if (d.error) { setStatus(d.error, true); return; }
     state.xml = d.xml; state.slots = d.slots || {};
     els.saveBuild.hidden = false; els.saveBox.hidden = true; syncSaveRow();   // a build is loaded → offer to save it
+    if (els.rakiataRow) els.rakiataRow.hidden = !d.hasRakiata;   // "ignore Rakiata's Flow" only matters if the build runs it
     const b = { ...((d.headless && d.headless.stats) || d.build || {}) };
     // Spirit reservation: the headless RECALC under-reserves auras on some builds (a skill group it
     // doesn't re-enable), so it over-reports free Spirit (e.g. 33 when the real build has 3). PoB
