@@ -3070,20 +3070,14 @@ const server = http.createServer(async (req, res) => {
           const mods = (w.weights || []).filter((x) => (x.cur || 0) > 0).slice(0, 3).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
           const rf = rarityFloor(baseSlot, Number(input.rarityMin) || 0);   // require rarity items in the pool
           if (rf) (w.preserve = w.preserve || []).push(rf);
-          // Preserve the RESISTANCES this slot already provides — the search otherwise
-          // ignores res, so swapping (say) your fire-res gloves pulls non-fire gloves and
-          // the set drops below the Fire breakpoint. Require a replacement to match what
-          // this piece contributes, but only for res the user is actually holding
-          // (breakpoint > 0). Capped at 70% so a near-match still enters the pool; the real
-          // combined breakpoint check makes the precise call.
-          const curStats = parseItemStats(currentRaw, baseSlot);
-          for (const [bpKey, statKey] of [["fireRes", "fireRes"], ["coldRes", "coldRes"], ["lightRes", "lightningRes"], ["chaosRes", "chaosRes"]]) {
-            const have = Math.round(curStats[statKey] || 0);
-            if (have > 0 && (Number((input.breakpoints || {})[bpKey]) || 0) > 0) {
-              const id = gearStatId(statKey, baseSlot);
-              if (id) (w.preserve = w.preserve || []).push({ statId: id, min: Math.floor(have * 0.7) });
-            }
-          }
+          // NOTE: we deliberately do NOT add per-slot resistance preserve floors here. They were
+          // added (2026-06-29) to stop a swap dropping a breakpoint, but they DEFEAT the optimizer's
+          // whole purpose — requiring EACH replacement to keep its current res excludes the very
+          // rebalance items it should find (a great chest with 0 chaos res can't enter the pool even
+          // when another slot would recover the chaos), so single-slot finds upgrades the set can't.
+          // The COMBINED breakpoint check (checkBreakpoints on the real calcMulti) is the correct,
+          // sufficient guard — it judges total res across the whole set, allowing break-here/recover-
+          // there. Per-slot pools now match single-slot's breadth (defence-sorted, ungated).
           // Pool sort: with a POESESSID + weights, rank by BUILD VALUE (weighted statgroup) —
           // same as single-slot realrank. The old price-desc sort fetched only the 10 PRICIEST
           // in-budget items, burying well-priced upgrades (a 235-div chest never made the top 10
