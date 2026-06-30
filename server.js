@@ -1818,7 +1818,9 @@ const PRESERVE_CONTROL_STATS_BY_SLOT = {
   // The add-filter dropdown shows EXACTLY this set per slot (no global append).
   // Martial weapons (bow + injected melee/ranged) share `bow`; casters use the
   // injected CASTER/SCEPTRE key sets.
-  bow: ["dps", "critChance", "critDamage", "localPhysDamage", "localAttackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos", "levelAllAttackSkills", "levelAllMeleeSkills", "str", "dex", "int"],
+  // projectileLevels/projectileDamage ARE rollable on bows and are a projectile build's biggest DPS mod
+  // (the probe self-gates to ~0 for non-projectile builds, so they only weight when the build uses them).
+  bow: ["dps", "critChance", "critDamage", "localPhysDamage", "localAttackSpeed", "totalFlatAttack", "totalFlatElementalAttack", "localFlatPhys", "localFlatCold", "localFlatFire", "localFlatLightning", "localFlatChaos", "levelAllAttackSkills", "levelAllMeleeSkills", "projectileLevels", "projectileDamage", "str", "dex", "int"],
   quiver: ["attackCrit", "critDamage", "bowDamage", "projectileSpeed", "projectileLevels", "totalFlatAttack", "totalFlatElementalAttack", "flatPhysAttack", "flatColdAttack", "flatFireAttack", "flatLightningAttack", "flatChaosAttack", "manaOnKill", "str", "dex", "int", "rarity"],
   amulet: ["life", "energyShield", "mana", "spirit", "critChance", "critDamage", "spellDamage", "castSpeed", "levelAllSpellSkills", "levelAllAttackSkills", "projectileLevels", "manaRegen", "str", "dex", "int", "totalAllAttributes", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
   helmet: ["energyShield", "evasion", "armour", "life", "mana", "critChance", "levelAllMinionSkills", "str", "dex", "int", "fireRes", "coldRes", "lightningRes", "chaosRes", "totalElementalRes", "rarity"],
@@ -3498,22 +3500,26 @@ const server = http.createServer(async (req, res) => {
           }
         };
         await scoreIds(pick, search.id);
-        // Weapon-DPS sub-pool (martial weapons): the weighted statgroup sort is dominated by the build's #1
-        // weight — typically +Level of all Attack skills (×20) — so a high-raw-DPS bow WITHOUT that mod ranks
-        // below the fetched top-100 and is never PoB-scored (the user found such a bow by hand at +88k DPS).
-        // Pull the highest weapon-DPS listings (`dps` sort — same short equipment-filter key family as the
-        // verified ev/ar/es defence sort) and score them with their OWN search id. A 400/empty never breaks
-        // the main rank. Caster weapons (wand/staff/sceptre) excluded — their weapon DPS isn't the proxy.
+        // Weapon-DPS sub-pools (martial weapons): the weighted statgroup sort is dominated by the build's #1
+        // weight (e.g. +Level of all Attack skills ×20), so a high-raw-DPS bow WITHOUT that mod ranks below the
+        // fetched top-100 and is never PoB-scored (the user found such a bow by hand at +88k DPS). Pull the
+        // highest-DPS listings by `dps` AND `pdps` — total dps lets huge-elemental bows crowd out a PHYSICAL
+        // bow, so a separate physical-DPS sort surfaces phys bows (the user's case). Same short equipment-filter
+        // key family as the verified ev/ar/es defence sort; scored with each search's OWN id, deduped by listing
+        // id. A 400/empty on either never breaks the main rank. Casters (wand/staff/sceptre) excluded.
         if (MARTIAL_WEAPON_SLOTS.has(baseSlot) && !fetchErr) {
-          try {
-            const wq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [] }, sort: { dps: "desc" } };
-            if (maxDiv > 0 || minDiv > 0) { const price = { option: "divine" }; if (minDiv > 0) price.min = minDiv; if (maxDiv > 0) price.max = maxDiv; wq.query.filters.trade_filters = { filters: { price } }; }
-            const pf = gearStatFilters(input.preserve, 4);
-            if (pf.length) wq.query.stats.push({ type: "and", filters: pf });
-            const wRes = await gearTradeSearch(wq, league);
-            const wIds = ((wRes.search && wRes.search.result) || []).slice(0, Math.min(SCORE_CAP, 30));   // ~3 fetches on top of the main pool
-            if (wIds.length && wRes.search && wRes.search.id) await scoreIds(wIds, wRes.search.id);
-          } catch { /* weapon-DPS sub-pool is a bonus; never let it break the rank */ }
+          for (const sortKey of ["dps", "pdps"]) {
+            if (fetchErr) break;
+            try {
+              const wq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [] }, sort: { [sortKey]: "desc" } };
+              if (maxDiv > 0 || minDiv > 0) { const price = { option: "divine" }; if (minDiv > 0) price.min = minDiv; if (maxDiv > 0) price.max = maxDiv; wq.query.filters.trade_filters = { filters: { price } }; }
+              const pf = gearStatFilters(input.preserve, 4);
+              if (pf.length) wq.query.stats.push({ type: "and", filters: pf });
+              const wRes = await gearTradeSearch(wq, league);
+              const wIds = ((wRes.search && wRes.search.result) || []).slice(0, Math.min(SCORE_CAP, 30));   // ~3 fetches each on top of the main pool
+              if (wIds.length && wRes.search && wRes.search.id) await scoreIds(wIds, wRes.search.id);
+            } catch { /* weapon-DPS sub-pool is a bonus; never let it break the rank */ }
+          }
         }
         if (!cands.length && fetchErr) throw fetchErr;   // total failure → outer catch (rate-limit msg etc.)
         // Preserve-the-OTHER-metric (pre-scan toggle): drop any candidate that lowers the
