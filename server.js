@@ -3060,7 +3060,7 @@ const server = http.createServer(async (req, res) => {
       // Per-slot candidates fetched (chunked by 10/fetch), then domination-pruned before the cartesian
       // product. Deep (30) for 2-3 slots; modest (12) for 4-5 where the combo count already balloons
       // (pool^slots) — the prune only drops STRICTLY-dominated items so most of a deep pool survives.
-      const POOL = slotIds.length <= 2 ? 24 : 12, COMBO_CAP = 450;   // COMBO_CAP = max combos PoB verifies. Kept modest: each slot is 1 search + POOL/10 fetches + a deflection search, and that MULTIPLIES across slots → too-deep pools trip GGG's ~16-calls/300s IP limit (10-min cooldown hang)
+      const POOL = slotIds.length <= 3 ? 30 : 12, COMBO_CAP = 450;   // COMBO_CAP = max combos PoB verifies
       try {
         let fetchErr = null;
         const pools = [];
@@ -3354,7 +3354,7 @@ const server = http.createServer(async (req, res) => {
         // chest that's mid-pack on raw evasion but top on real EHP) still gets scored. 100 ids = 10
         // fetch calls (~30s through the 3s-spaced queue, on the VM's own VPN IP — fine for a user
         // action). The all-slots SCAN passes scoreCap:10 (1 fetch/slot) to stay cheap across ~12 slots.
-        const SCORE_CAP = Math.max(10, Math.min(50, Number(input.scoreCap) || 40));
+        const SCORE_CAP = Math.max(10, Math.min(100, Number(input.scoreCap) || 100));
         const m = Math.min(all.length, SCORE_CAP);
         // Weighted = best-value-first, score the top m. Otherwise sample a SPREAD across
         // the result page: for price-DESC that's the priciest 100 (where real upgrades
@@ -3373,7 +3373,7 @@ const server = http.createServer(async (req, res) => {
             const dq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: [{ id: DEFLECT_CONV_STAT }] }] }, sort: { [defK]: "desc" } };
             if (maxDiv > 0 || minDiv > 0) { const price = { option: "divine" }; if (minDiv > 0) price.min = minDiv; if (maxDiv > 0) price.max = maxDiv; dq.query.filters.trade_filters = { filters: { price } }; }
             const dRes = await gearTradeSearch(dq, league);
-            const dIds = ((dRes.search && dRes.search.result) || []).slice(0, 10);
+            const dIds = ((dRes.search && dRes.search.result) || []).slice(0, 20);
             const seen = new Set(pick);
             const fresh = dIds.filter((id) => !seen.has(id));
             if (fresh.length) pick.unshift(...fresh);
