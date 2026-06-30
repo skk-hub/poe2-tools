@@ -39,8 +39,18 @@ window.__viewInit["gear-finder"] = function () {
   state.pinned = loadPins();
 
   async function api(path, body) {
-    const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
-    return r.json();
+    let r;
+    try {
+      r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+    } catch {
+      // fetch() rejects = no response at all: server down, redeploying, or connection dropped.
+      throw new Error("Can't reach the server — it may be restarting (a deploy takes ~1 min). Wait a moment and try again.");
+    }
+    // Our endpoints return JSON even on 4xx (e.g. {error:"Pick 2-5 slots"}), so parse first and let
+    // the caller surface that real message. Only a NON-JSON body means an infra error (a gateway/redeploy
+    // page), which we translate to something readable instead of "Unexpected token < in JSON".
+    try { return await r.json(); }
+    catch { throw new Error(r.ok ? "The server returned an unexpected response — try again in a moment." : `Server unavailable (HTTP ${r.status}) — it's likely redeploying; try again shortly.`); }
   }
   function setStatus(t, err) { els.status.className = "status" + (err ? " err" : ""); els.status.textContent = t || ""; }
 
@@ -196,7 +206,7 @@ window.__viewInit["gear-finder"] = function () {
     els.optBreaks.querySelectorAll(".gf-optbkin").forEach((i) => { if (i.value !== "") breakpoints[i.dataset.k] = Number(i.value); });
     els.find.disabled = true;
     els.optOut.innerHTML = `<p class="status">Fetching ${picked.length} pools + scoring combinations in Path of Building… ${picked.length >= 4 ? "(4–5 slots: ~1–2 min, lots of Trade2 calls)" : "(~30s)"}</p>`;
-    const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league }).catch((e) => ({ error: e.message || String(e) }));
     els.find.disabled = false;
     if (d.available === false) { els.optOut.innerHTML = `<p class="status err">Headless Path of Building isn't available.</p>`; return; }
     if (d.limited) { els.optOut.innerHTML = `<p class="status err">Trade2 is rate-limited — try again shortly.</p>`; return; }
@@ -232,7 +242,7 @@ window.__viewInit["gear-finder"] = function () {
     const depth = Math.min(8, Math.max(1, Number(els.treeDepth.value) || 4));
     els.treeRun.disabled = true;
     els.treeOut.innerHTML = `<p class="status">Asking Path of Building to value every node within ${depth} points… (a few seconds)</p>`;
-    const d = await api("/api/gear/tree-moves", { buildXml: state.xml, maxDepth: depth }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/tree-moves", { buildXml: state.xml, maxDepth: depth }).catch((e) => ({ error: e.message || String(e) }));
     els.treeRun.disabled = false;
     if (d.available === false) { els.treeOut.innerHTML = `<p class="status err">Headless Path of Building isn't available.</p>`; return; }
     if (d.error) { els.treeOut.innerHTML = `<p class="status err">Failed: ${esc(d.error)}</p>`; return; }
@@ -329,7 +339,7 @@ window.__viewInit["gear-finder"] = function () {
     const items = (blocks.length ? blocks : [text]).slice(0, 5).map((b) => ({ raw: b, name: ((b.match(/Rarity:[^\n]*\n([^\n]+)/i) || [])[1] || "Pasted item").trim() }));
     els.scoreBtn.disabled = true; els.scoreOut.textContent = "Checking with Path of Building…";
     const sl = state.slots[state.curSlot] || {};
-    const d = await api("/api/gear/score", { buildXml: state.xml, slot: state.curSlot, pobSlot: sl.pobSlot, current: { raw: sl.raw }, items }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/score", { buildXml: state.xml, slot: state.curSlot, pobSlot: sl.pobSlot, current: { raw: sl.raw }, items }).catch((e) => ({ error: e.message || String(e) }));
     els.scoreBtn.disabled = false;
     if (d.available === false) { els.scoreOut.textContent = "Headless Path of Building isn't available."; return; }
     if (d.error) { els.scoreOut.textContent = "Failed: " + d.error; return; }
@@ -356,7 +366,7 @@ window.__viewInit["gear-finder"] = function () {
     const d = await api("/api/gear/weights", {
       buildXml: state.xml, slot: id, pobSlot: state.slots[id] && state.slots[id].pobSlot,
       current: { raw: state.slots[id] && state.slots[id].raw }, maxPriceDiv: Number(els.budget.value) || 0, league: state.league,
-    }).catch((e) => ({ error: String(e) }));
+    }).catch((e) => ({ error: e.message || String(e) }));
     els.find.disabled = false;
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
     if (d.available === false) { setStatus("Headless Path of Building isn't available — install PoB + LuaJIT for build-weighted search.", true); return; }
@@ -391,7 +401,7 @@ window.__viewInit["gear-finder"] = function () {
     // 70% (not 100%) — PoB ΔDPS sorts the rest.
     const mods = state.weights.filter((w) => (w.cur || 0) > 0).slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((w.cur || 1) * 0.7)) }));
     els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
-    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, minPriceDiv: Number(els.budgetMin.value) || 0, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, minPriceDiv: Number(els.budgetMin.value) || 0, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league }).catch((e) => ({ error: e.message || String(e) }));
     els.realRankBtn.disabled = false;
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
@@ -667,7 +677,7 @@ window.__viewInit["gear-finder"] = function () {
     els.basicBtn.disabled = true; setStatus("Building a basic search (one Trade2 call)…");
     const cur = (state.slots[state.curSlot] && state.slots[state.curSlot].stats) || {};
     const mods = state.weights.slice(0, 4).map((w) => ({ statId: w.statId, min: Math.floor(cur[w.key] || 1) }));
-    const d = await api("/api/gear/basic-link", { slot: state.curSlot, league: state.league, mods, maxPriceDiv: Number(els.budget.value) || 0 }).catch((e) => ({ error: String(e) }));
+    const d = await api("/api/gear/basic-link", { slot: state.curSlot, league: state.league, mods, maxPriceDiv: Number(els.budget.value) || 0 }).catch((e) => ({ error: e.message || String(e) }));
     els.basicBtn.disabled = false;
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
     if (d.url) { setStatus("Opened a basic search (" + (d.total || 0) + " hits) — sort it yourself."); window.open(d.url, "_blank", "noopener"); }
