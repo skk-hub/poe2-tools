@@ -3342,6 +3342,17 @@ const server = http.createServer(async (req, res) => {
         }
         // Weighted query went through (no 400) → the cookie is confirmed live this session.
         if (weighted) { sessionVerifiedFlag = true; sessionExpiredFlag = false; }
+        // Defence/jewel slots use a NON-weighted search (defence sort), which works logged-out too,
+        // so it can't prove the cookie → the 🔑 pill would never go green for someone who only
+        // searches armour. Fire ONE lightweight weighted query to confirm the session honestly
+        // (200 = cookie valid → green, 400 = expired → red). Once-per-process: gated on
+        // !sessionVerifiedFlag, so later searches add no extra call. Non-fatal.
+        if (!weighted && sessionId && !sessionVerifiedFlag && weights.length) {
+          try {
+            await gearTradeSearch(buildWeightedGearQuery(slot, weights, league, maxDiv, input.preserve), league);
+            sessionVerifiedFlag = true; sessionExpiredFlag = false;
+          } catch (e) { if (/HTTP 400/.test(String(e && e.message))) { sessionExpiredFlag = true; } }
+        }
         const all = search.result || [];
         if (!all.length) { send(res, 200, JSON.stringify({ available: true, candidates: [], total: 0 }), "application/json; charset=utf-8"); return; }
         // Score a DEEPER pool through PoB and return the real winners — don't trust the
