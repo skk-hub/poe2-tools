@@ -204,14 +204,14 @@ window.__viewInit["gear-finder"] = function () {
     await optimize();
   }
 
-  async function optimize() {
+  async function optimize(deep) {
     const picked = optSelected();
     if (picked.length < 2 || picked.length > 5) { els.findHint.textContent = "pick 2–5 slots"; return; }
     const breakpoints = {};
     els.optBreaks.querySelectorAll(".gf-optbkin").forEach((i) => { if (i.value !== "") breakpoints[i.dataset.k] = Number(i.value); });
     els.find.disabled = true;
-    els.optOut.innerHTML = `<p class="status">Fetching ${picked.length} pools + scoring combinations in Path of Building… ${picked.length >= 4 ? "(4–5 slots: ~1–2 min, lots of Trade2 calls)" : "(~30s)"}</p>`;
-    const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league }).catch((e) => ({ error: e.message || String(e) }));
+    els.optOut.innerHTML = `<p class="status">${deep ? "Deeper search — " : ""}Fetching ${picked.length} pools + scoring combinations in Path of Building… ${picked.length >= 4 ? "(4–5 slots: ~1–2 min, lots of Trade2 calls)" : "(~30s)"}${deep ? " (deeper = more Trade2 calls)" : ""}</p>`;
+    const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league, deep: !!deep }).catch((e) => ({ error: e.message || String(e) }));
     els.find.disabled = false;
     if (d.available === false) { els.optOut.innerHTML = `<p class="status err">Headless Path of Building isn't available.</p>`; return; }
     if (d.limited) { els.optOut.innerHTML = `<p class="status err">Trade2 is rate-limited — try again shortly.</p>`; return; }
@@ -221,7 +221,11 @@ window.__viewInit["gear-finder"] = function () {
       const msg = (d.legal > 0)
         ? `${d.legal} set(s) held all your breakpoints, but every one was a DPS/EHP downgrade — your current gear is near best-in-slot for these slots. Raise Max div or dial a breakpoint down to probe what's hidden under it.`
         : `No legal set found — every in-budget combination lost a breakpoint. Evaluated ${d.evaluated || 0}/${d.combos || 0} combos. Try a bigger budget or dial a breakpoint down.`;
-      els.optOut.innerHTML = `<p class="status">${msg}</p>`;
+      // Offer ONE deeper retry (bigger pools = more Trade2 calls) — only when we weren't already deep.
+      const deeper = deep ? "" : ` <button type="button" class="gf-deeper">Search deeper (more Trade2 calls)</button>`;
+      els.optOut.innerHTML = `<p class="status">${msg}${deeper}</p>`;
+      const btn = els.optOut.querySelector(".gf-deeper");
+      if (btn) btn.addEventListener("click", () => optimize(true));
       return;
     }
     els.optOut.innerHTML = renderOptResults(d);

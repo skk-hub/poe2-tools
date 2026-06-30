@@ -3075,7 +3075,12 @@ const server = http.createServer(async (req, res) => {
       // Per-slot candidates fetched (chunked by 10/fetch), then domination-pruned before the cartesian
       // product. Deep (30) for 2-3 slots; modest (12) for 4-5 where the combo count already balloons
       // (pool^slots) — the prune only drops STRICTLY-dominated items so most of a deep pool survives.
-      const POOL = slotIds.length <= 3 ? 30 : 12, COMBO_CAP = 450;   // COMBO_CAP = max combos PoB verifies
+      // `deep` (opt-in, triggered by the "search deeper" button after a no-legal-set result) ~doubles the
+      // per-slot pool and the verify cap — more /fetch calls (10/id-chunk) + PoB calcs, so it hits trade harder.
+      const deep = !!input.deep;
+      // 2-3 slots: deepen the pool (30→60) — more /fetch + PoB calcs. 4-5 slots: keep the pool (cartesian is
+      // pool^slots — 24^5≈8M arrays would blow memory) and only lift the verify cap.
+      const POOL = slotIds.length <= 3 ? (deep ? 60 : 30) : 12, COMBO_CAP = deep ? 900 : 450;   // COMBO_CAP = max combos PoB verifies
       try {
         let fetchErr = null;
         const pools = [];
