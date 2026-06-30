@@ -3458,37 +3458,62 @@ const server = http.createServer(async (req, res) => {
         let spiritSkipped = 0;
         let cands = [];
         let fetchErr = null;
-        for (let i = 0; i < pick.length; i += 10) {   // Trade2 fetch caps at 10 ids/call
-          let fetched;
-          try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + pick.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id)); }
-          catch (e) { fetchErr = e; break; }   // rate-limit/error mid-sweep → keep what we scored
-          for (const e of fetched.result || []) {
-            const txt = pobItemFromTradeEntry(e, anointLines, runeFill);
-            if (!txt) continue;
-            let stats; try { stats = await pob.calc(pobSlot, txt); } catch { continue; }
-            if (spiritGuard && Number(stats.SpiritUnreserved) < baseUnreserved - 0.5) { spiritSkipped++; continue; }   // less spirit headroom than your current build → can't run its auras
-            const price = listingPriceFromEntry(e, rates) || {};
-            // The item's top-weighted rolled mods → lets the value-check search "items at
-            // least this good on these stats" and tell you if this listing is the cheapest
-            // at that power. Parse the roll from each explicit mod's description.
-            const expl = (e.item && e.item.explicitMods) || [];
-            const valOf = (statId) => { const md = expl.find((x) => (x && x.hash) === "stat." + statId); if (!md) return null; const n = parseFloat(String(md.description || "").replace(/[^\d.\-]+/g, " ").trim().split(" ")[0]); return Number.isFinite(n) ? n : null; };
-            const linkMods = [];
-            for (const w of weights) { const v = valOf(w.statId); if (v != null) linkMods.push({ statId: w.statId, min: Math.floor(v) }); if (linkMods.length >= 3) break; }
-            cands.push({
-              name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(),
-              // base type + seller account → a precise "open this listing" search (PoE
-              // trade has no per-item permalink, and the linked search is sorted so the
-              // item can be buried; this lands right on it).
-              base: (e.item && (e.item.typeLine || e.item.baseType)) || "",
-              account: (e.listing && e.listing.account && e.listing.account.name) || "",
-              raw: txt,                                  // PoB-ready item text → combined "score all pinned" can re-slot it
-              mods: linkMods,
-              stats: parseItemStats(txt, slot.baseId),   // new item's rolls, keyed like the equipped item → old-vs-new diff
-              priceDiv: price.divine || 0, priceEx: price.exalted || 0,
-              dDPS: dpsOfOut(stats) - dpsOfOut(base), dEHP: ehpOfOut(stats) - ehpOfOut(base),
-            });
+        const seenId = new Set();   // dedup listings across the main pool + weapon-DPS sub-pool
+        // Fetch (chunked by 10) + PoB-score a list of listing ids into `cands`. `qid` is the search id
+        // those ids belong to — each (sub-)pool MUST be fetched with its OWN id (the set path's scoreInto
+        // does the same; a mismatched query id can return nothing for foreign ids).
+        const scoreIds = async (ids, qid) => {
+          for (let i = 0; i < ids.length; i += 10) {   // Trade2 fetch caps at 10 ids/call
+            let fetched;
+            try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(qid)); }
+            catch (e) { fetchErr = e; break; }   // rate-limit/error mid-sweep → keep what we scored
+            for (const e of fetched.result || []) {
+              if (e.id != null) { if (seenId.has(e.id)) continue; seenId.add(e.id); }
+              const txt = pobItemFromTradeEntry(e, anointLines, runeFill);
+              if (!txt) continue;
+              let stats; try { stats = await pob.calc(pobSlot, txt); } catch { continue; }
+              if (spiritGuard && Number(stats.SpiritUnreserved) < baseUnreserved - 0.5) { spiritSkipped++; continue; }   // less spirit headroom than your current build → can't run its auras
+              const price = listingPriceFromEntry(e, rates) || {};
+              // The item's top-weighted rolled mods → lets the value-check search "items at
+              // least this good on these stats" and tell you if this listing is the cheapest
+              // at that power. Parse the roll from each explicit mod's description.
+              const expl = (e.item && e.item.explicitMods) || [];
+              const valOf = (statId) => { const md = expl.find((x) => (x && x.hash) === "stat." + statId); if (!md) return null; const n = parseFloat(String(md.description || "").replace(/[^\d.\-]+/g, " ").trim().split(" ")[0]); return Number.isFinite(n) ? n : null; };
+              const linkMods = [];
+              for (const w of weights) { const v = valOf(w.statId); if (v != null) linkMods.push({ statId: w.statId, min: Math.floor(v) }); if (linkMods.length >= 3) break; }
+              cands.push({
+                name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(),
+                // base type + seller account → a precise "open this listing" search (PoE
+                // trade has no per-item permalink, and the linked search is sorted so the
+                // item can be buried; this lands right on it).
+                base: (e.item && (e.item.typeLine || e.item.baseType)) || "",
+                account: (e.listing && e.listing.account && e.listing.account.name) || "",
+                raw: txt,                                  // PoB-ready item text → combined "score all pinned" can re-slot it
+                mods: linkMods,
+                stats: parseItemStats(txt, slot.baseId),   // new item's rolls, keyed like the equipped item → old-vs-new diff
+                priceDiv: price.divine || 0, priceEx: price.exalted || 0,
+                dDPS: dpsOfOut(stats) - dpsOfOut(base), dEHP: ehpOfOut(stats) - ehpOfOut(base),
+              });
+            }
           }
+        };
+        await scoreIds(pick, search.id);
+        // Weapon-DPS sub-pool (martial weapons): the weighted statgroup sort is dominated by the build's #1
+        // weight — typically +Level of all Attack skills (×20) — so a high-raw-DPS bow WITHOUT that mod ranks
+        // below the fetched top-100 and is never PoB-scored (the user found such a bow by hand at +88k DPS).
+        // Pull the highest weapon-DPS listings (`dps` sort — same short equipment-filter key family as the
+        // verified ev/ar/es defence sort) and score them with their OWN search id. A 400/empty never breaks
+        // the main rank. Caster weapons (wand/staff/sceptre) excluded — their weapon DPS isn't the proxy.
+        if (MARTIAL_WEAPON_SLOTS.has(baseSlot) && !fetchErr) {
+          try {
+            const wq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [] }, sort: { dps: "desc" } };
+            if (maxDiv > 0 || minDiv > 0) { const price = { option: "divine" }; if (minDiv > 0) price.min = minDiv; if (maxDiv > 0) price.max = maxDiv; wq.query.filters.trade_filters = { filters: { price } }; }
+            const pf = gearStatFilters(input.preserve, 4);
+            if (pf.length) wq.query.stats.push({ type: "and", filters: pf });
+            const wRes = await gearTradeSearch(wq, league);
+            const wIds = ((wRes.search && wRes.search.result) || []).slice(0, Math.min(SCORE_CAP, 30));   // ~3 fetches on top of the main pool
+            if (wIds.length && wRes.search && wRes.search.id) await scoreIds(wIds, wRes.search.id);
+          } catch { /* weapon-DPS sub-pool is a bonus; never let it break the rank */ }
         }
         if (!cands.length && fetchErr) throw fetchErr;   // total failure → outer catch (rate-limit msg etc.)
         // Preserve-the-OTHER-metric (pre-scan toggle): drop any candidate that lowers the
