@@ -3051,7 +3051,10 @@ const server = http.createServer(async (req, res) => {
       const slotIds = (Array.isArray(input.slots) ? input.slots : []).map(String).filter(Boolean).slice(0, 5);
       if (slotIds.length < 2) { send(res, 400, JSON.stringify({ error: "Pick 2-5 slots" }), "application/json; charset=utf-8"); return; }
       let parsed; try { parsed = parsePobBuild(buildXml); } catch (e) { send(res, 400, JSON.stringify({ error: "Not a PoB build: " + e.message }), "application/json; charset=utf-8"); return; }
-      const POOL = 10, COMBO_CAP = 450;   // Trade2 /fetch caps at 10 ids per call; cap PoB verifies
+      // Per-slot candidates fetched (chunked by 10/fetch), then domination-pruned before the cartesian
+      // product. Deep (30) for 2-3 slots; modest (12) for 4-5 where the combo count already balloons
+      // (pool^slots) — the prune only drops STRICTLY-dominated items so most of a deep pool survives.
+      const POOL = slotIds.length <= 3 ? 30 : 12, COMBO_CAP = 450;   // COMBO_CAP = max combos PoB verifies
       try {
         let fetchErr = null;
         const pools = [];
@@ -3134,12 +3137,14 @@ const server = http.createServer(async (req, res) => {
             const rates = await getExchangeRates(usedLeague || league).catch(() => ({}));
             const anointLines = baseSlot === "amulet" ? extractAnoint(currentRaw) : [];
             const runeFill = extractRuneFill(currentRaw);   // scale each candidate's sockets to YOUR rune
-            let fetched; try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id)); } catch (e) { fetchErr = e; fetched = null; }
-            for (const e of (fetched && fetched.result) || []) {
-              const txt = pobItemFromTradeEntry(e, anointLines, runeFill); if (!txt) continue;
-              let st; try { st = await pob.calc(pobSlot, txt); } catch { continue; }
-              const price = listingPriceFromEntry(e, rates) || {};
-              cands.push({ pobSlot, raw: txt, name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), base: (e.item && (e.item.typeLine || e.item.baseType)) || "", account: (e.listing && e.listing.account && e.listing.account.name) || "", mods: linkModsFromEntry(e, w.weights), priceDiv: price.divine || 0, priceEx: price.exalted || 0, dDPS: dpsOfOut(st) - baseDps, dEHP: ehpOfOut(st) - baseEhp, contrib: itemBreakpointContrib(parseItemStats(txt, baseSlot)) });
+            for (let i = 0; i < ids.length; i += 10) {   // Trade2 /fetch caps at 10 ids/call → chunk
+              let fetched; try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id)); } catch (e) { fetchErr = e; break; }
+              for (const e of (fetched && fetched.result) || []) {
+                const txt = pobItemFromTradeEntry(e, anointLines, runeFill); if (!txt) continue;
+                let st; try { st = await pob.calc(pobSlot, txt); } catch { continue; }
+                const price = listingPriceFromEntry(e, rates) || {};
+                cands.push({ pobSlot, raw: txt, name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), base: (e.item && (e.item.typeLine || e.item.baseType)) || "", account: (e.listing && e.listing.account && e.listing.account.name) || "", mods: linkModsFromEntry(e, w.weights), priceDiv: price.divine || 0, priceEx: price.exalted || 0, dDPS: dpsOfOut(st) - baseDps, dEHP: ehpOfOut(st) - baseEhp, contrib: itemBreakpointContrib(parseItemStats(txt, baseSlot)) });
+              }
             }
           }
           pools.push({ slotId, pobSlot, slotName: slot.label || slotId, candidates: dominationPrune(cands) });
