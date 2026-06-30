@@ -3139,34 +3139,53 @@ const server = http.createServer(async (req, res) => {
             const rates = await getExchangeRates(usedLeague || league).catch(() => ({}));
             const anointLines = baseSlot === "amulet" ? extractAnoint(currentRaw) : [];
             const runeFill = extractRuneFill(currentRaw);   // scale each candidate's sockets to YOUR rune
-            for (let i = 0; i < ids.length; i += 10) {   // Trade2 /fetch caps at 10 ids/call → chunk
-              let fetched; try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(search.id)); } catch (e) { fetchErr = e; break; }
-              for (const e of (fetched && fetched.result) || []) {
-                const txt = pobItemFromTradeEntry(e, anointLines, runeFill); if (!txt) continue;
-                let st; try { st = await pob.calc(pobSlot, txt); } catch { continue; }
-                const price = listingPriceFromEntry(e, rates) || {};
-                cands.push({ pobSlot, raw: txt, name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), base: (e.item && (e.item.typeLine || e.item.baseType)) || "", account: (e.listing && e.listing.account && e.listing.account.name) || "", mods: linkModsFromEntry(e, w.weights), priceDiv: price.divine || 0, priceEx: price.exalted || 0, dDPS: dpsOfOut(st) - baseDps, dEHP: ehpOfOut(st) - baseEhp, contrib: itemBreakpointContrib(parseItemStats(txt, baseSlot)) });
+            const seen = new Set(ids);
+            // Fetch (chunked by 10) + PoB-score a list of listing ids into `cands`. Shared by the main
+            // pool and the deflection / rarity sub-pools below.
+            const scoreInto = async (idList, searchId) => {
+              for (let i = 0; i < idList.length; i += 10) {
+                const fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + idList.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(searchId));
+                for (const e of (fetched && fetched.result) || []) {
+                  const txt = pobItemFromTradeEntry(e, anointLines, runeFill); if (!txt) continue;
+                  let st; try { st = await pob.calc(pobSlot, txt); } catch { continue; }
+                  const price = listingPriceFromEntry(e, rates) || {};
+                  cands.push({ pobSlot, raw: txt, name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), base: (e.item && (e.item.typeLine || e.item.baseType)) || "", account: (e.listing && e.listing.account && e.listing.account.name) || "", mods: linkModsFromEntry(e, w.weights), priceDiv: price.divine || 0, priceEx: price.exalted || 0, dDPS: dpsOfOut(st) - baseDps, dEHP: ehpOfOut(st) - baseEhp, contrib: itemBreakpointContrib(parseItemStats(txt, baseSlot)) });
+                }
               }
-            }
-            // Deflection-conversion pool (defence slots): pull items WITH the conversion mod (evasion-
-            // sorted) into the candidate set — PoB values deflection but the evasion sort buries them.
-            if (defenceSlot) {
+            };
+            try { await scoreInto(ids, search.id); } catch (e) { fetchErr = e; }   // main pool; a rate-limit here stops the whole scan
+            // Deflection-conversion pool (defence slots): high-deflection items the evasion sort buries.
+            if (!fetchErr && defenceSlot) {
               try {
                 const dq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: [{ id: DEFLECT_CONV_STAT }] }] }, sort: { [defK]: "desc" } };
                 if (maxPriceDiv > 0) dq.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
                 const dRes = await gearTradeSearch(dq, usedLeague || league);
-                const have = new Set(ids);
-                const dFresh = ((dRes.search && dRes.search.result) || []).slice(0, 10).filter((id) => !have.has(id));
-                for (let i = 0; i < dFresh.length; i += 10) {
-                  let fetched; try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + dFresh.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(dRes.search.id)); } catch { break; }
-                  for (const e of (fetched && fetched.result) || []) {
-                    const txt = pobItemFromTradeEntry(e, anointLines, runeFill); if (!txt) continue;
-                    let st; try { st = await pob.calc(pobSlot, txt); } catch { continue; }
-                    const price = listingPriceFromEntry(e, rates) || {};
-                    cands.push({ pobSlot, raw: txt, name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), base: (e.item && (e.item.typeLine || e.item.baseType)) || "", account: (e.listing && e.listing.account && e.listing.account.name) || "", mods: linkModsFromEntry(e, w.weights), priceDiv: price.divine || 0, priceEx: price.exalted || 0, dDPS: dpsOfOut(st) - baseDps, dEHP: ehpOfOut(st) - baseEhp, contrib: itemBreakpointContrib(parseItemStats(txt, baseSlot)) });
-                  }
-                }
-              } catch { /* deflection pool is a bonus; never break the slot */ }
+                const dFresh = ((dRes.search && dRes.search.result) || []).slice(0, 10).filter((id) => !seen.has(id));
+                dFresh.forEach((id) => seen.add(id));
+                await scoreInto(dFresh, dRes.search.id);
+              } catch { /* sub-pool is a bonus; never break the slot */ }
+            }
+            // Rarity sub-pool: when the user TARGETS rarity ABOVE the build's current (a "push 73→100"
+            // probe), merge HIGH-rarity items for rarity-capable slots. Deliberately NOT a per-item hard
+            // floor on the main pool — forcing every slot ≥N wrongly drops valid mixes where ONE slot
+            // carries the rarity; the total-rarity breakpoint keeps whatever combo SUMS to the target.
+            const curRarity = Math.round(((Number(base.EffectiveLootRarityMod) || 1) - 1) * 100);
+            const rarityTarget = Number((input.breakpoints || {}).rarityPct) || 0;
+            if (!fetchErr && UPGRADE_STAT_IDS.rarity && slotHasRarity(baseSlot) && rarityTarget > curRarity) {
+              try {
+                const rid = UPGRADE_STAT_IDS.rarity;
+                const mk = (wtd) => {
+                  const q = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: wtd ? [{ type: "weight", filters: [{ id: rid, value: { weight: 1 } }], value: {} }, { type: "and", filters: [{ id: rid, min: 1 }] }] : [{ type: "and", filters: [{ id: rid, min: 15 }] }] }, sort: wtd ? { "statgroup.0": "desc" } : { price: "desc" } };
+                  if (maxPriceDiv > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
+                  return q;
+                };
+                let rRes;
+                try { rRes = await gearTradeSearch(mk(true), usedLeague || league); }   // rarity-sorted (needs POESESSID)
+                catch (e) { if (/HTTP 400/.test(String(e && e.message))) rRes = await gearTradeSearch(mk(false), usedLeague || league); else throw e; }   // logged-out: rarity-floor + price
+                const rFresh = ((rRes.search && rRes.search.result) || []).slice(0, 10).filter((id) => !seen.has(id));
+                rFresh.forEach((id) => seen.add(id));
+                await scoreInto(rFresh, rRes.search.id);
+              } catch { /* rarity sub-pool is a bonus; never break the slot */ }
             }
           }
           pools.push({ slotId, pobSlot, slotName: slot.label || slotId, candidates: dominationPrune(cands) });
