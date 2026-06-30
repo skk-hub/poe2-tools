@@ -128,7 +128,8 @@ window.__viewInit["gear-finder"] = function () {
     if (d.build && d.build.SpiritUnreserved != null) b.SpiritUnreserved = d.build.SpiritUnreserved;
     const tiles = [["Life", b.Life], ["Energy Shield", b.EnergyShield], ["EHP", ehpOf(b) || b.TotalEHP],
       ["DPS", (b.FullDPS || b.CombinedDPS || b.TotalDPS)], ["Fire", b.FireResist], ["Cold", b.ColdResist],
-      ["Light", b.LightningResist], ["Chaos", b.ChaosResist], ["Spirit free", b.SpiritUnreserved]].filter(([, v]) => v != null);
+      ["Light", b.LightningResist], ["Chaos", b.ChaosResist], ["Spirit free", b.SpiritUnreserved],
+      ["Rarity %", b.EffectiveLootRarityMod != null ? Math.round((Number(b.EffectiveLootRarityMod) - 1) * 100) : null]].filter(([, v]) => v != null);
     els.build.innerHTML = tiles.map(([k, v]) => `<span class="gf-stat">${k} <b>${fmt(v)}</b></span>`).join("");
     // Stale PoB agent: returns DPS/EHP but no Spirit data → spirit floor + guard silently off,
     // so the scan leaks no-spirit items. Loud banner with the exact fix (it's a split-host
