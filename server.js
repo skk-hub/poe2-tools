@@ -3500,22 +3500,34 @@ const server = http.createServer(async (req, res) => {
           }
         };
         await scoreIds(pick, search.id);
-        // Weapon-DPS sub-pool (martial weapons): the weighted statgroup sort is dominated by the build's #1
-        // weight (e.g. +Level of all Attack skills ×20), so a high-raw-DPS bow WITHOUT that mod ranks below the
-        // fetched top-100 and is never PoB-scored. Pull the highest weapon-DPS listings (`dps` sort) and score
-        // them with their OWN search id, deduped by listing id. A 400/empty never breaks the main rank. Casters
-        // (wand/staff/sceptre) excluded — their weapon DPS isn't the proxy. NOTE: only `dps` is a valid trade2
-        // sort key here — `pdps`/`edps`/`statgroup.0` all return HTTP 400 on a bow search (verified live).
-        if (MARTIAL_WEAPON_SLOTS.has(baseSlot) && !fetchErr) {
-          try {
-            const wq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [] }, sort: { dps: "desc" } };
-            if (maxDiv > 0 || minDiv > 0) { const price = { option: "divine" }; if (minDiv > 0) price.min = minDiv; if (maxDiv > 0) price.max = maxDiv; wq.query.filters.trade_filters = { filters: { price } }; }
-            const pf = gearStatFilters(input.preserve, 4);
-            if (pf.length) wq.query.stats.push({ type: "and", filters: pf });
-            const wRes = await gearTradeSearch(wq, league);
-            const wIds = ((wRes.search && wRes.search.result) || []).slice(0, Math.min(SCORE_CAP, 30));   // ~3 fetches on top of the main pool
-            if (wIds.length && wRes.search && wRes.search.id) await scoreIds(wIds, wRes.search.id);
-          } catch { /* weapon-DPS sub-pool is a bonus; never let it break the rank */ }
+        // Weapon sub-pools (martial weapons): with ~10k bows in budget, the weighted statgroup sort (dominated
+        // by the build's #1 weight, e.g. +Attack-skill levels ×20) AND the raw-dps sort BOTH bury a bow whose
+        // real value is a mod-combo — the user's +88k-DPS bow ranked mid-pack on both. Two angles, each sorted
+        // by weapon `dps` (the ONLY valid weapon sort key — pdps/edps/statgroup.0 all 400, verified live):
+        //   (1) ALL bows by dps — catches pure raw-damage bows the weighted sum misses.
+        //   (2) ONE pool PER top weighted stat (require that stat present, then dps-sort) — narrows 10k to the
+        //       bows that actually carry your build's defining stats (proj-levels, attack-levels, …), so a bow
+        //       with the key stat + strong damage surfaces even when it's mid-pack across the whole category.
+        // Each fetched with its OWN search id, deduped by listing id; a 400/empty never breaks the main rank.
+        if (MARTIAL_WEAPON_SLOTS.has(baseSlot)) {
+          const weaponSubPool = async (extraStat, sort, cap) => {
+            try {
+              const wq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [] }, sort };
+              if (maxDiv > 0 || minDiv > 0) { const price = { option: "divine" }; if (minDiv > 0) price.min = minDiv; if (maxDiv > 0) price.max = maxDiv; wq.query.filters.trade_filters = { filters: { price } }; }
+              const andF = gearStatFilters(input.preserve, 4).slice();
+              if (extraStat) andF.push({ id: extraStat, value: { min: 1 } });
+              if (andF.length) wq.query.stats.push({ type: "and", filters: andF });
+              const kRes = await gearTradeSearch(wq, league);
+              const kIds = ((kRes.search && kRes.search.result) || []).slice(0, cap);
+              if (kIds.length && kRes.search && kRes.search.id) await scoreIds(kIds, kRes.search.id);
+            } catch { /* weapon sub-pool is a bonus; never let it break the rank */ }
+          };
+          if (!fetchErr) await weaponSubPool(null, { dps: "desc" }, Math.min(SCORE_CAP, 30));   // (1) all bows by raw weapon dps
+          // (2) top weighted stats, sorted PRICE-DESC: the priciest bows that carry your build's key stat are the
+          // best ones (price ≈ desirability), so a combo-value bow that's mid-pack on raw dps still surfaces here.
+          // (real trade stat ids; the generic "dps" equip key is already filtered out of `weights`.)
+          const topStatIds = [...new Set(weights.map((w) => w.statId))].slice(0, 2);
+          for (const statId of topStatIds) { if (fetchErr) break; await weaponSubPool(statId, { price: "desc" }, 20); }
         }
         if (!cands.length && fetchErr) throw fetchErr;   // total failure → outer catch (rate-limit msg etc.)
         // Preserve-the-OTHER-metric (pre-scan toggle): drop any candidate that lowers the
