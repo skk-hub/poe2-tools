@@ -51,6 +51,12 @@ let sessionId = (process.env.POESESSID || "").trim();
 let sessionExpiredFlag = false;   // flipped true when a weighted query 400s (GGG logged us out); surfaced in the UI
 let sessionVerifiedFlag = false;  // flipped true when a weighted query SUCCEEDS — green only ever means "confirmed working", never just "set"
 let gearDefenceSortOk = true;     // trade2 defence sort (ev/ar/es) is undocumented; flipped false on the first 400 so a wrong key wastes at most ONE call, then we revert to the weighted/price sort
+// "Gain Deflection Rating equal to #% of Evasion Rating" — a big EHP layer PoB models (CalcDefence
+// EvasionGainAsDeflection → DeflectChance → damage-taken mult) but the raw-evasion sort can't see, so
+// a mid-evasion / high-deflection chest gets buried. We pull a dedicated pool of items WITH this mod
+// into defensive-slot searches so they get fetched + PoB-scored. Meta is the desecrated variant
+// (id confirmed via data/stats 2026-06-30); the explicit/fractured share the stat number.
+const DEFLECT_CONV_STAT = "desecrated.stat_3033371881";
 try { const s = JSON.parse(fs.readFileSync(SESSION_FILE, "utf8")); if (s && s.poesessid) sessionId = String(s.poesessid).trim(); } catch {}
 const TRADE_HEADERS = {
   "Content-Type": "application/json",
@@ -3140,6 +3146,26 @@ const server = http.createServer(async (req, res) => {
                 cands.push({ pobSlot, raw: txt, name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), base: (e.item && (e.item.typeLine || e.item.baseType)) || "", account: (e.listing && e.listing.account && e.listing.account.name) || "", mods: linkModsFromEntry(e, w.weights), priceDiv: price.divine || 0, priceEx: price.exalted || 0, dDPS: dpsOfOut(st) - baseDps, dEHP: ehpOfOut(st) - baseEhp, contrib: itemBreakpointContrib(parseItemStats(txt, baseSlot)) });
               }
             }
+            // Deflection-conversion pool (defence slots): pull items WITH the conversion mod (evasion-
+            // sorted) into the candidate set — PoB values deflection but the evasion sort buries them.
+            if (defenceSlot) {
+              try {
+                const dq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: [{ id: DEFLECT_CONV_STAT }] }] }, sort: { [defK]: "desc" } };
+                if (maxPriceDiv > 0) dq.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
+                const dRes = await gearTradeSearch(dq, usedLeague || league);
+                const have = new Set(ids);
+                const dFresh = ((dRes.search && dRes.search.result) || []).slice(0, 10).filter((id) => !have.has(id));
+                for (let i = 0; i < dFresh.length; i += 10) {
+                  let fetched; try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + dFresh.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(dRes.search.id)); } catch { break; }
+                  for (const e of (fetched && fetched.result) || []) {
+                    const txt = pobItemFromTradeEntry(e, anointLines, runeFill); if (!txt) continue;
+                    let st; try { st = await pob.calc(pobSlot, txt); } catch { continue; }
+                    const price = listingPriceFromEntry(e, rates) || {};
+                    cands.push({ pobSlot, raw: txt, name: [(e.item && e.item.name), (e.item && e.item.typeLine)].filter(Boolean).join(" ").trim(), base: (e.item && (e.item.typeLine || e.item.baseType)) || "", account: (e.listing && e.listing.account && e.listing.account.name) || "", mods: linkModsFromEntry(e, w.weights), priceDiv: price.divine || 0, priceEx: price.exalted || 0, dDPS: dpsOfOut(st) - baseDps, dEHP: ehpOfOut(st) - baseEhp, contrib: itemBreakpointContrib(parseItemStats(txt, baseSlot)) });
+                  }
+                }
+              } catch { /* deflection pool is a bonus; never break the slot */ }
+            }
           }
           pools.push({ slotId, pobSlot, slotName: slot.label || slotId, candidates: dominationPrune(cands) });
           if (fetchErr) break;
@@ -3338,6 +3364,21 @@ const server = http.createServer(async (req, res) => {
         // Weighted OR defence-sorted = best-first (highest build-value / highest defence), so take
         // the top m. Only the plain price fallback samples a spread.
         const pick = (weighted || usedDefenceSort) ? all.slice(0, m) : Array.from({ length: m }, (_, i) => all[Math.floor((i * all.length) / m)]);
+        // Deflection-conversion pool (defence slots): PoB values deflection in EHP, but the raw-evasion
+        // sort buries a mid-evasion / high-deflection chest so it never reaches the fetch. Pull items
+        // WITH the conversion mod (evasion-sorted — deflection scales with evasion) and PREPEND the
+        // fresh ones so they're fetched + scored. A 400/empty here must never break the main rank.
+        if (usedDefenceSort) {
+          try {
+            const dq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: [{ id: DEFLECT_CONV_STAT }] }] }, sort: { [defK]: "desc" } };
+            if (maxDiv > 0 || minDiv > 0) { const price = { option: "divine" }; if (minDiv > 0) price.min = minDiv; if (maxDiv > 0) price.max = maxDiv; dq.query.filters.trade_filters = { filters: { price } }; }
+            const dRes = await gearTradeSearch(dq, league);
+            const dIds = ((dRes.search && dRes.search.result) || []).slice(0, 20);
+            const seen = new Set(pick);
+            const fresh = dIds.filter((id) => !seen.has(id));
+            if (fresh.length) pick.unshift(...fresh);
+          } catch { /* deflection pool is a bonus; never let it break the rank */ }
+        }
         const rates = await getExchangeRates(league).catch(() => ({}));
         await pob.load(String(input.buildXml || ""));
         const base = await pob.calc(pobSlot, "");
