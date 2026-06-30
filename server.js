@@ -1660,6 +1660,15 @@ const UPGRADE_STAT_IDS = {
   spiritPct: "explicit.stat_3984865854",          // #% increased Spirit (sceptre)
 };
 
+// "+Level of all X Skills" trade ids — small-integer rolls. As a search FILTER these gate on a meaningful roll
+// (≥3, like a human's "needs +3 projectiles") instead of mere presence, which narrows a 10k weapon pool hard.
+const SKILL_LEVEL_STAT_IDS = new Set([
+  "explicit.stat_1202301673", // projectileLevels
+  "explicit.stat_3035140377", // levelAllAttackSkills
+  "explicit.stat_9187492",    // levelAllMeleeSkills
+  "explicit.stat_124131830",  // levelAllSpellSkills
+]);
+
 // The SAME conceptual stat has different Trade2 ids depending on the slot it
 // rolls on. The flat UPGRADE_STAT_IDS map holds the generic (amulet/jewel)
 // variant; these per-slot-family overrides redirect a key to the id that the
@@ -3461,6 +3470,10 @@ const server = http.createServer(async (req, res) => {
         const baseSlot = slot.baseId || String(input.slot || "");
         const anointLines = baseSlot === "amulet" ? extractAnoint(input.current && input.current.raw) : [];
         const runeFill = extractRuneFill(input.current && input.current.raw);   // scale each candidate's sockets to YOUR rune
+        // Current weapon's total sheet DPS (phys+ele × aps), parsed from the equipped item — used as a hard search
+        // floor for weapon sub-pools below ("more DPS than mine", the user's manual recipe). 0 if the raw carries
+        // no damage lines (then the floor is simply skipped).
+        const curWeaponDps = MARTIAL_WEAPON_SLOTS.has(baseSlot) ? Math.round((parseItemStats((input.current && input.current.raw) || "", baseSlot) || {}).dps || 0) : 0;
         let spiritSkipped = 0;
         let cands = [];
         let fetchErr = null;
@@ -3516,18 +3529,21 @@ const server = http.createServer(async (req, res) => {
             try {
               const wq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [] }, sort };
               if (maxDiv > 0 || minDiv > 0) { const price = { option: "divine" }; if (minDiv > 0) price.min = minDiv; if (maxDiv > 0) price.max = maxDiv; wq.query.filters.trade_filters = { filters: { price } }; }
+              // DPS floor: only consider bows with at least ~your current weapon DPS (the user's "phys dps > mine").
+              if (curWeaponDps > 0) wq.query.filters.equipment_filters = { filters: { dps: { min: Math.floor(curWeaponDps * 0.9) } } };
               const andF = gearStatFilters(input.preserve, 4).slice();
-              if (extraStat) andF.push({ id: extraStat, value: { min: 1 } });
+              // Require a MEANINGFUL roll of the key stat (≥3 for "+levels", the user's "needs +3 projectiles"),
+              // not mere presence — this is what shrinks a ~10k pool to a list the upgrade is obviously in.
+              if (extraStat) andF.push({ id: extraStat, value: { min: SKILL_LEVEL_STAT_IDS.has(extraStat) ? 3 : 1 } });
               if (andF.length) wq.query.stats.push({ type: "and", filters: andF });
               const kRes = await gearTradeSearch(wq, league);
               const kIds = ((kRes.search && kRes.search.result) || []).slice(0, cap);
               if (kIds.length && kRes.search && kRes.search.id) await scoreIds(kIds, kRes.search.id);
             } catch { /* weapon sub-pool is a bonus; never let it break the rank */ }
           };
-          // Top weighted stats, sorted PRICE-DESC: the priciest bows that carry your build's key stat are the
-          // best ones (price ≈ desirability), so a combo-value bow that's mid-pack on raw dps still surfaces here.
-          // Deep (40) because at a tight budget MANY listings cluster at the cap (e.g. 20+ bows at 900 div), so a
-          // genuine upgrade priced just under it (the user's 850-div bow) sits below a shallow cutoff. (real trade
+          // One pool per top weighted stat: "bows with more DPS than mine that carry my key stat (≥3 if +levels)",
+          // sorted PRICE-DESC. This is the user's manual recipe (phys dps > mine + 3+ projectiles) — a tight filter
+          // that puts a combo-value bow (mid-pack on every raw metric) into a short, fully-scored list. (real trade
           // stat ids; the generic "dps" equip key is already filtered out of `weights`.)
           const topStatIds = [...new Set(weights.map((w) => w.statId))].slice(0, 2);
           for (const statId of topStatIds) { if (fetchErr) break; await weaponSubPool(statId, { price: "desc" }, 40); }
