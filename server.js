@@ -3132,7 +3132,9 @@ const server = http.createServer(async (req, res) => {
             if (pf.length) q.query.stats.push({ type: "and", filters: pf });
             return q;
           };
-          const cands = [{ keep: true, pobSlot, raw: currentRaw, name: "(keep current)", base: "", account: "", priceDiv: 0, priceEx: 0, dDPS: 0, dEHP: 0, contrib: itemBreakpointContrib(parseItemStats(currentRaw, baseSlot)) }];
+          // Jewel sockets all label as "jewel" in the UI, so carry the current jewel's name to disambiguate which socket a "keep current" row means.
+          const keepName = /^jewel\d+$/.test(slotId) && parsed.slots[slotId] && parsed.slots[slotId].name ? parsed.slots[slotId].name : "(keep current)";
+          const cands = [{ keep: true, pobSlot, raw: currentRaw, name: keepName, base: "", account: "", priceDiv: 0, priceEx: 0, dDPS: 0, dEHP: 0, contrib: itemBreakpointContrib(parseItemStats(currentRaw, baseSlot)) }];
           let q = defenceSlot ? buildDefenceQ() : buildQ(weighted);
           let search, usedLeague;
           try { ({ search, league: usedLeague } = await gearTradeSearch(q, league)); }
