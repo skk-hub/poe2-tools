@@ -3408,7 +3408,11 @@ const server = http.createServer(async (req, res) => {
         // chest that's mid-pack on raw evasion but top on real EHP) still gets scored. 100 ids = 10
         // fetch calls (~30s through the 3s-spaced queue, on the VM's own VPN IP — fine for a user
         // action). The all-slots SCAN passes scoreCap:10 (1 fetch/slot) to stay cheap across ~12 slots.
-        const SCORE_CAP = Math.max(10, Math.min(100, Number(input.scoreCap) || 100));
+        // Weapon finds spend most of their budget on the targeted key-stat sub-pools below (where the real combo
+        // upgrades hide over a ~10k pool), so the main weighted pool is shallower for martial weapons (40 vs 100)
+        // to keep the TOTAL Trade2 calls per find rate-safe on the shared IP. Scans still pass scoreCap:10.
+        const isWeaponSlot = MARTIAL_WEAPON_SLOTS.has(slot.baseId || String(input.slot || ""));
+        const SCORE_CAP = Math.max(10, Math.min(100, Number(input.scoreCap) || (isWeaponSlot ? 40 : 100)));
         const m = Math.min(all.length, SCORE_CAP);
         // Weighted = best-value-first, score the top m. Otherwise sample a SPREAD across
         // the result page: for price-DESC that's the priciest 100 (where real upgrades
@@ -3500,15 +3504,13 @@ const server = http.createServer(async (req, res) => {
           }
         };
         await scoreIds(pick, search.id);
-        // Weapon sub-pools (martial weapons): with ~10k bows in budget, the weighted statgroup sort (dominated
-        // by the build's #1 weight, e.g. +Attack-skill levels ×20) AND the raw-dps sort BOTH bury a bow whose
-        // real value is a mod-combo — the user's +88k-DPS bow ranked mid-pack on both. Two angles, each sorted
-        // by weapon `dps` (the ONLY valid weapon sort key — pdps/edps/statgroup.0 all 400, verified live):
-        //   (1) ALL bows by dps — catches pure raw-damage bows the weighted sum misses.
-        //   (2) ONE pool PER top weighted stat (require that stat present, then dps-sort) — narrows 10k to the
-        //       bows that actually carry your build's defining stats (proj-levels, attack-levels, …), so a bow
-        //       with the key stat + strong damage surfaces even when it's mid-pack across the whole category.
-        // Each fetched with its OWN search id, deduped by listing id; a 400/empty never breaks the main rank.
+        // Key-stat sub-pools (martial weapons): with ~10k bows in budget, the weighted statgroup sort (dominated
+        // by the build's #1 weight, e.g. +Attack-skill levels ×20) AND a raw-dps sort BOTH bury a bow whose real
+        // value is a mod-combo — the user's bow scored +32k in PoB yet ranked mid-pack on every trade-visible
+        // metric. Fix: ONE sub-pool PER top weighted stat — require that stat present, then PRICE-DESC — to narrow
+        // the 10k to the priciest bows that carry the build's defining stats (proj-levels, attack-levels, …). Each
+        // fetched with its OWN search id, deduped by listing id; a 400/empty never breaks the main rank. (Only
+        // `dps`/`price` are valid weapon sort keys — pdps/edps/statgroup.0 all 400, verified live.)
         if (MARTIAL_WEAPON_SLOTS.has(baseSlot)) {
           const weaponSubPool = async (extraStat, sort, cap) => {
             try {
@@ -3522,12 +3524,13 @@ const server = http.createServer(async (req, res) => {
               if (kIds.length && kRes.search && kRes.search.id) await scoreIds(kIds, kRes.search.id);
             } catch { /* weapon sub-pool is a bonus; never let it break the rank */ }
           };
-          if (!fetchErr) await weaponSubPool(null, { dps: "desc" }, Math.min(SCORE_CAP, 30));   // (1) all bows by raw weapon dps
-          // (2) top weighted stats, sorted PRICE-DESC: the priciest bows that carry your build's key stat are the
+          // Top weighted stats, sorted PRICE-DESC: the priciest bows that carry your build's key stat are the
           // best ones (price ≈ desirability), so a combo-value bow that's mid-pack on raw dps still surfaces here.
-          // (real trade stat ids; the generic "dps" equip key is already filtered out of `weights`.)
+          // Deep (40) because at a tight budget MANY listings cluster at the cap (e.g. 20+ bows at 900 div), so a
+          // genuine upgrade priced just under it (the user's 850-div bow) sits below a shallow cutoff. (real trade
+          // stat ids; the generic "dps" equip key is already filtered out of `weights`.)
           const topStatIds = [...new Set(weights.map((w) => w.statId))].slice(0, 2);
-          for (const statId of topStatIds) { if (fetchErr) break; await weaponSubPool(statId, { price: "desc" }, 20); }
+          for (const statId of topStatIds) { if (fetchErr) break; await weaponSubPool(statId, { price: "desc" }, 40); }
         }
         if (!cands.length && fetchErr) throw fetchErr;   // total failure → outer catch (rate-limit msg etc.)
         // Preserve-the-OTHER-metric (pre-scan toggle): drop any candidate that lowers the
