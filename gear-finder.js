@@ -110,7 +110,12 @@ window.__viewInit["gear-finder"] = function () {
     if (d.error) { setStatus(d.error, true); return; }
     state.xml = d.xml; state.slots = d.slots || {};
     els.saveBuild.hidden = false; els.saveBox.hidden = true; syncSaveRow();   // a build is loaded → offer to save it
-    const b = (d.headless && d.headless.stats) || d.build || {};
+    const b = { ...((d.headless && d.headless.stats) || d.build || {}) };
+    // Spirit reservation: the headless RECALC under-reserves auras on some builds (a skill group it
+    // doesn't re-enable), so it over-reports free Spirit (e.g. 33 when the real build has 3). PoB
+    // SAVES the true value in the build's <PlayerStat stat="SpiritUnreserved">, so prefer that when
+    // present — it's what the user's own Path of Building computed with every aura on.
+    if (d.build && d.build.SpiritUnreserved != null) b.SpiritUnreserved = d.build.SpiritUnreserved;
     const tiles = [["Life", b.Life], ["Energy Shield", b.EnergyShield], ["EHP", ehpOf(b) || b.TotalEHP],
       ["DPS", (b.FullDPS || b.CombinedDPS || b.TotalDPS)], ["Fire", b.FireResist], ["Cold", b.ColdResist],
       ["Light", b.LightningResist], ["Chaos", b.ChaosResist], ["Spirit free", b.SpiritUnreserved]].filter(([, v]) => v != null);
