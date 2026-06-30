@@ -2654,13 +2654,15 @@ function optimizeBreakpoints(base, targets) {
   };
   const num = (v, d) => (v == null || v === "" || isNaN(Number(v))) ? d : Number(v);
   const floors = {};
-  // A breakpoint floor is "don't drop below this" — it must never exceed your CURRENT value,
-  // or the set is unsatisfiable (you'd have to GAIN the stat while upgrading). The client's
-  // default can come out higher than the live calc (a stale/over-reserved resident PoB
-  // reports e.g. Fire 75/Rarity 80 while the optimizer measures 68/73), which made every set
-  // illegal. Clamp to the optimizer's own current reading, so "hold current" is always
-  // achievable; dialing a floor DOWN to probe still works.
-  for (const k of Object.keys(cur)) floors[k] = Math.min(num(t[k], cur[k]), cur[k]);
+  // CAPPED stats (resistances): a floor must never exceed your CURRENT value — you can't require
+  // KEEPING more than you have, and overcap is hidden, so clamp to the live reading (also guards the
+  // old stale-resident-PoB bug where a default came in above the real value → every set illegal).
+  // UNCAPPED stats (rarity, free spirit): the user can legitimately TARGET a value ABOVE current —
+  // e.g. "find a set that pushes rarity 73→100" — so honor what they type. The default equals current
+  // (always satisfiable by keep-all); only an explicit raise turns it into a reach-this target, and an
+  // unreachable target just yields "no legal set" (dial it down to find the ceiling).
+  const CAPPED = new Set(["fireRes", "coldRes", "lightRes", "chaosRes"]);
+  for (const k of Object.keys(cur)) { const f = num(t[k], cur[k]); floors[k] = CAPPED.has(k) ? Math.min(f, cur[k]) : f; }
   floors._cur = cur;
   return floors;
 }
