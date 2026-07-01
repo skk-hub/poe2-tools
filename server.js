@@ -1708,12 +1708,20 @@ function gearStatId(key, slotId) {
 // Reads the per-slot valid-affix pool (PRESERVE_CONTROL_STATS_BY_SLOT) — weapons/jewels
 // have no rarity affix; every armour piece + jewellery does.
 const slotHasRarity = (baseSlot) => (PRESERVE_CONTROL_STATS_BY_SLOT[baseSlot === "ring1" || baseSlot === "ring2" ? "ring" : baseSlot] || []).includes("rarity");
-// A rarity preserve-floor entry for the search (so rarity-bearing items actually surface),
-// or null for slots that can't roll it. min is the user's "Item rarity ≥ N%".
-function rarityFloor(baseSlot, rarityMin) {
-  if (!(rarityMin > 0) || !slotHasRarity(baseSlot)) return null;
-  const id = gearStatId("rarity", baseSlot);
-  return id ? { statId: id, min: rarityMin } : null;
+// "Require Item Rarity ≥ N%" as a Trade2 stat filter. The naive `explicit.stat_…` floor
+// only matched an EXPLICIT rarity mod ≥N, so it MISSED Gold Amulet's IMPLICIT rarity (and
+// rarity split across mods) → 0 results even though the item's total rarity was ≥N. Trade
+// has no pseudo "total rarity" and can't sum across affix types with a flat filter, so we
+// OR the per-source rarity stats with a `type:"count"` group (min 1). VERIFIED LIVE
+// 2026-07-01 that count groups WITH a value ARE accepted on PoE2 trade (the old "count 400s"
+// note was wrong). Kept to 4 real rarity sources so the group stays under the complexity cap.
+const RARITY_STAT_NUM = "3917489142";
+const RARITY_SOURCES = ["explicit", "implicit", "fractured", "rune"];
+function injectRarityGroup(q, baseSlot, rarityMin) {
+  if (!(rarityMin > 0) || !slotHasRarity(baseSlot) || !q || !q.query) return;
+  const min = Math.max(1, Math.floor(rarityMin));
+  q.query.stats = q.query.stats || [];
+  q.query.stats.push({ type: "count", value: { min: 1 }, filters: RARITY_SOURCES.map((s) => ({ id: s + ".stat_" + RARITY_STAT_NUM, value: { min } })) });
 }
 
 // Build the top-2 Trade2 stat filters for a gear search from [{statId,min}].
@@ -3214,8 +3222,7 @@ const server = http.createServer(async (req, res) => {
           const base = await pob.calc(pobSlot, "");
           const baseDps = dpsOfOut(base), baseEhp = ehpOfOut(base);
           const mods = (w.weights || []).filter((x) => (x.cur || 0) > 0).slice(0, 3).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
-          const rf = rarityFloor(baseSlot, Number(input.rarityMin) || 0);   // require rarity items in the pool
-          if (rf) (w.preserve = w.preserve || []).push(rf);
+          const rarityMin = Number(input.rarityMin) || 0;   // require rarity items in the pool (count-group, injected per query below)
           // NOTE: we deliberately do NOT add per-slot resistance preserve floors here. They were
           // added (2026-06-29) to stop a swap dropping a breakpoint, but they DEFEAT the optimizer's
           // whole purpose — requiring EACH replacement to keep its current res excludes the very
@@ -3248,6 +3255,7 @@ const server = http.createServer(async (req, res) => {
               const pf = gearStatFilters(w.preserve, 4);
               if (pf.length) { q.query.stats = q.query.stats || []; let andG = q.query.stats.find((g) => g && g.type === "and"); if (!andG) { andG = { type: "and", filters: [] }; q.query.stats.push(andG); } const have = new Set(andG.filters.map((f) => f.id)); for (const f of pf) if (!have.has(f.id)) andG.filters.push(f); }
             }
+            injectRarityGroup(q, baseSlot, rarityMin);
             return q;
           };
           const buildDefenceQ = () => {
@@ -3255,6 +3263,7 @@ const server = http.createServer(async (req, res) => {
             if (maxPriceDiv > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
             const pf = gearStatFilters(w.preserve, 4);
             if (pf.length) q.query.stats.push({ type: "and", filters: pf });
+            injectRarityGroup(q, baseSlot, rarityMin);
             return q;
           };
           // Jewel sockets all label as "jewel" in the UI, so carry the current jewel's name to disambiguate which socket a "keep current" row means.
@@ -3401,12 +3410,12 @@ const server = http.createServer(async (req, res) => {
       const pobSlot = String(input.pobSlot || toolSlotToPob(String(input.slot || "")));
       const league = sanitizeLeague(input.league || "Runes of Aldur");
       const mods = gearStatFilters(input.mods);
-      // Rarity floor (user's "Item rarity ≥ N%"): add it as a preserve gate so the search
-      // REQUIRES rarity-bearing items — even if the current piece has none, so a rarity
-      // upgrade actually surfaces. Only for slots that can roll it; flows into both the
-      // weighted and the price-sort query (both read input.preserve).
-      const rf = rarityFloor(slot.baseId || String(input.slot || ""), Number(input.rarityMin) || 0);
-      if (rf) input.preserve = (Array.isArray(input.preserve) ? input.preserve : []).concat([rf]);
+      // Rarity floor (user's "Item rarity ≥ N%"): injected as a count-group into the final
+      // query (see injectRarityGroup) so it REQUIRES rarity from ANY source (explicit OR
+      // implicit/fractured/rune) — the old explicit-only preserve gate missed Gold Amulet's
+      // implicit rarity → 0 results. Only for slots that can roll it.
+      const raritySlot = slot.baseId || String(input.slot || "");
+      const rarityMin = Number(input.rarityMin) || 0;
       // With a POESESSID session we can sort the search by BUILD VALUE (weighted statgroup)
       // and score the genuinely-best candidates. Logged-out that sort 400s, so fall back to
       // a stat-floor + price-spread. Weights come from the client's /api/gear/weights result.
@@ -3458,6 +3467,7 @@ const server = http.createServer(async (req, res) => {
           const have = new Set(andG.filters.map((f) => f.id));
           for (const f of pf) if (!have.has(f.id)) andG.filters.push(f);
         }
+        injectRarityGroup(q, raritySlot, rarityMin);   // require rarity from any source (count group)
         return q;
       };
       // Defensive slots (chest/helmet/boots/shield — dominant ev/ar/es ≥500, NOT gloves which are
