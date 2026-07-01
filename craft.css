@@ -22,10 +22,14 @@
 .toolroot-craft .cf-glabel{color:var(--text);font:500 13px var(--font-ui);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .toolroot-craft .cf-gmeta{flex:none;color:var(--text-faint);font:500 11px var(--font-mono)}
 
-.toolroot-craft .cf-tchk{flex:none;margin:0 2px 0 0;width:15px;height:15px;accent-color:var(--gold);cursor:pointer}
+.toolroot-craft .cf-gall,.toolroot-craft .cf-tsel{flex:none;accent-color:var(--gold);cursor:pointer}
+.toolroot-craft .cf-gall{margin:0 2px 0 0;width:15px;height:15px}
+.toolroot-craft .cf-tsel{margin:0 2px 0 0;width:14px;height:14px}
 .toolroot-craft .cf-grp>summary{gap:8px}
 .toolroot-craft .cf-glabel{flex:1}
-.toolroot-craft .cf-grp:has(.cf-tchk:checked){border-color:var(--border-gold);background:var(--gold-soft)}
+.toolroot-craft .cf-grp:has(.cf-tsel:checked),.toolroot-craft .cf-grp:has(.cf-gall:checked),.toolroot-craft .cf-grp:has(.cf-gall:indeterminate){border-color:var(--border-gold);background:var(--gold-soft)}
+.toolroot-craft .cf-tno{display:inline-block;min-width:2.1em;color:var(--gold);font-weight:700;font-family:var(--font-mono);font-size:11px}
+.toolroot-craft .cf-tchip em{font-style:normal;color:var(--gold-bright);font:600 11px var(--font-mono);opacity:.9}
 
 /* target bar + simulate results */
 .toolroot-craft .cf-simbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;padding:12px 14px;border:1px solid var(--border-gold);border-radius:var(--r);background:var(--gold-soft)}
@@ -51,8 +55,10 @@
 .toolroot-craft .cf-method-cost b{color:var(--text);font-weight:700}
 .toolroot-craft .cf-method.best .cf-method-cost b{color:var(--gold-bright)}
 .toolroot-craft .cf-method-sub{color:var(--text-faint);font:400 11.5px var(--font-mono);margin-top:3px}
-.toolroot-craft .cf-tier{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 12px;border-top:1px solid var(--border);font-size:12.5px}
-.toolroot-craft .cf-troll{color:var(--text-muted);font:500 12.5px var(--font-mono);min-width:0}
+.toolroot-craft .cf-tier{display:flex;align-items:center;gap:8px;padding:7px 12px;border-top:1px solid var(--border);font-size:12.5px;cursor:pointer;user-select:none}
+.toolroot-craft .cf-tier:hover{background:oklch(100% 0 0 / .02)}
+.toolroot-craft .cf-tier:has(.cf-tsel:checked){background:var(--gold-soft)}
+.toolroot-craft .cf-troll{flex:1;color:var(--text-muted);font:500 12.5px var(--font-mono);min-width:0}
 .toolroot-craft .cf-tmeta{flex:none;display:inline-flex;align-items:center;gap:9px;color:var(--text-faint);font:500 11px var(--font-mono)}
 .toolroot-craft .cf-tmeta b{color:var(--text);font-weight:600}      /* spawn weight */
 .toolroot-craft .cf-tmeta i{color:var(--gold);font-style:normal}    /* roll-chance share */

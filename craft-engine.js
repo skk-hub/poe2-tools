@@ -45,37 +45,62 @@ function newItem() { return { rarity: "normal", prefixes: [], suffixes: [] }; }
 function groupsOn(item) { const s = new Set(); for (const m of item.prefixes) s.add(m.group); for (const m of item.suffixes) s.add(m.group); return s; }
 
 // Add one affix. typeFilter optionally restricts to "prefix"/"suffix". Returns true if added.
+// Hot path (called millions of times in a run) — no Set alloc, single-pass weighted pick.
 function addMod(item, mods, rnd, typeFilter) {
-  const present = groupsOn(item);
   const cap = CAP[item.rarity];
-  const cands = [];
+  const prefFull = item.prefixes.length >= cap.prefix;
+  const sufFull = item.suffixes.length >= cap.suffix;
+  if (prefFull && sufFull) return false;
+  const present = [];   // ≤6 groups — linear scan beats a Set here
+  for (const m of item.prefixes) present.push(m.group);
+  for (const m of item.suffixes) present.push(m.group);
+  let total = 0; const cands = [];
   for (const m of mods) {
     if (typeFilter && m.type !== typeFilter) continue;
-    if (present.has(m.group)) continue;
-    if (m.type === "prefix" && item.prefixes.length >= cap.prefix) continue;
-    if (m.type === "suffix" && item.suffixes.length >= cap.suffix) continue;
-    cands.push(m);
+    if (m.type === "prefix" ? prefFull : sufFull) continue;
+    if (present.indexOf(m.group) >= 0) continue;
+    cands.push(m); total += m.weight;
   }
   if (!cands.length) return false;
-  const pick = weightedPick(cands, rnd);
+  let r = rnd() * total, pick = cands[cands.length - 1];
+  for (const c of cands) { r -= c.weight; if (r < 0) { pick = c; break; } }
   (pick.type === "prefix" ? item.prefixes : item.suffixes).push(pick);
   return true;
 }
 
 function removeRandom(item, rnd) {
-  const all = item.prefixes.concat(item.suffixes);
-  if (!all.length) return false;
-  const victim = all[Math.floor(rnd() * all.length)];
-  item.prefixes = item.prefixes.filter((m) => m !== victim);
-  item.suffixes = item.suffixes.filter((m) => m !== victim);
+  const np = item.prefixes.length, tot = np + item.suffixes.length;
+  if (!tot) return false;
+  const i = Math.floor(rnd() * tot);
+  if (i < np) item.prefixes.splice(i, 1); else item.suffixes.splice(i - np, 1);
   return true;
 }
 
-function hasAllTargets(item, targetGroups) {
-  const g = groupsOn(item);
-  for (const t of targetGroups) if (!g.has(t)) return false;
+// A target is a group plus an optional set of acceptable tier keys. Accepts a bare
+// string ("any tier of this group"), {group, keys:[...]}, or an already-normalized
+// {group, keys:Set}. keys empty/absent = any tier counts.
+function normalizeTargets(targets) {
+  return targets.map((t) => {
+    if (typeof t === "string") return { group: t, keys: null };
+    let keys = t.keys;
+    if (keys instanceof Set) keys = keys.size ? keys : null;
+    else if (Array.isArray(keys)) keys = keys.length ? new Set(keys) : null;
+    else keys = null;
+    return { group: t.group, keys };
+  });
+}
+// Item satisfies pre-normalized targets T (call normalizeTargets ONCE outside the loop).
+function matches(item, T) {
+  for (const t of T) {
+    let ok = false;
+    for (const m of item.prefixes) if (m.group === t.group && (!t.keys || t.keys.has(m.key))) { ok = true; break; }
+    if (!ok) for (const m of item.suffixes) if (m.group === t.group && (!t.keys || t.keys.has(m.key))) { ok = true; break; }
+    if (!ok) return false;
+  }
   return true;
 }
+// Public convenience wrapper (normalizes each call) — used by tests.
+function hasAllTargets(item, targets) { return matches(item, normalizeTargets(targets)); }
 
 // ── methods ──────────────────────────────────────────────────────────────────
 // Each "fresh" method crafts one item from a white base via a fixed recipe and returns
@@ -101,11 +126,12 @@ const FRESH_METHODS = [
 ];
 
 function simulateFresh(method, mods, targetGroups, trials, rnd) {
+  const T = normalizeTargets(targetGroups);   // normalize once, not per trial
   let hits = 0;
   const costSum = {};
   for (let i = 0; i < trials; i++) {
     const { item, cost } = craftFresh(method.recipe, mods, rnd);
-    if (hasAllTargets(item, targetGroups)) hits++;
+    if (matches(item, T)) hits++;
     for (const k in cost) costSum[k] = (costSum[k] || 0) + cost[k];
   }
   const p = hits / trials;
@@ -118,13 +144,14 @@ function simulateFresh(method, mods, targetGroups, trials, rnd) {
 // Chaos spam: build one rare (Alchemy), then Chaos until all targets present or a cap.
 // Reports success-within-cap and expected orb spend (1 Alchemy + avg Chaos among successes).
 function simulateChaosSpam(mods, targetGroups, trials, cap, rnd) {
+  const T = normalizeTargets(targetGroups);   // normalize once, not per chaos step
   let successes = 0, chaosSumOnSuccess = 0;
   for (let i = 0; i < trials; i++) {
     const item = newItem();
     item.rarity = "rare";
     for (let k = 0; k < 4; k++) addMod(item, mods, rnd);
-    let n = 0, ok = hasAllTargets(item, targetGroups);
-    while (!ok && n < cap) { const it2 = item; removeRandom(it2, rnd); addMod(it2, mods, rnd); n++; ok = hasAllTargets(it2, targetGroups); }
+    let n = 0, ok = matches(item, T);
+    while (!ok && n < cap) { removeRandom(item, rnd); addMod(item, mods, rnd); n++; ok = matches(item, T); }
     if (ok) { successes++; chaosSumOnSuccess += n; }
   }
   const p = successes / trials;
@@ -138,14 +165,20 @@ function simulateChaosSpam(mods, targetGroups, trials, cap, rnd) {
 // Rank the known methods for hitting targetGroups on a base's mod pool.
 function rankMethods(mods, targetGroups, opts) {
   opts = opts || {};
-  const trials = opts.trials || 20000;
-  const cap = opts.chaosCap || 200;
+  const trials = opts.trials || 12000;   // ±~0.4% at p=0.5 — plenty for a % display, keeps it snappy
+  const cap = opts.chaosCap || 150;
   const seed = (opts.seed >>> 0) || 12345;
-  // reachability: every target group must exist in the pool at all, and the targets must
-  // fit within 3 prefix / 3 suffix (can't hit 4 prefixes on one item).
+  // reachability: every target group must exist in the pool, any selected tier must be
+  // available at this item level, and targets must fit within 3 prefix / 3 suffix.
+  const T = normalizeTargets(targetGroups);
   const byGroup = {}; for (const m of mods) (byGroup[m.group] = byGroup[m.group] || m);
-  const missing = targetGroups.filter((g) => !byGroup[g]);
-  let pfx = 0, sfx = 0; for (const g of targetGroups) { const m = byGroup[g]; if (m) (m.type === "prefix" ? pfx++ : sfx++); }
+  const keysInPool = new Set(mods.map((m) => m.key));
+  const missing = [];
+  for (const t of T) {
+    if (!byGroup[t.group]) { missing.push(t.group); continue; }
+    if (t.keys) { let any = false; for (const k of t.keys) if (keysInPool.has(k)) { any = true; break; } if (!any) missing.push(t.group + " (selected tier needs a higher item level)"); }
+  }
+  let pfx = 0, sfx = 0; for (const t of T) { const m = byGroup[t.group]; if (m) (m.type === "prefix" ? pfx++ : sfx++); }
   const overCap = pfx > 3 || sfx > 3;
   if (missing.length || overCap) {
     return { impossible: true, missing, overCap, prefixTargets: pfx, suffixTargets: sfx, methods: [] };

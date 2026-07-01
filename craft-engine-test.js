@@ -74,4 +74,21 @@ near(pTransmute("GC"), 0.60, 0.01, "transmute P(GC)=w60/100 (suffix competes by 
   for (let i = 1; i < res.methods.length; i++) ok(res.methods[i - 1].totalOrbs <= res.methods[i].totalOrbs, "methods sorted cheapest-first");
 }
 
+// 6) tier-restricted targets: two tiers of one group; targeting a specific tier halves
+//    the hit vs "any tier" (transmute picks each equally at weight 1).
+{
+  const L1 = { key: "L1", type: "prefix", group: "GL", weight: 1, ilvl: 1 };
+  const L2 = { key: "L2", type: "prefix", group: "GL", weight: 1, ilvl: 1 };
+  const r = E.rng(9);
+  const anyTier = E.simulateFresh({ key: "t", label: "", recipe: ["transmute"] }, [L1, L2], ["GL"], N, r);
+  near(anyTier.successPerAttempt, 1.0, 0.001, "transmute always lands the group (any tier) when it's the only group");
+  const t1only = E.simulateFresh({ key: "t", label: "", recipe: ["transmute"] }, [L1, L2], [{ group: "GL", keys: ["L1"] }], N, r);
+  near(t1only.successPerAttempt, 0.5, 0.01, "restricting to tier L1 halves the hit (L1 vs L2 equal weight)");
+  const both = E.simulateFresh({ key: "t", label: "", recipe: ["transmute"] }, [L1, L2], [{ group: "GL", keys: ["L1", "L2"] }], N, r);
+  near(both.successPerAttempt, 1.0, 0.001, "selecting both tiers == any tier");
+  // selecting a tier that isn't in the pool (too-high ilvl) is impossible
+  const imposs = E.rankMethods([L1, L2], [{ group: "GL", keys: ["L9"] }], { trials: 500 });
+  ok(imposs.impossible && imposs.missing.length === 1, "unavailable tier → impossible");
+}
+
 console.log(`craft-engine-test: ${pass} checks passed`);

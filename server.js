@@ -3812,7 +3812,10 @@ const server = http.createServer(async (req, res) => {
       const input = await readJson(req);
       const mods = craftModList(String(input.base || ""), Number(input.ilvl) || 100);
       if (!mods) { send(res, 404, JSON.stringify({ error: "unknown base" }), J); return; }
-      const targets = Array.isArray(input.targets) ? input.targets.map(String).filter(Boolean) : [];
+      // targets: array of group strings or {group, keys:[tier keys]} (keys omitted = any tier)
+      const targets = (Array.isArray(input.targets) ? input.targets : [])
+        .map((t) => (typeof t === "string" ? { group: t } : { group: String(t.group || ""), keys: Array.isArray(t.keys) ? t.keys.map(String) : undefined }))
+        .filter((t) => t.group);
       if (!targets.length) { send(res, 400, JSON.stringify({ error: "pick at least one target mod" }), J); return; }
       if (targets.length > 6) { send(res, 400, JSON.stringify({ error: "at most 6 targets (3 prefixes + 3 suffixes)" }), J); return; }
       const seed = (Math.random() * 4294967296) >>> 0;

@@ -19,17 +19,20 @@ window.__viewInit["craft"] = function () {
   }).catch((e) => { status.textContent = "Failed to load bases: " + (e.message || e); status.className = "status err"; });
 
   // ── mod pool (right of the paste box) ──
-  function tierRow(t, sideW) {
+  // Each tier is individually targetable (a checkbox per tier); the group summary has a
+  // master "any tier" checkbox that selects/clears all tiers. targets: group -> Set(keys).
+  const cssEsc = (s) => (window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\]/g, "\\$&"));
+  function tierRow(t, sideW, tierNo, group) {
     const pct = sideW ? (t.weight / sideW) * 100 : 0;
-    return `<div class="cf-tier"><span class="cf-troll">${esc(t.stats.join("  /  "))}</span>` +
-      `<span class="cf-tmeta">iL${t.ilvl}<b title="spawn weight">w${t.weight}</b><i title="roll chance vs all mods on this side">${pct.toFixed(1)}%</i></span></div>`;
+    return `<label class="cf-tier"><input type="checkbox" class="cf-tsel" data-group="${esc(group)}" data-key="${esc(t.key)}">` +
+      `<span class="cf-troll"><b class="cf-tno">T${tierNo}</b> ${esc(t.stats.join("  /  "))}</span>` +
+      `<span class="cf-tmeta">iL${t.ilvl}<b title="spawn weight">w${t.weight}</b><i title="roll chance vs all mods on this side">${pct.toFixed(1)}%</i></span></label>`;
   }
   function groupCard(g, sideW) {
-    const tiers = g.tiers.map((t) => tierRow(t, sideW)).join("");
+    const tiers = g.tiers.map((t, i) => tierRow(t, sideW, i + 1, g.group)).join("");
     const n = g.tiers.length;
-    const on = targets.has(g.group) ? " checked" : "";
     return `<details class="cf-grp" data-group="${esc(g.group)}"><summary>` +
-      `<input type="checkbox" class="cf-tchk" title="target this mod"${on} data-group="${esc(g.group)}" data-label="${esc(g.label)}">` +
+      `<input type="checkbox" class="cf-gall" title="target this mod (any tier)" data-group="${esc(g.group)}">` +
       `<span class="cf-glabel">${esc(g.label)}</span>` +
       `<span class="cf-gmeta">${n} tier${n > 1 ? "s" : ""} · w${g.totalWeight}</span></summary>${tiers}</details>`;
   }
@@ -39,7 +42,8 @@ window.__viewInit["craft"] = function () {
     return head + groups.map((g) => groupCard(g, sideW)).join("");
   }
   const scopeNote = $("cfScopeNote"), simBar = $("cfSimBar"), simOut = $("cfSimOut"), targetsEl = $("cfTargets"), simBtn = $("cfSimBtn");
-  const targets = new Map();   // group -> label (the mods to craft toward)
+  const targets = new Map();     // group -> Set(tier keys)
+  const groupMeta = new Map();   // group -> { label, type, keys:[tier keys in T1..Tn order] }
   let lastBase = "", lastIlvl = 0;
 
   function renderPool(d) {
@@ -47,30 +51,58 @@ window.__viewInit["craft"] = function () {
     if (scopeNote) scopeNote.hidden = false;
     // targets belong to a specific base+ilvl pool; reset when either changes
     if (d.base !== lastBase || d.ilvl !== lastIlvl) { targets.clear(); simOut.innerHTML = ""; lastBase = d.base; lastIlvl = d.ilvl; }
+    groupMeta.clear();
+    for (const g of d.prefixes) groupMeta.set(g.group, { label: g.label, type: "prefix", keys: g.tiers.map((t) => t.key) });
+    for (const g of d.suffixes) groupMeta.set(g.group, { label: g.label, type: "suffix", keys: g.tiers.map((t) => t.key) });
     summary.innerHTML = `<b>${esc(d.base)}</b> <span class="muted">${esc(d.class)} · item level ${d.ilvl}</span>` +
       (d.implicit ? ` <span class="cf-impl" title="implicit modifier">${esc(d.implicit)}</span>` : "");
     out.innerHTML = `<div class="cf-col">${column("Prefixes", d.prefixes, d.prefixWeight)}</div>` +
       `<div class="cf-col">${column("Suffixes", d.suffixes, d.suffixWeight)}</div>`;
-    out.querySelectorAll(".cf-tchk").forEach((c) => c.addEventListener("change", onTargetToggle));
+    out.querySelectorAll(".cf-tsel").forEach((c) => c.addEventListener("change", onTierToggle));
+    out.querySelectorAll(".cf-gall").forEach((c) => c.addEventListener("change", onAllToggle));
     renderTargetBar();
   }
-  function onTargetToggle(e) {
+  // a checkbox in a <summary> would also toggle the <details> — stop the master one
+  out.addEventListener("click", (e) => { if (e.target.classList && e.target.classList.contains("cf-gall")) e.stopPropagation(); });
+
+  function onTierToggle(e) {
+    const g = e.target.dataset.group, key = e.target.dataset.key;
+    let set = targets.get(g); if (!set) { set = new Set(); targets.set(g, set); }
+    if (e.target.checked) set.add(key); else set.delete(key);
+    if (!set.size) targets.delete(g);
+    syncMaster(g); renderTargetBar();
+  }
+  function onAllToggle(e) {
     e.stopPropagation();
-    const g = e.target.getAttribute("data-group"), lab = e.target.getAttribute("data-label");
-    if (e.target.checked) targets.set(g, lab); else targets.delete(g);
+    const g = e.target.dataset.group, meta = groupMeta.get(g); if (!meta) return;
+    if (e.target.checked) targets.set(g, new Set(meta.keys)); else targets.delete(g);
+    out.querySelectorAll(`.cf-tsel[data-group="${cssEsc(g)}"]`).forEach((c) => { c.checked = e.target.checked; });
+    e.target.indeterminate = false;
     renderTargetBar();
   }
-  // clicking a checkbox inside a <summary> would also toggle the <details> — stop that
-  out.addEventListener("click", (e) => { if (e.target.classList && e.target.classList.contains("cf-tchk")) e.stopPropagation(); });
+  function syncMaster(g) {
+    const meta = groupMeta.get(g), set = targets.get(g);
+    const master = out.querySelector(`.cf-gall[data-group="${cssEsc(g)}"]`); if (!master || !meta) return;
+    const size = set ? set.size : 0, total = meta.keys.length;
+    master.checked = total > 0 && size === total;
+    master.indeterminate = size > 0 && size < total;
+  }
+  function tierDesc(g, set) {
+    const meta = groupMeta.get(g); if (!meta) return "";
+    if (set.size === meta.keys.length) return "any tier";
+    return [...set].map((k) => meta.keys.indexOf(k) + 1).sort((a, b) => a - b).map((n) => "T" + n).join(", ");
+  }
   function renderTargetBar() {
     simBar.hidden = targets.size === 0;
-    targetsEl.innerHTML = [...targets.entries()].map(([g, lab]) =>
-      `<span class="cf-tchip" data-group="${esc(g)}">${esc(lab)}<button type="button" aria-label="remove">×</button></span>`).join("");
+    targetsEl.innerHTML = [...targets.entries()].map(([g, set]) => {
+      const meta = groupMeta.get(g);
+      return `<span class="cf-tchip" data-group="${esc(g)}">${esc(meta ? meta.label : g)} <em>${esc(tierDesc(g, set))}</em><button type="button" aria-label="remove">×</button></span>`;
+    }).join("");
     targetsEl.querySelectorAll(".cf-tchip button").forEach((b) => b.addEventListener("click", () => {
       const g = b.parentElement.getAttribute("data-group");
       targets.delete(g); simOut.innerHTML = "";
-      const chk = out.querySelector(`.cf-tchk[data-group="${CSS.escape(g)}"]`); if (chk) chk.checked = false;
-      renderTargetBar();
+      out.querySelectorAll(`.cf-tsel[data-group="${cssEsc(g)}"]`).forEach((c) => { c.checked = false; });
+      syncMaster(g); renderTargetBar();
     }));
   }
   async function load() {
@@ -217,8 +249,13 @@ window.__viewInit["craft"] = function () {
     if (!byName[base] || !targets.size) return;
     const ilvl = Math.max(1, Math.min(100, parseInt(ilvlIn.value, 10) || 100));
     simBtn.disabled = true; simOut.innerHTML = `<div class="cf-simload">Simulating…</div>`;
+    // send {group, keys} — omit keys when all tiers selected (= any tier)
+    const payload = [...targets.entries()].map(([g, set]) => {
+      const meta = groupMeta.get(g);
+      return meta && set.size === meta.keys.length ? { group: g } : { group: g, keys: [...set] };
+    });
     try {
-      const r = await fetch("/api/craft/simulate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base, ilvl, targets: [...targets.keys()] }) });
+      const r = await fetch("/api/craft/simulate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base, ilvl, targets: payload }) });
       renderMethods(await r.json());
     } catch (e) { simOut.innerHTML = `<div class="cf-simerr">Failed: ${esc(e.message || e)}</div>`; }
     finally { simBtn.disabled = false; }
