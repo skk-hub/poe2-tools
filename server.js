@@ -2202,7 +2202,14 @@ function pobItemFromTradeEntry(entry, extraImplicits, runeFill) {
   if (extraImplicits && extraImplicits.length) impl = impl.filter((l) => !/Allocates\s/i.test(l)).concat(extraImplicits);
   const expl = [].concat(item.explicitMods || [], item.fracturedMods || [], item.craftedMods || [], item.desecratedMods || []).map(modText).filter(Boolean);
   const head = name ? `Rarity: Rare\n${name}\n${base}` : `Rarity: Normal\n${base}`;
-  return [head, `Item Level: ${ilvl}`, `Implicits: ${impl.length}`].concat(impl, expl).join("\n");
+  // Item quality (from properties) boosts local weapon/armour values — PoB scores 0% if omitted, so a fetched
+  // item scored materially LOWER than the same item pasted (which carries "Quality: +N%"). Include it.
+  const qProp = (item.properties || []).find((p) => p && /quality/i.test(p.name || ""));
+  const quality = qProp && qProp.values && qProp.values[0] ? (parseInt(String(qProp.values[0][0]).replace(/[^\d]/g, ""), 10) || 0) : 0;
+  const lines = [head];
+  if (quality > 0) lines.push(`Quality: +${quality}%`);
+  lines.push(`Item Level: ${ilvl}`, `Implicits: ${impl.length}`);
+  return lines.concat(impl, expl).join("\n");
 }
 
 // The item's top-weighted rolled mods (statId + floored roll), for narrowing an
