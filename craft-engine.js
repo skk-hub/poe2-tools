@@ -75,6 +75,37 @@ function removeRandom(item, rnd) {
   if (i < np) item.prefixes.splice(i, 1); else item.suffixes.splice(i - np, 1);
   return true;
 }
+// Remove the mod with the lowest item-level requirement (Omen of Whittling on a Chaos).
+function removeLowestIlvl(item) {
+  let arr = null, idx = -1, lo = Infinity;
+  for (let i = 0; i < item.prefixes.length; i++) if (item.prefixes[i].ilvl < lo) { lo = item.prefixes[i].ilvl; arr = item.prefixes; idx = i; }
+  for (let i = 0; i < item.suffixes.length; i++) if (item.suffixes[i].ilvl < lo) { lo = item.suffixes[i].ilvl; arr = item.suffixes; idx = i; }
+  if (arr) arr.splice(idx, 1);
+  return !!arr;
+}
+// Is a target satisfied on this item? (t carries .keys Set or null)
+function targetMet(item, t) {
+  for (const m of item.prefixes) if (m.group === t.group && (!t.keys || t.keys.has(m.key))) return true;
+  for (const m of item.suffixes) if (m.group === t.group && (!t.keys || t.keys.has(m.key))) return true;
+  return false;
+}
+// Fill toward unmet targets by directing each Exalt to that target's SIDE (Sinistral =
+// prefix, Dextral = suffix Exaltation omens). Returns how many directed exalts were spent.
+function directedFill(item, mods, T, rnd, maxEx) {
+  let ex = 0;
+  while (ex < maxEx) {
+    let side = null;
+    for (const t of T) {
+      if (targetMet(item, t)) continue;
+      if (t.type === "prefix" && item.prefixes.length < CAP.rare.prefix) { side = "prefix"; break; }
+      if (t.type === "suffix" && item.suffixes.length < CAP.rare.suffix) { side = "suffix"; break; }
+    }
+    if (!side) break;                       // every unmet target's side is full → stuck
+    if (!addMod(item, mods, rnd, side)) break;
+    ex++;
+  }
+  return ex;
+}
 
 // A target is a group plus an optional set of acceptable tier keys. Accepts a bare
 // string ("any tier of this group"), {group, keys:[...]}, or an already-normalized
@@ -170,10 +201,10 @@ function simulateChaosSpam(mods, targetGroups, trials, cap, rnd) {
 // price detail). An essence only helps a target if its guaranteed key is a tier you
 // accepted; otherwise it occupies the group slot and BLOCKS your wanted tier, so we only
 // use essences whose modKey satisfies the target.
-function simulateEssence(mods, T, essences, trials, rnd) {
+// Which target to guarantee with an essence: the essence-available one hardest to hit
+// randomly (lowest summed weight of its accepted tiers) → biggest payoff. Null if none.
+function pickEssenceTarget(mods, T, essences) {
   if (!essences || !essences.length) return null;
-  // pick which target to guarantee: the essence-available one that's hardest to hit
-  // randomly (lowest summed weight of its accepted tiers) — biggest payoff.
   let best = null;
   for (const t of T) {
     const opts = essences.filter((e) => e.group === t.group && (!t.keys || t.keys.has(e.modKey)));
@@ -181,9 +212,13 @@ function simulateEssence(mods, T, essences, trials, rnd) {
     const gw = mods.filter((m) => m.group === t.group && (!t.keys || t.keys.has(m.key))).reduce((s, m) => s + m.weight, 0);
     if (!best || gw < best.gw) best = { opt: opts[0], gw };
   }
-  if (!best) return null;
-  const g = best.opt;                       // {name, modKey, group, type, stat}
-  const guaranteed = { key: g.modKey, group: g.group, type: g.type };
+  return best ? best.opt : null;            // {name, modKey, group, type, stat}
+}
+
+function simulateEssence(mods, T, essences, trials, rnd) {
+  const g = pickEssenceTarget(mods, T, essences);
+  if (!g) return null;
+  const guaranteed = { key: g.modKey, group: g.group, type: g.type, ilvl: 1 };
   let hits = 0, exaltSum = 0;
   for (let i = 0; i < trials; i++) {
     const item = newItem(); item.rarity = "rare";
@@ -197,6 +232,49 @@ function simulateEssence(mods, T, essences, trials, rnd) {
     key: "essence", label: `${g.name} (guarantees ${g.stat}) + Exalt fill`,
     successPerAttempt: p, expectedOrbs: p > 0 ? { Essence: 1 / p, Exalted: (exaltSum / trials) / p } : {},
     feasible: p > 0,
+  };
+}
+
+// Omen of Whittling chaos spam: Alchemy, then Chaos that removes the LOWEST-ilvl mod each
+// time (protects your high tiers) + adds one, until targets met or cap.
+function simulateWhittling(mods, T, trials, cap, rnd) {
+  let successes = 0, chaosSum = 0;
+  for (let i = 0; i < trials; i++) {
+    const item = newItem(); item.rarity = "rare";
+    for (let k = 0; k < 4; k++) addMod(item, mods, rnd);
+    let n = 0, ok = matches(item, T);
+    while (!ok && n < cap) { removeLowestIlvl(item); addMod(item, mods, rnd); n++; ok = matches(item, T); }
+    if (ok) { successes++; chaosSum += n; }
+  }
+  const p = successes / trials, avg = successes ? chaosSum / successes : 0;
+  return {
+    key: "whittling", label: "Alchemy, then Chaos + Omen of Whittling",
+    successPerAttempt: p, expectedOrbs: p > 0 ? { Alchemy: 1, Chaos: avg, "Omen of Whittling": avg } : {}, feasible: p > 0, cap,
+  };
+}
+
+// Directed Exalts (Sinistral/Dextral Exaltation omens): guarantee the hardest target with
+// an essence when one's available (else start from a Regal), then aim each Exalt at an
+// unmet target's side. cost = start orbs + (Exalt + Exaltation omen) per directed exalt.
+function simulateDirected(mods, T, essences, trials, rnd) {
+  const g = pickEssenceTarget(mods, T, essences);
+  let hits = 0, exSum = 0;
+  for (let i = 0; i < trials; i++) {
+    const item = newItem();
+    if (g) { item.rarity = "rare"; (g.type === "prefix" ? item.prefixes : item.suffixes).push({ key: g.modKey, group: g.group, type: g.type, ilvl: 1 }); }
+    else { item.rarity = "magic"; addMod(item, mods, rnd); item.rarity = "rare"; addMod(item, mods, rnd); }   // transmute → regal
+    exSum += directedFill(item, mods, T, rnd, 6);
+    if (matches(item, T)) hits++;
+  }
+  const p = hits / trials, avgEx = exSum / trials;
+  const orbs = {};
+  if (p > 0) {
+    if (g) orbs.Essence = 1 / p; else { orbs.Transmutation = 1 / p; orbs.Regal = 1 / p; }
+    orbs.Exalted = avgEx / p; orbs["Exaltation omen"] = avgEx / p;
+  }
+  return {
+    key: "directed", label: g ? `${g.name} + directed Exalts (Exaltation omens)` : "Regal → directed Exalts (Exaltation omens)",
+    successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0,
   };
 }
 
@@ -216,7 +294,7 @@ function rankMethods(mods, targetGroups, opts) {
     if (!byGroup[t.group]) { missing.push(t.group); continue; }
     if (t.keys) { let any = false; for (const k of t.keys) if (keysInPool.has(k)) { any = true; break; } if (!any) missing.push(t.group + " (selected tier needs a higher item level)"); }
   }
-  let pfx = 0, sfx = 0; for (const t of T) { const m = byGroup[t.group]; if (m) (m.type === "prefix" ? pfx++ : sfx++); }
+  let pfx = 0, sfx = 0; for (const t of T) { const m = byGroup[t.group]; if (m) { t.type = m.type; (m.type === "prefix" ? pfx++ : sfx++); } }
   const overCap = pfx > 3 || sfx > 3;
   if (missing.length || overCap) {
     return { impossible: true, missing, overCap, prefixTargets: pfx, suffixTargets: sfx, methods: [] };
@@ -225,7 +303,9 @@ function rankMethods(mods, targetGroups, opts) {
   const methods = [];
   for (const m of FRESH_METHODS) methods.push(simulateFresh(m, mods, targetGroups, trials, rnd));
   methods.push(simulateChaosSpam(mods, targetGroups, trials, cap, rnd));
-  const ess = simulateEssence(mods, T, opts.essences, trials, rnd);   // T is normalized above
+  methods.push(simulateWhittling(mods, T, trials, cap, rnd));          // Omen of Whittling
+  methods.push(simulateDirected(mods, T, opts.essences, trials, rnd)); // Exaltation omens
+  const ess = simulateEssence(mods, T, opts.essences, trials, rnd);    // essence, undirected (no omens)
   if (ess) methods.push(ess);
   // rank by total expected orb count (cheapest first); price-weighting is Phase 3.
   const totalOrbs = (r) => Object.values(r.expectedOrbs).reduce((s, n) => s + n, 0);
@@ -234,4 +314,4 @@ function rankMethods(mods, targetGroups, opts) {
   return { impossible: false, prefixTargets: pfx, suffixTargets: sfx, trials, methods };
 }
 
-module.exports = { rng, weightedPick, addMod, removeRandom, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, rankMethods, CAP, newItem };
+module.exports = { rng, weightedPick, addMod, removeRandom, removeLowestIlvl, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateDirected, rankMethods, CAP, newItem };

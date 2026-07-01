@@ -111,4 +111,22 @@ near(pTransmute("GC"), 0.60, 0.01, "transmute P(GC)=w60/100 (suffix competes by 
   ok(!rk2.methods.some((m) => m.key === "essence"), "essence for the wrong tier is not offered (would block the wanted tier)");
 }
 
+// 8) omens: whittling removes the lowest-ilvl mod; directed exalts aim at a target's side
+{
+  const it = { rarity: "rare", prefixes: [{ key: "hi", group: "H", type: "prefix", ilvl: 80 }], suffixes: [{ key: "lo", group: "L", type: "suffix", ilvl: 5 }] };
+  E.removeLowestIlvl(it);
+  ok(it.suffixes.length === 0 && it.prefixes.length === 1, "whittling removes the lowest-ilvl mod");
+
+  const J = { key: "J", type: "prefix", group: "JG", weight: 1, ilvl: 1 };
+  const S = { key: "S", type: "suffix", group: "SG", weight: 1, ilvl: 1 };
+  const r = E.rng(21);
+  let land = 0;
+  for (let i = 0; i < 2000; i++) { const item = { rarity: "rare", prefixes: [], suffixes: [] }; E.directedFill(item, [J, S], [{ group: "SG", keys: null, type: "suffix" }], r, 6); if (item.suffixes.some((m) => m.group === "SG")) land++; }
+  near(land / 2000, 1.0, 0.001, "directed exalt to the suffix side always lands the lone suffix target");
+
+  const rk = E.rankMethods([J, S], ["SG"], { trials: 3000, seed: 4 });
+  ok(rk.methods.find((m) => m.key === "directed" && m.feasible), "directed-exalt omen method offered & feasible");
+  ok(rk.methods.find((m) => m.key === "whittling" && m.feasible), "whittling omen method offered & feasible");
+}
+
 console.log(`craft-engine-test: ${pass} checks passed`);
