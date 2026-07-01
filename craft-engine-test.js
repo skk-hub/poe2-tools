@@ -141,4 +141,16 @@ near(pTransmute("GC"), 0.60, 0.01, "transmute P(GC)=w60/100 (suffix competes by 
   ok(t && /Perfect Exalted/.test(t.label), "tiered (Perfect) fill offered for a high-tier-only target");
 }
 
+// 10) erasure (side helpers) + the erasure/annul methods are offered and feasible
+{
+  const it = { rarity: "rare", prefixes: [{ key: "p1", group: "P", type: "prefix", ilvl: 5 }, { key: "p2", group: "Q", type: "prefix", ilvl: 80 }], suffixes: [{ key: "s1", group: "S", type: "suffix", ilvl: 60 }] };
+  E.removeLowestIlvlOnSide(it, "prefix");
+  ok(it.prefixes.length === 1 && it.prefixes[0].group === "Q" && it.suffixes.length === 1, "erasure removes the lowest-ilvl mod on the chosen side only");
+  const A = { key: "A", type: "prefix", group: "GA", weight: 1, ilvl: 1 };
+  const B = { key: "B", type: "suffix", group: "GB", weight: 1, ilvl: 1 };
+  const rk = E.rankMethods([A, B], ["GA", "GB"], { trials: 1500, seed: 8 });
+  ok(rk.methods.some((m) => m.key === "erasure" && m.feasible), "erasure-chaos method offered & feasible");
+  ok(rk.methods.some((m) => m.key === "annul"), "annul+exalt method offered");
+}
+
 console.log(`craft-engine-test: ${pass} checks passed`);

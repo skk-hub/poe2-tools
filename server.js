@@ -2863,6 +2863,7 @@ const CRAFT_ORB_PROXY = {
   Alchemy: "Orb of Alchemy", Exalted: "Exalted Orb", Chaos: "Chaos Orb", Annulment: "Orb of Annulment",
   "Greater Exalted": "Greater Exalted Orb", "Perfect Exalted": "Perfect Exalted Orb",
   "Omen of Whittling": "Omen of Whittling", "Exaltation omen": "Omen of Sinistral Exaltation",
+  "Erasure omen": "Omen of Sinistral Erasure", "Annulment omen": "Omen of Sinistral Annulment",
 };
 function priceCraftMethods(result, proxy) {
   if (!result || result.impossible || !proxy) return;

@@ -85,6 +85,25 @@ function removeLowestIlvl(item) {
   if (arr) arr.splice(idx, 1);
   return !!arr;
 }
+// Remove the lowest-ilvl mod on ONE side (Omen of Sinistral/Dextral Erasure on a Chaos).
+function removeLowestIlvlOnSide(item, side) {
+  const arr = side === "prefix" ? item.prefixes : item.suffixes;
+  if (!arr.length) return false;
+  let idx = 0, lo = Infinity;
+  for (let i = 0; i < arr.length; i++) if (arr[i].ilvl < lo) { lo = arr[i].ilvl; idx = i; }
+  arr.splice(idx, 1); return true;
+}
+// Remove a random mod on ONE side (Omen of Sinistral/Dextral Annulment on an Annul).
+function removeRandomOnSide(item, side, rnd) {
+  const arr = side === "prefix" ? item.prefixes : item.suffixes;
+  if (!arr.length) return false;
+  arr.splice(Math.floor(rnd() * arr.length), 1); return true;
+}
+// The side of the first unmet target (for directing an omen), or null if all met.
+function unmetSide(item, T) {
+  for (const t of T) if (!targetMet(item, t)) return t.type;
+  return null;
+}
 // Is a target satisfied on this item? (t carries .keys Set or null)
 function targetMet(item, t) {
   for (const m of item.prefixes) if (m.group === t.group && (!t.keys || t.keys.has(m.key))) return true;
@@ -177,22 +196,24 @@ function simulateFresh(method, mods, targetGroups, trials, rnd) {
 
 // Chaos spam: build one rare (Alchemy), then Chaos until all targets present or a cap.
 // Reports success-within-cap and expected orb spend (1 Alchemy + avg Chaos among successes).
+// Spam-until-hit methods count ops over ALL trials (a trial that doesn't hit within `cap`
+// spent `cap` ops), so the expected cost reflects the real grind — not just the lucky runs.
 function simulateChaosSpam(mods, targetGroups, trials, cap, rnd) {
   const T = normalizeTargets(targetGroups);   // normalize once, not per chaos step
-  let successes = 0, chaosSumOnSuccess = 0;
+  let successes = 0, chaosSum = 0;
   for (let i = 0; i < trials; i++) {
     const item = newItem();
     item.rarity = "rare";
     for (let k = 0; k < 4; k++) addMod(item, mods, rnd);
     let n = 0, ok = matches(item, T);
     while (!ok && n < cap) { removeRandom(item, rnd); addMod(item, mods, rnd); n++; ok = matches(item, T); }
-    if (ok) { successes++; chaosSumOnSuccess += n; }
+    if (ok) successes++;
+    chaosSum += n;
   }
   const p = successes / trials;
-  const avgChaos = successes ? chaosSumOnSuccess / successes : 0;
   return {
     key: "chaos_spam", label: "Alchemy, then Chaos spam", successPerAttempt: p,
-    expectedOrbs: p > 0 ? { Alchemy: 1, Chaos: avgChaos } : {}, feasible: p > 0, cap,
+    expectedOrbs: p > 0 ? { Alchemy: 1, Chaos: chaosSum / trials } : {}, feasible: p > 0, cap,
   };
 }
 
@@ -247,12 +268,68 @@ function simulateWhittling(mods, T, trials, cap, rnd) {
     for (let k = 0; k < 4; k++) addMod(item, mods, rnd);
     let n = 0, ok = matches(item, T);
     while (!ok && n < cap) { removeLowestIlvl(item); addMod(item, mods, rnd); n++; ok = matches(item, T); }
-    if (ok) { successes++; chaosSum += n; }
+    if (ok) successes++;
+    chaosSum += n;
   }
-  const p = successes / trials, avg = successes ? chaosSum / successes : 0;
+  const p = successes / trials, avg = chaosSum / trials;
   return {
     key: "whittling", label: "Alchemy, then Chaos + Omen of Whittling",
     successPerAttempt: p, expectedOrbs: p > 0 ? { Alchemy: 1, Chaos: avg, "Omen of Whittling": avg } : {}, feasible: p > 0, cap,
+  };
+}
+
+// Erasure chaos (Sinistral/Dextral Erasure omens): Chaos that removes the lowest-ilvl mod
+// of a CHOSEN side + adds a new one — so you churn the side that still needs a target while
+// PROTECTING the other side's hits (directed Whittling). Alchemy start, then churn to cap.
+function simulateErasureChaos(mods, T, trials, cap, rnd) {
+  let successes = 0, sum = 0;   // T is already normalized WITH .type by rankMethods
+  for (let i = 0; i < trials; i++) {
+    const item = newItem(); item.rarity = "rare";
+    for (let k = 0; k < 4; k++) addMod(item, mods, rnd);
+    let n = 0, ok = matches(item, T);
+    while (!ok && n < cap) {
+      const side = unmetSide(item, T); if (!side) break;
+      removeLowestIlvlOnSide(item, side); addMod(item, mods, rnd, side); n++; ok = matches(item, T);
+    }
+    if (ok) successes++;
+    sum += n;
+  }
+  const p = successes / trials, avg = sum / trials;
+  return {
+    key: "erasure", label: "Alchemy, then Chaos + Erasure omens (protect a side)",
+    successPerAttempt: p, expectedOrbs: p > 0 ? { Alchemy: 1, Chaos: avg, "Erasure omen": avg } : {}, feasible: p > 0, cap,
+  };
+}
+
+// Annul + Exalt (Sinistral/Dextral Annulment omens): when a target's side is FULL of junk,
+// annul a mod off that side to open a slot, then directed-Exalt the target. Alchemy start.
+// Annul removes a RANDOM mod on the side (may hit a mod you wanted) — the sim reflects that.
+function simulateAnnulExalt(mods, T, trials, cap, rnd) {
+  let successes = 0, exSum = 0, anSum = 0;   // T is already normalized WITH .type by rankMethods
+  for (let i = 0; i < trials; i++) {
+    const item = newItem(); item.rarity = "rare";
+    for (let k = 0; k < 4; k++) addMod(item, mods, rnd);
+    let n = 0, ex = 0, an = 0, ok = matches(item, T);
+    while (!ok && n < cap) {
+      const side = unmetSide(item, T); if (!side) break;
+      const full = side === "prefix" ? item.prefixes.length >= CAP.rare.prefix : item.suffixes.length >= CAP.rare.suffix;
+      if (!full) { if (addMod(item, mods, rnd, side)) ex++; }         // directed Exalt toward the target
+      else { removeRandomOnSide(item, side, rnd); an++; }             // directed Annul to open a slot
+      n++; ok = matches(item, T);
+    }
+    if (ok) successes++;
+    exSum += ex; anSum += an;                                          // count over ALL trials (failed spends count too)
+  }
+  const p = successes / trials;
+  const orbs = p > 0 ? { Alchemy: 1 } : {};
+  if (p > 0) {
+    const ex = exSum / trials, an = anSum / trials;
+    if (ex > 0) { orbs.Exalted = ex; orbs["Exaltation omen"] = ex; }
+    if (an > 0) { orbs.Annulment = an; orbs["Annulment omen"] = an; }
+  }
+  return {
+    key: "annul", label: "Alchemy, then Annul + Exalt (Annulment omens)",
+    successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0, cap,
   };
 }
 
@@ -324,8 +401,8 @@ function simulateTiered(mods, T, essences, trials, rnd) {
 // Rank the known methods for hitting targetGroups on a base's mod pool.
 function rankMethods(mods, targetGroups, opts) {
   opts = opts || {};
-  const trials = opts.trials || 12000;   // ±~0.4% at p=0.5 — plenty for a % display, keeps it snappy
-  const cap = opts.chaosCap || 150;
+  const trials = opts.trials || 5000;    // ±~0.7% at p=0.5 — fine for a whole-% display; 4 spam loops × cap keep it bounded
+  const cap = opts.chaosCap || 120;
   const seed = (opts.seed >>> 0) || 12345;
   // reachability: every target group must exist in the pool, any selected tier must be
   // available at this item level, and targets must fit within 3 prefix / 3 suffix.
@@ -347,6 +424,8 @@ function rankMethods(mods, targetGroups, opts) {
   for (const m of FRESH_METHODS) methods.push(simulateFresh(m, mods, targetGroups, trials, rnd));
   methods.push(simulateChaosSpam(mods, targetGroups, trials, cap, rnd));
   methods.push(simulateWhittling(mods, T, trials, cap, rnd));          // Omen of Whittling
+  methods.push(simulateErasureChaos(mods, T, trials, cap, rnd));       // Sinistral/Dextral Erasure
+  methods.push(simulateAnnulExalt(mods, T, trials, cap, rnd));         // Sinistral/Dextral Annulment
   methods.push(simulateDirected(mods, T, opts.essences, trials, rnd)); // Exaltation omens
   const ess = simulateEssence(mods, T, opts.essences, trials, rnd);    // essence, undirected (no omens)
   if (ess) methods.push(ess);
@@ -359,4 +438,4 @@ function rankMethods(mods, targetGroups, opts) {
   return { impossible: false, prefixTargets: pfx, suffixTargets: sfx, trials, methods };
 }
 
-module.exports = { rng, weightedPick, addMod, removeRandom, removeLowestIlvl, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateDirected, rankMethods, CAP, newItem };
+module.exports = { rng, weightedPick, addMod, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateDirected, rankMethods, CAP, newItem };
