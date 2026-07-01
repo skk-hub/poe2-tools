@@ -2861,6 +2861,7 @@ function craftEssenceOptions(baseName, itemLevel) {
 const CRAFT_ORB_PROXY = {
   Transmutation: "Orb of Transmutation", Augmentation: "Orb of Augmentation", Regal: "Regal Orb",
   Alchemy: "Orb of Alchemy", Exalted: "Exalted Orb", Chaos: "Chaos Orb", Annulment: "Orb of Annulment",
+  "Greater Exalted": "Greater Exalted Orb", "Perfect Exalted": "Perfect Exalted Orb",
   "Omen of Whittling": "Omen of Whittling", "Exaltation omen": "Omen of Sinistral Exaltation",
 };
 function priceCraftMethods(result, proxy) {

@@ -44,9 +44,10 @@ function weightedPick(cands, rnd) {
 function newItem() { return { rarity: "normal", prefixes: [], suffixes: [] }; }
 function groupsOn(item) { const s = new Set(); for (const m of item.prefixes) s.add(m.group); for (const m of item.suffixes) s.add(m.group); return s; }
 
-// Add one affix. typeFilter optionally restricts to "prefix"/"suffix". Returns true if added.
+// Add one affix. typeFilter optionally restricts to "prefix"/"suffix"; minIlvl (for
+// Greater/Perfect tiered currency) requires the added mod's ilvl ≥ minIlvl (higher tiers).
 // Hot path (called millions of times in a run) — no Set alloc, single-pass weighted pick.
-function addMod(item, mods, rnd, typeFilter) {
+function addMod(item, mods, rnd, typeFilter, minIlvl) {
   const cap = CAP[item.rarity];
   const prefFull = item.prefixes.length >= cap.prefix;
   const sufFull = item.suffixes.length >= cap.suffix;
@@ -57,6 +58,7 @@ function addMod(item, mods, rnd, typeFilter) {
   let total = 0; const cands = [];
   for (const m of mods) {
     if (typeFilter && m.type !== typeFilter) continue;
+    if (minIlvl && m.ilvl < minIlvl) continue;
     if (m.type === "prefix" ? prefFull : sufFull) continue;
     if (present.indexOf(m.group) >= 0) continue;
     cands.push(m); total += m.weight;
@@ -90,8 +92,9 @@ function targetMet(item, t) {
   return false;
 }
 // Fill toward unmet targets by directing each Exalt to that target's SIDE (Sinistral =
-// prefix, Dextral = suffix Exaltation omens). Returns how many directed exalts were spent.
-function directedFill(item, mods, T, rnd, maxEx) {
+// prefix, Dextral = suffix Exaltation omens). minIlvl (Greater/Perfect tiered Exalts) biases
+// the added mod to high tiers. Returns how many directed exalts were spent.
+function directedFill(item, mods, T, rnd, maxEx, minIlvl) {
   let ex = 0;
   while (ex < maxEx) {
     let side = null;
@@ -101,7 +104,7 @@ function directedFill(item, mods, T, rnd, maxEx) {
       if (t.type === "suffix" && item.suffixes.length < CAP.rare.suffix) { side = "suffix"; break; }
     }
     if (!side) break;                       // every unmet target's side is full → stuck
-    if (!addMod(item, mods, rnd, side)) break;
+    if (!addMod(item, mods, rnd, side, minIlvl)) break;
     ex++;
   }
   return ex;
@@ -279,6 +282,45 @@ function simulateDirected(mods, T, essences, trials, rnd) {
   };
 }
 
+// Lowest ilvl among the mods a target ACCEPTS (its selected tiers, or all tiers of the
+// group). If every target only accepts high-ilvl tiers, tiered currency (Greater min-35 /
+// Perfect min-50 Exalts) can bias fills to those tiers without making the target unreachable.
+function targetMinIlvl(mods, t) {
+  let lo = Infinity;
+  for (const m of mods) { if (m.group !== t.group) continue; if (t.keys && !t.keys.has(m.key)) continue; if (m.ilvl < lo) lo = m.ilvl; }
+  return lo === Infinity ? 0 : lo;
+}
+// Tiered Exalt fill (Greater min-35 / Perfect min-50): guarantee the hardest target with an
+// essence when possible (else Regal start), then fill with tiered Exalts so added mods are
+// high-tier. Only offered when EVERY target accepts a tier ≥35 (else tiered can't help and
+// would just cost more) — so it self-activates exactly for high-tier goals.
+function simulateTiered(mods, T, essences, trials, rnd) {
+  const floor = T.length ? Math.min(...T.map((t) => targetMinIlvl(mods, t))) : 0;
+  let tier = null;
+  if (floor >= 50) tier = { key: "Perfect Exalted", min: 50 };
+  else if (floor >= 35) tier = { key: "Greater Exalted", min: 35 };
+  else return null;
+  const g = pickEssenceTarget(mods, T, essences);
+  let hits = 0, exSum = 0;
+  for (let i = 0; i < trials; i++) {
+    const item = newItem();
+    if (g) { item.rarity = "rare"; (g.type === "prefix" ? item.prefixes : item.suffixes).push({ key: g.modKey, group: g.group, type: g.type, ilvl: 1 }); }
+    else { item.rarity = "magic"; addMod(item, mods, rnd); item.rarity = "rare"; addMod(item, mods, rnd); }
+    exSum += directedFill(item, mods, T, rnd, 6, tier.min);   // directed + tiered = aim high-tier mods at the right side
+    if (matches(item, T)) hits++;
+  }
+  const p = hits / trials, avgEx = exSum / trials;
+  const orbs = {};
+  if (p > 0) {
+    if (g) orbs.Essence = 1 / p; else { orbs.Transmutation = 1 / p; orbs.Regal = 1 / p; }
+    orbs[tier.key] = avgEx / p; orbs["Exaltation omen"] = avgEx / p;   // each directed tiered exalt = 1 tiered Exalt + 1 Exaltation omen
+  }
+  return {
+    key: "tiered", label: (g ? `${g.name} + ` : "Regal → ") + `directed ${tier.key} (high tiers)`,
+    essenceName: g ? g.name : undefined, successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0,
+  };
+}
+
 // Rank the known methods for hitting targetGroups on a base's mod pool.
 function rankMethods(mods, targetGroups, opts) {
   opts = opts || {};
@@ -308,6 +350,8 @@ function rankMethods(mods, targetGroups, opts) {
   methods.push(simulateDirected(mods, T, opts.essences, trials, rnd)); // Exaltation omens
   const ess = simulateEssence(mods, T, opts.essences, trials, rnd);    // essence, undirected (no omens)
   if (ess) methods.push(ess);
+  const tiered = simulateTiered(mods, T, opts.essences, trials, rnd);  // Greater/Perfect Exalt fill (high-tier targets only)
+  if (tiered) methods.push(tiered);
   // rank by total expected orb count (cheapest first); price-weighting is Phase 3.
   const totalOrbs = (r) => Object.values(r.expectedOrbs).reduce((s, n) => s + n, 0);
   methods.forEach((r) => { r.totalOrbs = r.feasible ? totalOrbs(r) : Infinity; });

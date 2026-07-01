@@ -129,4 +129,16 @@ near(pTransmute("GC"), 0.60, 0.01, "transmute P(GC)=w60/100 (suffix competes by 
   ok(rk.methods.find((m) => m.key === "whittling" && m.feasible), "whittling omen method offered & feasible");
 }
 
+// 9) tiered Exalt fill gates on target tier: offered only when every target accepts a
+//    high-tier (≥35) mod, not when a low tier is acceptable.
+{
+  const Plo = { key: "Plo", type: "prefix", group: "GP", weight: 1, ilvl: 1 };
+  const Shi = { key: "Shi", type: "suffix", group: "GS", weight: 1, ilvl: 60 };
+  const anyTier = E.rankMethods([Plo, Shi], ["GP"], { trials: 800, seed: 1 });   // GP accepts ilvl 1
+  ok(!anyTier.methods.some((m) => m.key === "tiered"), "tiered fill NOT offered when a low tier is acceptable");
+  const hiTier = E.rankMethods([Plo, Shi], [{ group: "GS", keys: ["Shi"] }], { trials: 800, seed: 2 }); // GS accepts only ilvl 60
+  const t = hiTier.methods.find((m) => m.key === "tiered");
+  ok(t && /Perfect Exalted/.test(t.label), "tiered (Perfect) fill offered for a high-tier-only target");
+}
+
 console.log(`craft-engine-test: ${pass} checks passed`);
