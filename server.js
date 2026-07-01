@@ -64,9 +64,12 @@ let gearDefenceSortOk = true;     // trade2 defence sort (ev/ar/es) is undocumen
 // "Gain Deflection Rating equal to #% of Evasion Rating" — a big EHP layer PoB models (CalcDefence
 // EvasionGainAsDeflection → DeflectChance → damage-taken mult) but the raw-evasion sort can't see, so
 // a mid-evasion / high-deflection chest gets buried. We pull a dedicated pool of items WITH this mod
-// into defensive-slot searches so they get fetched + PoB-scored. Meta is the desecrated variant
-// (id confirmed via data/stats 2026-06-30); the explicit/fractured share the stat number.
-const DEFLECT_CONV_STAT = "desecrated.stat_3033371881";
+// into defensive-slot searches so they get fetched + PoB-scored. The mod shares stat number
+// 3033371881 across explicit/fractured/desecrated (meta is desecrated), so a `type:count` group ORs
+// them — a chest with an explicit/fractured deflection mod was previously missed (desecrated-only).
+// rune excluded: rune deflection is normalized out by the scorer, so surfacing it is pointless.
+const DEFLECT_CONV_NUM = "3033371881";
+const deflectConvGroup = () => ({ type: "count", value: { min: 1 }, filters: ["explicit", "fractured", "desecrated"].map((s) => ({ id: s + ".stat_" + DEFLECT_CONV_NUM })) });
 try { const s = JSON.parse(fs.readFileSync(SESSION_FILE, "utf8")); if (s && s.poesessid) sessionId = String(s.poesessid).trim(); } catch {}
 const TRADE_HEADERS = {
   "Content-Type": "application/json",
@@ -3306,7 +3309,7 @@ const server = http.createServer(async (req, res) => {
             // Deflection-conversion pool (defence slots): high-deflection items the evasion sort buries.
             if (!fetchErr && defenceSlot) {
               try {
-                const dq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: [{ id: DEFLECT_CONV_STAT }] }] }, sort: { [defK]: "desc" } };
+                const dq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [deflectConvGroup()] }, sort: { [defK]: "desc" } };
                 if (maxPriceDiv > 0) dq.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
                 const dRes = await gearTradeSearch(dq, usedLeague || league);
                 const dFresh = ((dRes.search && dRes.search.result) || []).slice(0, 10).filter((id) => !seen.has(id));
@@ -3556,7 +3559,7 @@ const server = http.createServer(async (req, res) => {
         // fresh ones so they're fetched + scored. A 400/empty here must never break the main rank.
         if (usedDefenceSort) {
           try {
-            const dq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [{ type: "and", filters: [{ id: DEFLECT_CONV_STAT }] }] }, sort: { [defK]: "desc" } };
+            const dq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [deflectConvGroup()] }, sort: { [defK]: "desc" } };
             if (maxDiv > 0 || minDiv > 0) { const price = { option: "divine" }; if (minDiv > 0) price.min = minDiv; if (maxDiv > 0) price.max = maxDiv; dq.query.filters.trade_filters = { filters: { price } }; }
             const dRes = await gearTradeSearch(dq, league);
             const dIds = ((dRes.search && dRes.search.result) || []).slice(0, 20);
