@@ -162,6 +162,21 @@ function staticChecks() {
   } catch {
     check(false, "filter helper cascade flags hidden currency (filter-helper-test.js)");
   }
+  // Crafter: extracted mod-pool data + Monte Carlo engine self-checks (only if generated)
+  if (fs.existsSync(path.join(ROOT, "craft-data.js"))) {
+    try {
+      require("child_process").execFileSync("node", [path.join(ROOT, "craft-data-test.js")], { stdio: "ignore", env: { ...process.env, POE2_NO_OPEN: "1" } });
+      check(true, "craft-data pool extraction is sane (craft-data-test.js)");
+    } catch {
+      check(false, "craft-data pool extraction is sane (craft-data-test.js)");
+    }
+  }
+  try {
+    require("child_process").execFileSync("node", [path.join(ROOT, "craft-engine-test.js")], { stdio: "ignore", env: { ...process.env, POE2_NO_OPEN: "1" } });
+    check(true, "craft Monte Carlo engine probabilities are correct (craft-engine-test.js)");
+  } catch {
+    check(false, "craft Monte Carlo engine probabilities are correct (craft-engine-test.js)");
+  }
 }
 
 // ---- 2) HTTP checks ----

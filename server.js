@@ -16,6 +16,7 @@ try { POB_BASES = require("./pob-bases.js"); } catch { /* not generated → keyw
 // error; the rest of the app is unaffected.
 let CRAFT_DATA = null;
 try { CRAFT_DATA = require("./craft-data.js"); } catch { /* run gen-craft-data.lua to create */ }
+const craftEngine = require("./craft-engine.js");   // Monte Carlo crafting simulator
 
 // Load a local .env (KEY=VALUE per line) into process.env — the documented home for
 // POESESSID / EE2_PROXY_BASE / etc. Without this, a local `node server.js` never read
@@ -2802,6 +2803,24 @@ function craftPool(baseName, itemLevel) {
   };
 }
 
+// Flat eligible-mod list for a base at an item level — the craft-engine's input.
+// Same weight rule as craftPool; type lowercased to match the engine's "prefix"/"suffix".
+function craftModList(baseName, itemLevel) {
+  if (!CRAFT_DATA) return null;
+  const base = CRAFT_DATA.bases[baseName];
+  if (!base) return null;
+  const ilvl = Math.max(1, Math.min(100, itemLevel | 0 || 100));
+  const tagset = new Set(base.tags);
+  const list = [];
+  for (const [key, m] of Object.entries(CRAFT_DATA.mods)) {
+    if (m.ilvl > ilvl) continue;
+    const w = craftWeightFor(m, tagset);
+    if (w <= 0) continue;
+    list.push({ key, type: m.type === "Prefix" ? "prefix" : "suffix", group: m.group, weight: w, ilvl: m.ilvl });
+  }
+  return list;
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://" + HOST + ":" + PORT);
@@ -3784,6 +3803,21 @@ const server = http.createServer(async (req, res) => {
       const pool = craftPool(String(input.base || ""), Number(input.ilvl) || 100);
       if (!pool) { send(res, 404, JSON.stringify({ error: "unknown base" }), J); return; }
       send(res, 200, JSON.stringify(pool), J);
+      return;
+    }
+    // Simulate crafting: rank known methods to hit the target mod groups on a base.
+    if (url.pathname === "/api/craft/simulate" && req.method === "POST") {
+      const J = "application/json; charset=utf-8";
+      if (!CRAFT_DATA) { send(res, 503, JSON.stringify({ error: "craft-data.js not generated — run gen-craft-data.lua" }), J); return; }
+      const input = await readJson(req);
+      const mods = craftModList(String(input.base || ""), Number(input.ilvl) || 100);
+      if (!mods) { send(res, 404, JSON.stringify({ error: "unknown base" }), J); return; }
+      const targets = Array.isArray(input.targets) ? input.targets.map(String).filter(Boolean) : [];
+      if (!targets.length) { send(res, 400, JSON.stringify({ error: "pick at least one target mod" }), J); return; }
+      if (targets.length > 6) { send(res, 400, JSON.stringify({ error: "at most 6 targets (3 prefixes + 3 suffixes)" }), J); return; }
+      const seed = (Math.random() * 4294967296) >>> 0;
+      const result = craftEngine.rankMethods(mods, targets, { seed });
+      send(res, 200, JSON.stringify(result), J);
       return;
     }
 

@@ -533,6 +533,15 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <div id="cfItemView" class="cf-itemview" aria-live="polite"></div>
     </div>
     <div id="cfSummary" class="cf-summary"></div>
+    <p id="cfScopeNote" class="cf-note" hidden>Shows modifiers <b>normal currency</b> can roll (Transmute → Regal → Exalt / Chaos / Alchemy). Mods from <b>Soul Cores, desecration, and corruption</b> can appear on a ring but aren't in this pool — they'll get their own layer in the crafting engine.</p>
+    <div id="cfSimBar" class="cf-simbar" hidden>
+      <div class="cf-simhead">
+        <span class="cf-simlabel">Target mods</span>
+        <div class="cf-simtargets" id="cfTargets"></div>
+      </div>
+      <button class="btn btn-primary" id="cfSimBtn" type="button">Best crafting route</button>
+    </div>
+    <div id="cfSimOut" class="cf-simout"></div>
     <div id="cfOut" class="cf-out"></div>
    </div>
   </section>

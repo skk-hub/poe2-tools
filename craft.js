@@ -27,7 +27,10 @@ window.__viewInit["craft"] = function () {
   function groupCard(g, sideW) {
     const tiers = g.tiers.map((t) => tierRow(t, sideW)).join("");
     const n = g.tiers.length;
-    return `<details class="cf-grp"><summary><span class="cf-glabel">${esc(g.label)}</span>` +
+    const on = targets.has(g.group) ? " checked" : "";
+    return `<details class="cf-grp" data-group="${esc(g.group)}"><summary>` +
+      `<input type="checkbox" class="cf-tchk" title="target this mod"${on} data-group="${esc(g.group)}" data-label="${esc(g.label)}">` +
+      `<span class="cf-glabel">${esc(g.label)}</span>` +
       `<span class="cf-gmeta">${n} tier${n > 1 ? "s" : ""} · w${g.totalWeight}</span></summary>${tiers}</details>`;
   }
   function column(title, groups, sideW) {
@@ -35,12 +38,40 @@ window.__viewInit["craft"] = function () {
     if (!groups.length) return head + `<p class="muted cf-empty">No ${title.toLowerCase()} on this base.</p>`;
     return head + groups.map((g) => groupCard(g, sideW)).join("");
   }
+  const scopeNote = $("cfScopeNote"), simBar = $("cfSimBar"), simOut = $("cfSimOut"), targetsEl = $("cfTargets"), simBtn = $("cfSimBtn");
+  const targets = new Map();   // group -> label (the mods to craft toward)
+  let lastBase = "", lastIlvl = 0;
+
   function renderPool(d) {
     status.textContent = ""; status.className = "status";
+    if (scopeNote) scopeNote.hidden = false;
+    // targets belong to a specific base+ilvl pool; reset when either changes
+    if (d.base !== lastBase || d.ilvl !== lastIlvl) { targets.clear(); simOut.innerHTML = ""; lastBase = d.base; lastIlvl = d.ilvl; }
     summary.innerHTML = `<b>${esc(d.base)}</b> <span class="muted">${esc(d.class)} · item level ${d.ilvl}</span>` +
       (d.implicit ? ` <span class="cf-impl" title="implicit modifier">${esc(d.implicit)}</span>` : "");
     out.innerHTML = `<div class="cf-col">${column("Prefixes", d.prefixes, d.prefixWeight)}</div>` +
       `<div class="cf-col">${column("Suffixes", d.suffixes, d.suffixWeight)}</div>`;
+    out.querySelectorAll(".cf-tchk").forEach((c) => c.addEventListener("change", onTargetToggle));
+    renderTargetBar();
+  }
+  function onTargetToggle(e) {
+    e.stopPropagation();
+    const g = e.target.getAttribute("data-group"), lab = e.target.getAttribute("data-label");
+    if (e.target.checked) targets.set(g, lab); else targets.delete(g);
+    renderTargetBar();
+  }
+  // clicking a checkbox inside a <summary> would also toggle the <details> — stop that
+  out.addEventListener("click", (e) => { if (e.target.classList && e.target.classList.contains("cf-tchk")) e.stopPropagation(); });
+  function renderTargetBar() {
+    simBar.hidden = targets.size === 0;
+    targetsEl.innerHTML = [...targets.entries()].map(([g, lab]) =>
+      `<span class="cf-tchip" data-group="${esc(g)}">${esc(lab)}<button type="button" aria-label="remove">×</button></span>`).join("");
+    targetsEl.querySelectorAll(".cf-tchip button").forEach((b) => b.addEventListener("click", () => {
+      const g = b.parentElement.getAttribute("data-group");
+      targets.delete(g); simOut.innerHTML = "";
+      const chk = out.querySelector(`.cf-tchk[data-group="${CSS.escape(g)}"]`); if (chk) chk.checked = false;
+      renderTargetBar();
+    }));
   }
   async function load() {
     const base = baseIn.value.trim();
@@ -150,4 +181,47 @@ window.__viewInit["craft"] = function () {
     }
   }
   paste.addEventListener("input", onPaste);
+
+  // ── simulate: best crafting route to the selected target mods ──
+  const fmtN = (n) => n >= 100 ? Math.round(n).toLocaleString() : n >= 10 ? Math.round(n) : n.toFixed(1);
+  function fmtOrbs(orbs) {
+    const parts = Object.entries(orbs).filter(([, n]) => n > 0).map(([k, n]) => `<b>${fmtN(n)}</b> ${esc(k)}`);
+    return parts.length ? parts.join(" + ") : "—";
+  }
+  function renderMethods(r) {
+    if (r.error) { simOut.innerHTML = `<div class="cf-simerr">${esc(r.error)}</div>`; return; }
+    if (r.impossible) {
+      const bits = [];
+      if (r.missing && r.missing.length) bits.push("this base can't roll: " + r.missing.map(esc).join(", "));
+      if (r.overCap) bits.push(`too many on one side (${r.prefixTargets} prefixes, ${r.suffixTargets} suffixes — max 3 each)`);
+      simOut.innerHTML = `<div class="cf-simerr">Can't craft these together — ${bits.join("; ")}.</div>`;
+      return;
+    }
+    const feasible = r.methods.filter((m) => m.feasible);
+    if (!feasible.length) { simOut.innerHTML = `<div class="cf-simerr">No method reached all targets in ${r.trials.toLocaleString()} simulations — the combo is extremely rare. Try fewer/looser targets.</div>`; return; }
+    const rows = r.methods.map((m, i) => {
+      const chance = (m.successPerAttempt * 100);
+      const chanceStr = chance >= 10 ? chance.toFixed(0) + "%" : chance >= 1 ? chance.toFixed(1) + "%" : chance > 0 ? chance.toFixed(2) + "%" : "—";
+      const cls = "cf-method" + (i === 0 && m.feasible ? " best" : "") + (m.feasible ? "" : " dim");
+      const cost = m.feasible ? fmtOrbs(m.expectedOrbs) : `not reached in ${r.trials.toLocaleString()} sims`;
+      const sub = m.key === "chaos_spam"
+        ? `each attempt lands all targets ${chanceStr} of the time within ${m.cap} Chaos`
+        : `each attempt lands all targets ${chanceStr} of the time`;
+      return `<div class="${cls}"><div class="cf-method-top"><span class="cf-method-name">${i === 0 && m.feasible ? "★ " : ""}${esc(m.label)}</span>` +
+        `<span class="cf-method-cost">${cost}</span></div><div class="cf-method-sub">${sub}</div></div>`;
+    }).join("");
+    simOut.innerHTML = `<div class="cf-simresult"><div class="cf-simresult-head">Expected currency to hit all ${r.prefixTargets + r.suffixTargets} mods (avg over ${r.trials.toLocaleString()} sims · Divine values in Phase 3)</div>${rows}</div>`;
+  }
+  async function simulate() {
+    const base = baseIn.value.trim();
+    if (!byName[base] || !targets.size) return;
+    const ilvl = Math.max(1, Math.min(100, parseInt(ilvlIn.value, 10) || 100));
+    simBtn.disabled = true; simOut.innerHTML = `<div class="cf-simload">Simulating…</div>`;
+    try {
+      const r = await fetch("/api/craft/simulate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base, ilvl, targets: [...targets.keys()] }) });
+      renderMethods(await r.json());
+    } catch (e) { simOut.innerHTML = `<div class="cf-simerr">Failed: ${esc(e.message || e)}</div>`; }
+    finally { simBtn.disabled = false; }
+  }
+  simBtn.addEventListener("click", simulate);
 };
