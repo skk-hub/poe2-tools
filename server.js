@@ -2821,6 +2821,25 @@ function craftModList(baseName, itemLevel) {
   return list;
 }
 
+// Essences that can guarantee a mod on this base's class, at this item level — the
+// craft-engine's essence input. Only essences whose forced mod exists in the normal
+// pool (some Perfect/essence-exclusive mods aren't in ModItem) and is reachable at ilvl.
+function craftEssenceOptions(baseName, itemLevel) {
+  if (!CRAFT_DATA || !CRAFT_DATA.essences) return [];
+  const base = CRAFT_DATA.bases[baseName];
+  if (!base) return [];
+  const cls = base.class, ilvl = Math.max(1, Math.min(100, itemLevel | 0 || 100));
+  const out = [];
+  for (const [name, e] of Object.entries(CRAFT_DATA.essences)) {
+    const mk = e.mods && e.mods[cls];
+    if (!mk) continue;
+    const m = CRAFT_DATA.mods[mk];
+    if (!m || m.ilvl > ilvl) continue;                 // essence-exclusive mod, or tier needs higher ilvl
+    out.push({ name, modKey: mk, group: m.group, type: m.type === "Prefix" ? "prefix" : "suffix", stat: m.stats[0] || "" });
+  }
+  return out;
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://" + HOST + ":" + PORT);
@@ -3819,7 +3838,8 @@ const server = http.createServer(async (req, res) => {
       if (!targets.length) { send(res, 400, JSON.stringify({ error: "pick at least one target mod" }), J); return; }
       if (targets.length > 6) { send(res, 400, JSON.stringify({ error: "at most 6 targets (3 prefixes + 3 suffixes)" }), J); return; }
       const seed = (Math.random() * 4294967296) >>> 0;
-      const result = craftEngine.rankMethods(mods, targets, { seed });
+      const essences = craftEssenceOptions(String(input.base || ""), Number(input.ilvl) || 100);
+      const result = craftEngine.rankMethods(mods, targets, { seed, essences });
       send(res, 200, JSON.stringify(result), J);
       return;
     }

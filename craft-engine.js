@@ -162,6 +162,44 @@ function simulateChaosSpam(mods, targetGroups, trials, cap, rnd) {
   };
 }
 
+// Essence method: an essence GUARANTEES one specific mod for the item's class (only one
+// essence per item), then you fill the rest. Sourced (maxroll/community, 0.5): Lesser/
+// Normal/Greater upgrade rarity adding a guaranteed tagged mod; here we model the net
+// result — a Rare carrying the guaranteed mod + up to 5 random fills — and cost it as
+// 1 Essence + the fill Exalts (the exact lesser+regal vs greater split is a Phase-3
+// price detail). An essence only helps a target if its guaranteed key is a tier you
+// accepted; otherwise it occupies the group slot and BLOCKS your wanted tier, so we only
+// use essences whose modKey satisfies the target.
+function simulateEssence(mods, T, essences, trials, rnd) {
+  if (!essences || !essences.length) return null;
+  // pick which target to guarantee: the essence-available one that's hardest to hit
+  // randomly (lowest summed weight of its accepted tiers) — biggest payoff.
+  let best = null;
+  for (const t of T) {
+    const opts = essences.filter((e) => e.group === t.group && (!t.keys || t.keys.has(e.modKey)));
+    if (!opts.length) continue;
+    const gw = mods.filter((m) => m.group === t.group && (!t.keys || t.keys.has(m.key))).reduce((s, m) => s + m.weight, 0);
+    if (!best || gw < best.gw) best = { opt: opts[0], gw };
+  }
+  if (!best) return null;
+  const g = best.opt;                       // {name, modKey, group, type, stat}
+  const guaranteed = { key: g.modKey, group: g.group, type: g.type };
+  let hits = 0, exaltSum = 0;
+  for (let i = 0; i < trials; i++) {
+    const item = newItem(); item.rarity = "rare";
+    (guaranteed.type === "prefix" ? item.prefixes : item.suffixes).push(guaranteed);
+    let ex = 0; for (let k = 0; k < 5; k++) if (addMod(item, mods, rnd)) ex++;
+    if (matches(item, T)) hits++;
+    exaltSum += ex;
+  }
+  const p = hits / trials;
+  return {
+    key: "essence", label: `${g.name} (guarantees ${g.stat}) + Exalt fill`,
+    successPerAttempt: p, expectedOrbs: p > 0 ? { Essence: 1 / p, Exalted: (exaltSum / trials) / p } : {},
+    feasible: p > 0,
+  };
+}
+
 // Rank the known methods for hitting targetGroups on a base's mod pool.
 function rankMethods(mods, targetGroups, opts) {
   opts = opts || {};
@@ -187,6 +225,8 @@ function rankMethods(mods, targetGroups, opts) {
   const methods = [];
   for (const m of FRESH_METHODS) methods.push(simulateFresh(m, mods, targetGroups, trials, rnd));
   methods.push(simulateChaosSpam(mods, targetGroups, trials, cap, rnd));
+  const ess = simulateEssence(mods, T, opts.essences, trials, rnd);   // T is normalized above
+  if (ess) methods.push(ess);
   // rank by total expected orb count (cheapest first); price-weighting is Phase 3.
   const totalOrbs = (r) => Object.values(r.expectedOrbs).reduce((s, n) => s + n, 0);
   methods.forEach((r) => { r.totalOrbs = r.feasible ? totalOrbs(r) : Infinity; });
@@ -194,4 +234,4 @@ function rankMethods(mods, targetGroups, opts) {
   return { impossible: false, prefixTargets: pfx, suffixTargets: sfx, trials, methods };
 }
 
-module.exports = { rng, weightedPick, addMod, removeRandom, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, rankMethods, CAP, newItem };
+module.exports = { rng, weightedPick, addMod, removeRandom, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, rankMethods, CAP, newItem };

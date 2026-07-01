@@ -91,4 +91,24 @@ near(pTransmute("GC"), 0.60, 0.01, "transmute P(GC)=w60/100 (suffix competes by 
   ok(imposs.impossible && imposs.missing.length === 1, "unavailable tier → impossible");
 }
 
+// 7) essences: guaranteeing a target's mod makes it certain; an essence for the wrong
+//    tier must NOT be used (it would block the wanted tier).
+{
+  const r = E.rng(11);
+  // pool: two prefix tiers of GL + one suffix GS
+  const L1 = { key: "L1", type: "prefix", group: "GL", weight: 1, ilvl: 1 };
+  const L2 = { key: "L2", type: "prefix", group: "GL", weight: 1, ilvl: 1 };
+  const S1 = { key: "S1", type: "suffix", group: "GS", weight: 1, ilvl: 1 };
+  const p2 = [L1, L2, S1];
+  const essL1 = [{ name: "Ess of L", modKey: "L1", group: "GL", type: "prefix", stat: "L1" }];
+  // guarantee GL (any tier) → essence method always lands GL; targeting GL alone => 100%
+  const rk = E.rankMethods(p2, ["GL"], { trials: 4000, seed: 5, essences: essL1 });
+  const em = rk.methods.find((m) => m.key === "essence");
+  ok(em && em.feasible, "essence method offered when a target is essence-available");
+  near(em.successPerAttempt, 1.0, 0.001, "essence guarantees the target group → 100%/attempt");
+  // target GL restricted to tier L2, but essence only makes L1 → essence must NOT apply
+  const rk2 = E.rankMethods(p2, [{ group: "GL", keys: ["L2"] }], { trials: 2000, seed: 6, essences: essL1 });
+  ok(!rk2.methods.some((m) => m.key === "essence"), "essence for the wrong tier is not offered (would block the wanted tier)");
+}
+
 console.log(`craft-engine-test: ${pass} checks passed`);
