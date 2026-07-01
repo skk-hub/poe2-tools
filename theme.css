@@ -144,7 +144,7 @@ input[type=checkbox]:disabled,input[type=radio]:disabled{ opacity:.45; cursor:de
 }
 .btn[hidden]{ display:none; }  /* .btn sets display:inline-flex, which otherwise defeats the [hidden] attribute */
 .btn:hover{ background:var(--surface-3); border-color:var(--border-strong); transform:translateY(-1px); }
-.btn:active{ transform:translateY(0); }
+.btn:active{ transform:scale(.97); }  /* press feedback — the UI physically answers the click */
 .btn:disabled{ opacity:.45; cursor:default; transform:none; }
 .btn-primary{
   background:linear-gradient(180deg,var(--gold-bright),var(--gold-deep));
@@ -258,4 +258,7 @@ input[type=checkbox]:disabled,input[type=radio]:disabled{ opacity:.45; cursor:de
 @media (pointer: coarse){
   .navbtn,.nav-link{ min-height:36px; }
   .btn,button,.toolbtn,.copy,.tab{ min-height:40px; }
+  /* Touch taps trigger :hover, which would leave the lift stuck after a tap.
+     Drop the hover-lift on coarse pointers; the :active scale press stays (correct on touch). */
+  .btn:hover,button:hover,.toolbtn:hover,.toolcard:hover,.metric:hover{ transform:none; }
 }

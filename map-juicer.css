@@ -27,7 +27,7 @@
   .toolroot-mj .regexbox{display:block;font:12px var(--font-mono);color:var(--gold);background:var(--surface-1);border:1px solid var(--border);padding:10px 12px;border-radius:var(--r-sm);white-space:pre-wrap;word-break:break-all}
   .toolroot-mj .copy{padding:5px 12px;border:1px solid var(--border-gold);background:var(--gold-soft);color:var(--gold);font:700 11px var(--font-mono);text-transform:uppercase;white-space:nowrap}
   .toolroot-mj .copy:hover{filter:brightness(1.1)}
-  .toolroot-mj .copy:active{transform:translateY(1px)}
+  .toolroot-mj .copy:active{transform:scale(.97)}
   .toolroot-mj .copy:disabled{opacity:.45;cursor:default;filter:none}
   .toolroot-mj .rxcard-note code{font:11px var(--font-mono);color:var(--gold);background:var(--gold-soft);padding:1px 5px;border-radius:3px}
 
