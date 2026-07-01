@@ -2855,6 +2855,36 @@ function craftEssenceOptions(baseName, itemLevel) {
   return out;
 }
 
+// Phase 3: price each crafting method in Divine via the poe.ninja proxy, then rank by real
+// cost (not raw orb count) — Chaos/omens are far pricier than Transmute/Alchemy, so this
+// reshuffles the ranking. Maps the engine's orb labels → proxy currency names.
+const CRAFT_ORB_PROXY = {
+  Transmutation: "Orb of Transmutation", Augmentation: "Orb of Augmentation", Regal: "Regal Orb",
+  Alchemy: "Orb of Alchemy", Exalted: "Exalted Orb", Chaos: "Chaos Orb", Annulment: "Orb of Annulment",
+  "Omen of Whittling": "Omen of Whittling", "Exaltation omen": "Omen of Sinistral Exaltation",
+};
+function priceCraftMethods(result, proxy) {
+  if (!result || result.impossible || !proxy) return;
+  for (const m of result.methods) {
+    if (!m.feasible) { m.divineCost = null; continue; }
+    let cost = 0; const missing = [];
+    for (const [orb, count] of Object.entries(m.expectedOrbs || {})) {
+      const name = CRAFT_ORB_PROXY[orb] || (orb === "Essence" ? m.essenceName : orb);
+      const pv = name ? proxyPrice(proxy, name) : null;
+      if (pv && pv.div > 0) cost += count * pv.div; else missing.push(orb);
+    }
+    m.divineCost = Math.round(cost * 100) / 100;
+    if (missing.length) m.priceMissing = missing;   // e.g. an omen the proxy doesn't track → cost is a floor
+  }
+  // rank feasible fully-priced by Divine cost (cheapest first); partial/unpriced last
+  result.methods.sort((a, b) => {
+    const av = a.feasible && a.divineCost != null ? a.divineCost : Infinity;
+    const bv = b.feasible && b.divineCost != null ? b.divineCost : Infinity;
+    return av - bv;
+  });
+  result.priced = true;
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://" + HOST + ":" + PORT);
@@ -3864,6 +3894,7 @@ const server = http.createServer(async (req, res) => {
       const seed = (Math.random() * 4294967296) >>> 0;
       const essences = craftEssenceOptions(String(input.base || ""), Number(input.ilvl) || 100);
       const result = craftEngine.rankMethods(mods, targets, { seed, essences });
+      try { priceCraftMethods(result, await getProxyData(sanitizeLeague(input.league))); } catch { /* pricing is a bonus; fall back to orb-count ranking */ }
       send(res, 200, JSON.stringify(result), J);
       return;
     }

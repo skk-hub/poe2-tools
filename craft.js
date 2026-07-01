@@ -220,6 +220,7 @@ window.__viewInit["craft"] = function () {
     const parts = Object.entries(orbs).filter(([, n]) => n > 0).map(([k, n]) => `<b>${fmtN(n)}</b> ${esc(k)}`);
     return parts.length ? parts.join(" + ") : "—";
   }
+  const fmtDiv = (d) => d >= 100 ? Math.round(d).toLocaleString() : d >= 10 ? d.toFixed(1) : d.toFixed(2);
   function renderMethods(r) {
     if (r.error) { simOut.innerHTML = `<div class="cf-simerr">${esc(r.error)}</div>`; return; }
     if (r.impossible) {
@@ -231,18 +232,26 @@ window.__viewInit["craft"] = function () {
     }
     const feasible = r.methods.filter((m) => m.feasible);
     if (!feasible.length) { simOut.innerHTML = `<div class="cf-simerr">No method reached all targets in ${r.trials.toLocaleString()} simulations — the combo is extremely rare. Try fewer/looser targets.</div>`; return; }
+    const priced = !!r.priced;
     const rows = r.methods.map((m, i) => {
       const chance = (m.successPerAttempt * 100);
       const chanceStr = chance >= 10 ? chance.toFixed(0) + "%" : chance >= 1 ? chance.toFixed(1) + "%" : chance > 0 ? chance.toFixed(2) + "%" : "—";
       const cls = "cf-method" + (i === 0 && m.feasible ? " best" : "") + (m.feasible ? "" : " dim");
-      const cost = m.feasible ? fmtOrbs(m.expectedOrbs) : `not reached in ${r.trials.toLocaleString()} sims`;
-      const sub = m.key === "chaos_spam"
-        ? `each attempt lands all targets ${chanceStr} of the time within ${m.cap} Chaos`
-        : `each attempt lands all targets ${chanceStr} of the time`;
+      // headline cost = Divine (when priced), orbs shown as the breakdown underneath
+      const cost = !m.feasible ? `not reached in ${r.trials.toLocaleString()} sims`
+        : priced && m.divineCost != null ? `<b>${fmtDiv(m.divineCost)}</b> div${m.priceMissing ? " +" : ""}`
+        : fmtOrbs(m.expectedOrbs);
+      const chanceBit = m.key === "chaos_spam" ? `lands ${chanceStr}/attempt within ${m.cap} Chaos` : `lands ${chanceStr}/attempt`;
+      const sub = m.feasible && priced && m.divineCost != null
+        ? `${fmtOrbs(m.expectedOrbs)} · ${chanceBit}` + (m.priceMissing ? ` · +unpriced: ${m.priceMissing.map(esc).join(", ")}` : "")
+        : `each attempt ${chanceBit}`;
       return `<div class="${cls}"><div class="cf-method-top"><span class="cf-method-name">${i === 0 && m.feasible ? "★ " : ""}${esc(m.label)}</span>` +
         `<span class="cf-method-cost">${cost}</span></div><div class="cf-method-sub">${sub}</div></div>`;
     }).join("");
-    simOut.innerHTML = `<div class="cf-simresult"><div class="cf-simresult-head">Expected currency to hit all ${r.prefixTargets + r.suffixTargets} mods (avg over ${r.trials.toLocaleString()} sims · Divine values in Phase 3)</div>${rows}</div>`;
+    const head = priced
+      ? `Expected cost to hit all ${r.prefixTargets + r.suffixTargets} mods — ranked by Divine (poe.ninja), avg over ${r.trials.toLocaleString()} sims`
+      : `Expected currency to hit all ${r.prefixTargets + r.suffixTargets} mods (avg over ${r.trials.toLocaleString()} sims · prices unavailable — ranked by orb count)`;
+    simOut.innerHTML = `<div class="cf-simresult"><div class="cf-simresult-head">${head}</div>${rows}</div>`;
   }
   async function simulate() {
     const base = baseIn.value.trim();

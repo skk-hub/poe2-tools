@@ -229,7 +229,7 @@ function simulateEssence(mods, T, essences, trials, rnd) {
   }
   const p = hits / trials;
   return {
-    key: "essence", label: `${g.name} (guarantees ${g.stat}) + Exalt fill`,
+    key: "essence", label: `${g.name} (guarantees ${g.stat}) + Exalt fill`, essenceName: g.name,
     successPerAttempt: p, expectedOrbs: p > 0 ? { Essence: 1 / p, Exalted: (exaltSum / trials) / p } : {},
     feasible: p > 0,
   };
@@ -274,6 +274,7 @@ function simulateDirected(mods, T, essences, trials, rnd) {
   }
   return {
     key: "directed", label: g ? `${g.name} + directed Exalts (Exaltation omens)` : "Regal → directed Exalts (Exaltation omens)",
+    essenceName: g ? g.name : undefined,
     successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0,
   };
 }
