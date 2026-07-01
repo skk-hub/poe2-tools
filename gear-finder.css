@@ -4,7 +4,7 @@
   .toolroot-gear .sub{color:var(--mu);font:12px var(--ff-mono);margin:6px 0 0}
   .toolroot-gear .gf-badge{display:inline-block;font:700 10px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:var(--r-pill);border:1px solid var(--bd);margin-left:6px}
   .toolroot-gear .gf-badge.live{color:var(--gr);border-color:oklch(67% 0.14 148 / .5)}
-  .toolroot-gear .gf-badge.fallback{color:var(--gd);border-color:var(--bd-gold,var(--bd))}
+  .toolroot-gear .gf-badge.fallback{color:var(--gd);border-color:var(--gd-b)}
 
   .toolroot-gear .gf-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
   /* gf-contents lets a wrapper's children take part in the row's flex layout; the
@@ -21,8 +21,8 @@
   .toolroot-gear .gf-build{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
   .toolroot-gear .gf-stat{border:1px solid var(--bd);background:var(--surface-1);border-radius:var(--r-sm);padding:6px 11px;font:12px var(--ff-mono);color:var(--mu)}
   .toolroot-gear .gf-stat b{color:var(--tx);font-size:13px}
-  .toolroot-gear .gf-warn{display:block;width:100%;margin-top:8px;border:1px solid #6b3a1f;background:rgba(180,90,30,.12);border-radius:var(--r-sm);padding:7px 11px;font:12px var(--ff-mono);color:#e0a060;cursor:help}
-  .toolroot-gear .gf-warn-stale{border-color:#7a2020;background:rgba(200,40,40,.14);color:#f08080}
+  .toolroot-gear .gf-warn{display:block;width:100%;margin-top:8px;border:1px solid var(--border-gold);background:var(--gold-soft);border-radius:var(--r-sm);padding:7px 11px;font:12px var(--ff-mono);color:var(--gold);cursor:help}
+  .toolroot-gear .gf-warn-stale{border-color:oklch(67% 0.20 25 / .4);background:var(--red-soft);color:var(--red)}
   .toolroot-gear .gf-checkrow{display:inline-flex;align-items:center;gap:6px;margin-left:10px;font:13px var(--ff-ui,inherit);color:var(--tx);cursor:pointer;user-select:none}
   .toolroot-gear .gf-checkrow input{cursor:pointer}
   .toolroot-gear .gf-checkrow[hidden]{display:none}
@@ -43,7 +43,7 @@
   .toolroot-gear .gf-optbk{display:inline-flex;align-items:center;gap:5px;background:var(--surface-2,var(--surface-1));border:1px solid var(--bd);border-radius:10px;padding:3px 7px 3px 11px}
   .toolroot-gear .gf-optbk-l{font:12px var(--ff-ui,inherit);color:var(--tx)}
   .toolroot-gear .gf-optbk-ge{font:11px var(--ff-mono);color:var(--mu)}
-  .toolroot-gear .gf-optbkin{box-sizing:border-box;width:3.2em;text-align:center;font:13px var(--ff-mono);color:var(--tx);background:var(--surface-0,#0b0b0d);border:1px solid var(--bd);border-radius:6px;padding:3px 6px;-moz-appearance:textfield;appearance:textfield}
+  .toolroot-gear .gf-optbkin{box-sizing:border-box;width:3.2em;text-align:center;font:13px var(--ff-mono);color:var(--tx);background:var(--bg-deep);border:1px solid var(--bd);border-radius:6px;padding:3px 6px;-moz-appearance:textfield;appearance:textfield}
   .toolroot-gear .gf-optbkin:focus{outline:none;border-color:var(--gold)}
   .toolroot-gear .gf-optbkin::-webkit-outer-spin-button,.toolroot-gear .gf-optbkin::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   .toolroot-gear .gf-opt-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0}
