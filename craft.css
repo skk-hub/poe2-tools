@@ -25,3 +25,42 @@
 .toolroot-craft .cf-tmeta{flex:none;display:inline-flex;align-items:center;gap:9px;color:var(--text-faint);font:500 11px var(--font-mono)}
 .toolroot-craft .cf-tmeta b{color:var(--text);font-weight:600}      /* spawn weight */
 .toolroot-craft .cf-tmeta i{color:var(--gold);font-style:normal}    /* roll-chance share */
+
+/* ── paste-an-item: box + in-game-style tooltip ── */
+.toolroot-craft .cf-pastewrap{display:grid;grid-template-columns:1fr minmax(300px,360px);gap:20px;align-items:start;margin-bottom:20px}
+@media(max-width:760px){.toolroot-craft .cf-pastewrap{grid-template-columns:1fr}}
+.toolroot-craft .cf-pastelabel{display:block;color:var(--text-muted);font:600 12px var(--font-ui);margin-bottom:6px}
+.toolroot-craft .cf-pastelabel .sub{margin:0;font-weight:400}
+.toolroot-craft #cfPaste{min-height:150px}
+.toolroot-craft .cf-itemview:empty{display:none}
+
+/* PoE2 item tooltip recreation — CSS only (no frame art): near-black bg, centered
+   text, rarity-colored header, augmented-blue mods, section dividers. */
+.toolroot-craft .cf-tip{font:13px/1.4 var(--font-ui);color:#7f7f7f;background:rgba(0,0,0,.86);
+  border:1px solid rgba(160,160,170,.18);box-shadow:0 8px 30px rgba(0,0,0,.55);padding-bottom:8px;overflow:hidden}
+.toolroot-craft .cf-tip-head{text-align:center;padding:7px 30px 8px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,0));border-bottom:1px solid rgba(255,255,255,.06)}
+.toolroot-craft .cf-tip-name{font-weight:700;font-size:15px;letter-spacing:.02em}
+.toolroot-craft .cf-tip-base{font-size:13px;margin-top:1px}
+.toolroot-craft .cf-tip.normal .cf-tip-name{color:#c8c8c8}
+.toolroot-craft .cf-tip.magic .cf-tip-name,.toolroot-craft .cf-tip.magic .cf-tip-base{color:#8888ff}
+.toolroot-craft .cf-tip.magic .cf-tip-head{background:linear-gradient(180deg,rgba(40,40,110,.5),rgba(40,40,110,0))}
+.toolroot-craft .cf-tip.rare .cf-tip-name,.toolroot-craft .cf-tip.rare .cf-tip-base{color:#ffff77}
+.toolroot-craft .cf-tip.rare .cf-tip-head{background:linear-gradient(180deg,rgba(90,80,0,.5),rgba(90,80,0,0))}
+.toolroot-craft .cf-tip.unique .cf-tip-name,.toolroot-craft .cf-tip.unique .cf-tip-base{color:#af6025}
+.toolroot-craft .cf-tip.unique .cf-tip-head{background:linear-gradient(180deg,rgba(90,45,0,.5),rgba(90,45,0,0))}
+.toolroot-craft .cf-tip.currency .cf-tip-name,.toolroot-craft .cf-tip.gem .cf-tip-name{color:#aa9e82}
+.toolroot-craft .cf-tip-sec{padding:6px 14px;border-top:1px solid rgba(255,255,255,.06);text-align:center}
+.toolroot-craft .cf-tip-sec:first-of-type{border-top:0}
+.toolroot-craft .cf-tip-prop{font-size:12.5px}
+.toolroot-craft .cf-tip-prop span{color:#7f7f7f}
+.toolroot-craft .cf-tip-prop b{color:#fff;font-weight:400}
+.toolroot-craft .cf-tip-req{color:#7f7f7f;font-size:12.5px}
+.toolroot-craft .cf-tip-mod{color:#8888ff;font-size:12.5px}
+.toolroot-craft .cf-tip-mod b{color:#b3b3ff;font-weight:400}            /* highlighted values */
+.toolroot-craft .cf-tip-mod.implicit{color:#8888ff}
+.toolroot-craft .cf-tip-mod.enchant{color:#b4b4ff}
+.toolroot-craft .cf-tip-mod.enchant b{color:#d6d6ff}
+.toolroot-craft .cf-tip-mod.fractured{color:#a29162} .toolroot-craft .cf-tip-mod.fractured b{color:#cbb887}
+.toolroot-craft .cf-tip-mod.desecrated{color:#d0a0e0} .toolroot-craft .cf-tip-mod.desecrated b{color:#e6c6f2}
+.toolroot-craft .cf-tip-corrupt{color:#d20000;font-weight:600}
+.toolroot-craft .cf-tip-flav{color:#af6025;font-style:italic;font-size:12px}

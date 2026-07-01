@@ -525,6 +525,13 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div id="cfStatus" class="status">Loading bases…</div>
       </div>
     </div>
+    <div class="cf-pastewrap">
+      <div class="cf-pastecol">
+        <label class="cf-pastelabel" for="cfPaste">Paste an item <span class="sub">— Ctrl+C in-game (or copy from trade) to preview it and load its mod pool</span></label>
+        <textarea id="cfPaste" spellcheck="false" placeholder="Paste a copied item here…&#10;(the block starting with 'Item Class:' / 'Rarity:')"></textarea>
+      </div>
+      <div id="cfItemView" class="cf-itemview" aria-live="polite"></div>
+    </div>
     <div id="cfSummary" class="cf-summary"></div>
     <div id="cfOut" class="cf-out"></div>
    </div>
