@@ -361,20 +361,7 @@ window.__viewInit["map-juicer"]=function(){
       const t = b.getAttribute("data-mod"); tMods.has(t) ? tMods.delete(t) : tMods.add(t); renderSheet();
     }));
   }
-  async function copyText(txt){
-    // navigator.clipboard only exists in a secure context (HTTPS/localhost).
-    // Over LAN/Tailscale on plain HTTP it's undefined → fall back to execCommand.
-    if (navigator.clipboard && window.isSecureContext){
-      await navigator.clipboard.writeText(txt); return true;
-    }
-    const ta = document.createElement("textarea");
-    ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
-    document.body.appendChild(ta); ta.focus(); ta.select();
-    let ok = false;
-    try { ok = document.execCommand("copy"); } catch { ok = false; }
-    ta.remove();
-    return ok;
-  }
+  const copyText = window.__copyText;   // shared helper (index.html) — uniform copy feedback
   function bindCopy(){
     document.querySelectorAll(".toolroot-mj [data-copy]").forEach(b=>{
       b.addEventListener("click", async (e)=>{

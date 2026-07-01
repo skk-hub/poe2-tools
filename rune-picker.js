@@ -132,11 +132,12 @@ window.__viewInit["rune-picker"] = function () {
     updateSortIndicators();
   }
 
+  const EMPTY_PICKS="No priced picks yet — paste reward lines or item choices above, then Evaluate.";
   function renderRuneResults(data){
     runeResultData=data.results||[];
     if(!runeResultData.length){
       runeBest.className="bestbox empty";
-      runeBest.textContent="No priced picks yet — paste reward lines or item choices above, then Evaluate.";
+      runeBest.textContent=EMPTY_PICKS;
       renderRows();
       return;
     }
@@ -147,7 +148,7 @@ window.__viewInit["rune-picker"] = function () {
       runeBest.innerHTML='<b>Best pick: '+esc(best.qty)+'x '+esc(best.name)+'</b><span>'+fx(best.total)+' total / '+fx(best.each)+' each - '+esc(best.category)+' via '+esc(best.source)+'</span>'+(best.rawPrice?'<div class="muted">Raw listing: '+esc(best.rawPrice)+'</div>':'');
     }else{
       runeBest.className="bestbox empty";
-      runeBest.textContent="No priced picks yet — paste reward lines or item choices above, then Evaluate.";
+      runeBest.textContent=EMPTY_PICKS;
     }
 
     renderRows();
