@@ -67,7 +67,7 @@ function staticChecks() {
   const themeCss = read("theme.css");
   check(/@font-face/.test(themeCss) && !/fonts\.googleapis\.com/.test(themeCss), "theme.css self-hosts fonts (no Google @import)");
   check(["inter", "jetbrains-mono"].every(f => themeCss.includes("/fonts/" + f + ".woff2")), "theme.css references the self-hosted woff2 fonts");
-  const views = ["home", "rune-picker", "map-juicer", "gear-finder", "filter-helper"];
+  const views = ["home", "rune-picker", "map-juicer", "gear-finder", "filter-helper", "craft"];
   check(views.every(v => idx.includes(`id="${v}"`)), "index has all core view sections");
   check(["toolroot-mj", "toolroot-rune", "toolroot-gear"].every(t => idx.includes(t)), "index has the active inline tool roots");
   check(idx.includes('id="fxStrip"') && idx.includes('id="fxStripRefresh"'), "home has currency strip + refresh button");

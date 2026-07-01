@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="rune-picker.css">
 <link rel="stylesheet" href="filter-helper.css">
 <link rel="stylesheet" href="gear-finder.css">
+<link rel="stylesheet" href="craft.css">
 <style>
 /* ===== Hub: modern dashboard, built on theme.css tokens ===== */
 .shell{padding:32px 24px 56px;max-width:1280px;margin:0 auto}
@@ -237,6 +238,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <a class="navbtn" href="#map-juicer" data-view-link="map-juicer">Regex Cheat Sheet</a>
       <a class="navbtn" href="#filter-helper" data-view-link="filter-helper">Filter Helper</a>
       <a class="navbtn" href="#gear-finder" data-view-link="gear-finder">Gear Finder</a>
+      <a class="navbtn" href="#craft" data-view-link="craft">Crafter</a>
       <label class="vpnpill" id="vpnPill" hidden title="VPN exit country — the IP this app's trade calls go out on (separate from your game client)">
         <span class="vpnpill-globe" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18Z"/></svg></span>
         <select id="vpnSelect" aria-label="VPN exit country"><option>VPN…</option></select>
@@ -509,6 +511,25 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
    </div>
   </section>
 
+  <section id="craft" class="view" data-view="craft">
+   <div class="toolroot toolroot-craft">
+    <div class="pagehead">
+      <div>
+        <h1>Crafter</h1>
+        <p class="sub">Pick a base and item level to see every prefix and suffix it can roll — grouped by modifier, with tiers, spawn weights, and each tier's roll chance. Offline: reads Path of Building's game data, no trade calls.</p>
+      </div>
+      <div class="controls">
+        <label>Base <input id="cfBase" list="cfBaseList" placeholder="e.g. Sapphire Ring" autocomplete="off" style="width:15em"></label>
+        <datalist id="cfBaseList"></datalist>
+        <label>Item level <input id="cfIlvl" type="number" min="1" max="100" value="82" style="width:5em"></label>
+        <div id="cfStatus" class="status">Loading bases…</div>
+      </div>
+    </div>
+    <div id="cfSummary" class="cf-summary"></div>
+    <div id="cfOut" class="cf-out"></div>
+   </div>
+  </section>
+
 </main>
 <script>
 // ===== App shell: hash-routed SPA. Each tool view registers a one-time init
@@ -680,5 +701,6 @@ window.addEventListener("DOMContentLoaded",()=>runViewInit(currentView()));
 <script src="map-juicer.js"></script>
 <script src="filter-helper.js"></script>
 <script src="gear-finder.js"></script>
+<script src="craft.js"></script>
 </body>
 </html>

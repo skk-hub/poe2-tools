@@ -11,6 +11,11 @@ const pob = require("./pob.js");   // headless Path of Building bridge (Gear Fin
 // Optional: a missing file just falls the weapon-slot detection back to keyword sniffing.
 let POB_BASES = {};
 try { POB_BASES = require("./pob-bases.js"); } catch { /* not generated → keyword fallback */ }
+// Craftable mod pool (bases/mods/essences) from PoB's game data (gen-craft-data.lua).
+// Powers the Crafter tool. Absent → the /api/craft/* endpoints return a "not generated"
+// error; the rest of the app is unaffected.
+let CRAFT_DATA = null;
+try { CRAFT_DATA = require("./craft-data.js"); } catch { /* run gen-craft-data.lua to create */ }
 
 // Load a local .env (KEY=VALUE per line) into process.env — the documented home for
 // POESESSID / EE2_PROXY_BASE / etc. Without this, a local `node server.js` never read
@@ -2733,6 +2738,70 @@ function dominationPrune(pool) {
 // may carry status "afk"/"dnd" (absent = plain online). Note: this reflects the
 // seller, not whether the item is still in their stash.
 
+// ── Crafter (Phase 1) ─────────────────────────────────────────────────────────
+// Resolve a base's craftable mod pool from CRAFT_DATA. Weight rule (matches
+// craft-data-test.js): the first tag in a mod's ordered `weights` list that the base
+// carries wins; "default" matches everything (usually weight 0 = can't spawn). A mod
+// is craftable on the base when itemLevel >= mod.ilvl AND resolved weight > 0.
+function craftWeightFor(mod, tagset) {
+  for (const [tag, w] of mod.weights) { if (tag === "default" || tagset.has(tag)) return w; }
+  return 0;
+}
+// Bases that can roll at least one explicit mod (early-exits) — filters out jewels/
+// flasks whose pools live in other PoB files we don't extract. Memoized (data is static).
+let _craftBaseList = null;
+function craftBaseList() {
+  if (_craftBaseList || !CRAFT_DATA) return _craftBaseList || [];
+  const mods = Object.values(CRAFT_DATA.mods);
+  const out = [];
+  for (const [name, b] of Object.entries(CRAFT_DATA.bases)) {
+    const tagset = new Set(b.tags);
+    if (mods.some((m) => craftWeightFor(m, tagset) > 0)) {
+      out.push({ name, class: b.class, ilvl: b.ilvl, implicit: b.implicit || null });
+    }
+  }
+  out.sort((a, b) => a.class.localeCompare(b.class) || a.name.localeCompare(b.name));
+  _craftBaseList = out;
+  return out;
+}
+// Grouped prefix/suffix pool for one base at a given item level. Mods sharing a `group`
+// (mutually exclusive — one per item) are collapsed into tiers, highest ilvl first.
+function craftPool(baseName, itemLevel) {
+  if (!CRAFT_DATA) return null;
+  const base = CRAFT_DATA.bases[baseName];
+  if (!base) return null;
+  const ilvl = Math.max(1, Math.min(100, itemLevel | 0 || 100));
+  const tagset = new Set(base.tags);
+  const buckets = { Prefix: new Map(), Suffix: new Map() };
+  for (const [key, m] of Object.entries(CRAFT_DATA.mods)) {
+    if (m.ilvl > ilvl) continue;
+    const w = craftWeightFor(m, tagset);
+    if (w <= 0) continue;
+    const bucket = buckets[m.type];
+    if (!bucket) continue;
+    if (!bucket.has(m.group)) bucket.set(m.group, { group: m.group, tiers: [] });
+    bucket.get(m.group).tiers.push({ key, name: m.name || "", ilvl: m.ilvl, weight: w, stats: m.stats });
+  }
+  const finish = (map) => {
+    const groups = [...map.values()];
+    for (const g of groups) {
+      g.tiers.sort((a, b) => b.ilvl - a.ilvl);          // best (highest-ilvl) tier first
+      g.totalWeight = g.tiers.reduce((s, t) => s + t.weight, 0);
+      g.label = (g.tiers[0].stats[0] || g.group);        // display by the top tier's stat text
+    }
+    groups.sort((a, b) => a.label.localeCompare(b.label));
+    return groups;
+  };
+  const prefixes = finish(buckets.Prefix), suffixes = finish(buckets.Suffix);
+  const sumW = (gs) => gs.reduce((s, g) => s + g.totalWeight, 0);
+  return {
+    base: baseName, class: base.class, ilvl, implicit: base.implicit || null,
+    prefixes, suffixes,
+    // total spawn weight per side — the denominator the Phase 2 engine will use for odds.
+    prefixWeight: sumW(prefixes), suffixWeight: sumW(suffixes),
+  };
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://" + HOST + ":" + PORT);
@@ -3698,6 +3767,23 @@ const server = http.createServer(async (req, res) => {
       } finally {
         cleanup();
       }
+      return;
+    }
+
+    // Crafter: list craftable bases (for the picker) + a base's mod pool.
+    if (url.pathname === "/api/craft/bases") {
+      const J = "application/json; charset=utf-8";
+      if (!CRAFT_DATA) { send(res, 503, JSON.stringify({ error: "craft-data.js not generated — run gen-craft-data.lua" }), J); return; }
+      send(res, 200, JSON.stringify({ bases: craftBaseList() }), J);
+      return;
+    }
+    if (url.pathname === "/api/craft/pool" && req.method === "POST") {
+      const J = "application/json; charset=utf-8";
+      if (!CRAFT_DATA) { send(res, 503, JSON.stringify({ error: "craft-data.js not generated — run gen-craft-data.lua" }), J); return; }
+      const input = await readJson(req);
+      const pool = craftPool(String(input.base || ""), Number(input.ilvl) || 100);
+      if (!pool) { send(res, 404, JSON.stringify({ error: "unknown base" }), J); return; }
+      send(res, 200, JSON.stringify(pool), J);
       return;
     }
 
