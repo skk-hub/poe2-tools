@@ -177,6 +177,13 @@ function staticChecks() {
   } catch {
     check(false, "craft Monte Carlo engine probabilities are correct (craft-engine-test.js)");
   }
+  // Desecrated reference data (scraped from poe2db) loads with the expected shape (if present)
+  if (fs.existsSync(path.join(ROOT, "desecrated-data.js"))) {
+    try {
+      const D = require("./desecrated-data.js");
+      check(Array.isArray(D.mods) && D.mods.length > 100 && D.mods.every((m) => m.name && m.type && Array.isArray(m.stats)), "desecrated-data.js loads (200+ mods, well-formed)");
+    } catch { check(false, "desecrated-data.js loads (200+ mods, well-formed)"); }
+  }
 }
 
 // ---- 2) HTTP checks ----

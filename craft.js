@@ -261,4 +261,33 @@ window.__viewInit["craft"] = function () {
     finally { simBtn.disabled = false; }
   }
   simBtn.addEventListener("click", simulate);
+
+  // ── desecrated modifier reference (Abyssal Bones + Well of Souls) ──
+  const desecEl = $("cfDesec"), desecOut = $("cfDesecOut"), desecSearch = $("cfDesecSearch");
+  const FACTION_LABEL = { lightless: "Lightless", amanamu: "Amanamu", kurgal: "Kurgal", ulaman: "Ulaman", abyss: "Abyss" };
+  let desecMods = null;
+  function renderDesec(q) {
+    if (!desecMods) return;
+    q = (q || "").trim().toLowerCase();
+    const hit = desecMods.filter((m) => !q || m.stats.join(" ").toLowerCase().includes(q) || m.faction.includes(q) || m.tags.join(" ").includes(q));
+    if (!hit.length) { desecOut.innerHTML = `<p class="muted cf-empty">No desecrated mods match "${esc(q)}".</p>`; return; }
+    const byF = {};
+    for (const m of hit) (byF[m.faction] = byF[m.faction] || []).push(m);
+    desecOut.innerHTML = Object.entries(byF).map(([f, ms]) =>
+      `<div class="cf-dfac"><div class="cf-dfac-head">${esc(FACTION_LABEL[f] || f)} <span class="cf-count">${ms.length}</span></div>` +
+      ms.map((m) => `<div class="cf-dmod"><span class="cf-dtype cf-${m.type}">${m.type === "prefix" ? "P" : "S"}</span>` +
+        `<span class="cf-dstats">${m.stats.map(esc).join("<br>")}</span>` +
+        `<span class="cf-dmeta">iL${m.ilvl}</span></div>`).join("") + `</div>`).join("");
+  }
+  function loadDesec() {
+    if (desecMods) return;
+    desecOut.innerHTML = `<p class="muted">Loading…</p>`;
+    fetch("/api/craft/desecrated").then((r) => r.json()).then((d) => {
+      if (d.error) { desecOut.innerHTML = `<p class="muted">${esc(d.error)}</p>`; return; }
+      desecMods = d.mods || [];
+      renderDesec(desecSearch.value);
+    }).catch((e) => { desecOut.innerHTML = `<p class="muted">Failed: ${esc(e.message || e)}</p>`; });
+  }
+  desecEl.addEventListener("toggle", () => { if (desecEl.open) loadDesec(); });
+  desecSearch.addEventListener("input", () => renderDesec(desecSearch.value));
 };

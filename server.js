@@ -17,6 +17,10 @@ try { POB_BASES = require("./pob-bases.js"); } catch { /* not generated → keyw
 let CRAFT_DATA = null;
 try { CRAFT_DATA = require("./craft-data.js"); } catch { /* run gen-craft-data.lua to create */ }
 const craftEngine = require("./craft-engine.js");   // Monte Carlo crafting simulator
+// Desecrated modifier REFERENCE (Abyssal Bones + Well of Souls) scraped from poe2db —
+// PoB lacks this data. Browsable list only; not simulated (reveal 3, pick 1; no odds data).
+let DESECRATED = null;
+try { DESECRATED = require("./desecrated-data.js"); } catch { /* run gen-desecrated (browser) to create */ }
 
 // Load a local .env (KEY=VALUE per line) into process.env — the documented home for
 // POESESSID / EE2_PROXY_BASE / etc. Without this, a local `node server.js` never read
@@ -3822,6 +3826,13 @@ const server = http.createServer(async (req, res) => {
       const pool = craftPool(String(input.base || ""), Number(input.ilvl) || 100);
       if (!pool) { send(res, 404, JSON.stringify({ error: "unknown base" }), J); return; }
       send(res, 200, JSON.stringify(pool), J);
+      return;
+    }
+    // Desecrated modifier reference list (Abyssal Bones + Well of Souls). Browsable only.
+    if (url.pathname === "/api/craft/desecrated") {
+      const J = "application/json; charset=utf-8";
+      if (!DESECRATED) { send(res, 503, JSON.stringify({ error: "desecrated-data.js not generated" }), J); return; }
+      send(res, 200, JSON.stringify(DESECRATED), J);
       return;
     }
     // Simulate crafting: rank known methods to hit the target mod groups on a base.
