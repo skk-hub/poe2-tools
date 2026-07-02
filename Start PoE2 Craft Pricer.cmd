@@ -3,7 +3,7 @@ cd /d "%~dp0"
 where node >nul 2>nul
 if errorlevel 1 (
   echo Node.js is not installed or is not on PATH.
-  echo Open index.html for the static page, or install Node.js to use live refresh.
+  echo Install Node.js first - the app is a local server (node server.js), there is no static fallback.
   pause
   exit /b 1
 )

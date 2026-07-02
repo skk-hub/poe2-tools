@@ -263,6 +263,9 @@ foreach ($cat in $categories) {
             DivineValue = [math]::Round([double]$line.primaryValue, 4)
             Change7d = "$($line.sparkline.totalChange)%"
             Id = $item.id
+            # Raw poe.ninja line, kept so the price can be converted to exalted at
+            # match time (currency rates aren't loaded yet at this point in the run).
+            Line = $line
         }
     }
 }
@@ -382,12 +385,12 @@ $result = foreach ($rawName in $rawLines) {
             # trade2 had nothing usable -> fall through to the (low-volume) ninja price.
         }
 
-        $each = $match.Price
-        $total = if ($each -is [double] -or $each -is [decimal] -or $each -is [int]) {
-            [math]::Round(([double]$each * $qty), 2)
-        } else {
-            0
-        }
+        # $match.Price (1/maxVolumeRate) is denominated in the line's maxVolumeCurrency
+        # — DIVINE for high-value items like omens, not exalted. Convert with the same
+        # helper the currency-rate table uses, so Each/Total are truly exalted and sort
+        # correctly against the genuinely-exalted trade2 rows below.
+        $each = Get-DisplayPriceExalted $match.Line $currencyRates
+        $total = [math]::Round(([double]$each * $qty), 2)
 
         [PSCustomObject]@{
             Qty = $qty

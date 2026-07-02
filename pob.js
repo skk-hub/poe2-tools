@@ -97,7 +97,25 @@ function send(cmd, payload = "", timeoutMs = 20000) {
   payload = String(payload).replace(/\r\n?/g, "\n");
   return new Promise((resolve, reject) => {
     const job = { cmd, payload, resolve, reject };
-    const timer = setTimeout(() => reject(new Error("pob timeout")), timeoutMs);
+    // Timeout must also FIX UP the pump state, not just reject: leaving `cur` set
+    // would stall the queue forever after one hung call.
+    const timer = setTimeout(() => {
+      if (cur === job) {
+        // The in-flight command never answered. The protocol has no frame ids, so a
+        // LATE reply from a merely-slow bridge would be misattributed to whatever we
+        // send next — the only safe recovery is to restart the process. fail()
+        // rejects this job plus everything queued (their own timers are near expiry
+        // anyway, and post-restart the loaded build is gone); the next send()
+        // respawns cleanly.
+        fail(new Error("pob timeout — bridge restarted"));
+        kill();
+      } else {
+        // Still queued: drop it so it isn't sent to the bridge late.
+        const i = queue.indexOf(job);
+        if (i !== -1) queue.splice(i, 1);
+        job.reject(new Error("pob timeout"));
+      }
+    }, timeoutMs);
     const wrap = (fn) => (v) => { clearTimeout(timer); fn(v); };
     job.resolve = wrap(resolve); job.reject = wrap(reject);
     queue.push(job); pump();

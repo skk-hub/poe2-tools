@@ -105,17 +105,27 @@ window.__viewInit["craft"] = function () {
       syncMaster(g); renderTargetBar();
     }));
   }
+  let poolGen = 0;   // request generation — two in-flight pool loads can land out of order
   async function load() {
     const base = baseIn.value.trim();
-    if (!byName[base]) { out.innerHTML = ""; summary.innerHTML = ""; status.textContent = base ? "Pick a base from the list." : "Type, pick, or paste an item."; status.className = "status"; return; }
+    if (!byName[base]) {
+      poolGen++;   // invalidate any in-flight pool response
+      out.innerHTML = ""; summary.innerHTML = "";
+      // the pool is gone — stale target chips / sim results from the previous base go too
+      targets.clear(); groupMeta.clear(); simOut.innerHTML = ""; renderTargetBar();
+      lastBase = ""; lastIlvl = 0;
+      status.textContent = base ? "Pick a base from the list." : "Type, pick, or paste an item."; status.className = "status"; return;
+    }
     const ilvl = Math.max(1, Math.min(100, parseInt(ilvlIn.value, 10) || 100));
+    const gen = ++poolGen;
     status.textContent = "Resolving mod pool…"; status.className = "status";
     try {
       const r = await fetch("/api/craft/pool", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base, ilvl }) });
       const d = await r.json();
+      if (gen !== poolGen) return;   // a newer request superseded this one — drop it
       if (d.error) { status.textContent = d.error; status.className = "status err"; return; }
       renderPool(d);
-    } catch (e) { status.textContent = "Failed: " + (e.message || e); status.className = "status err"; }
+    } catch (e) { if (gen === poolGen) { status.textContent = "Failed: " + (e.message || e); status.className = "status err"; } }
   }
   baseIn.addEventListener("change", load);
   ilvlIn.addEventListener("change", load);
@@ -215,12 +225,12 @@ window.__viewInit["craft"] = function () {
   paste.addEventListener("input", onPaste);
 
   // ── simulate: best crafting route to the selected target mods ──
-  const fmtN = (n) => n >= 100 ? Math.round(n).toLocaleString() : n >= 10 ? Math.round(n) : n.toFixed(1);
+  const fmtN = (n) => !isFinite(n) ? "?" : n >= 100 ? Math.round(n).toLocaleString() : n >= 10 ? Math.round(n) : n >= 0.1 ? n.toFixed(1) : n.toFixed(2);
   function fmtOrbs(orbs) {
     const parts = Object.entries(orbs).filter(([, n]) => n > 0).map(([k, n]) => `<b>${fmtN(n)}</b> ${esc(k)}`);
     return parts.length ? parts.join(" + ") : "—";
   }
-  const fmtDiv = (d) => d >= 100 ? Math.round(d).toLocaleString() : d >= 10 ? d.toFixed(1) : d.toFixed(2);
+  const fmtDiv = (d) => !isFinite(d) ? "?" : d >= 100 ? Math.round(d).toLocaleString() : d >= 10 ? d.toFixed(1) : d.toFixed(2);
   function renderMethods(r) {
     if (r.error) { simOut.innerHTML = `<div class="cf-simerr">${esc(r.error)}</div>`; return; }
     if (r.impossible) {

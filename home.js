@@ -73,9 +73,9 @@ window.__viewInit["home"] = function () {
         : divineEx && c.ex > divineEx
           ? fmtEx(c.ex / divineEx) + ' <small>div</small>'
           : fmtEx(toC(c.ex)) + ' <small>' + unit + '</small>';
-      const icon = c.icon ? '<img class="fxicon" src="' + c.icon + '" alt="" loading="lazy" decoding="async">' : '';
+      const icon = c.icon ? '<img class="fxicon" src="' + esc(c.icon) + '" alt="" loading="lazy" decoding="async">' : '';
       return '<span class="fxchip' + (c.id === "divine" ? " gold" : "") + '">' + icon +
-        '<span class="fxname">' + shortName(c.name) + '</span>' +
+        '<span class="fxname">' + esc(shortName(c.name)) + '</span>' +
         '<span class="fxval">' + val + '</span></span>';
     }).join("");
     meta.textContent = (d.stale ? "rate-limited · " : "") + (d.cached ? "cached" : "live") +
@@ -129,9 +129,13 @@ window.__viewInit["home"] = function () {
       tick();
       if (untilMs) tsTimer = setInterval(tick, 1000);
     }
+    let tsLoading = false;   // countdown hitting 0 ticks every second — don't stack requests
     async function loadTrade() {
+      if (tsLoading) return;
+      tsLoading = true;
       try { const r = await fetch("/api/trade-status"); paintTrade(await r.json()); }
       catch { paintTrade(null); }
+      finally { tsLoading = false; }
     }
     loadTrade();
     setInterval(loadTrade, 30000);   // state can flip while sitting on home; cheap local poll

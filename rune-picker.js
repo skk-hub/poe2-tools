@@ -25,7 +25,6 @@ window.__viewInit["rune-picker"] = function () {
     if(typeof v!=="number"||!isFinite(v)) return esc(v||"");
     if(v>=10) return Math.round(v)+" ex";
     if(v>=1) return v.toFixed(2)+" ex";
-    if(v>=0.01) return v.toFixed(4)+" ex";
     if(v>=0.0001) return v.toFixed(4)+" ex";
     return "<0.0001 ex";
   }
@@ -206,6 +205,24 @@ window.__viewInit["rune-picker"] = function () {
   // Auto-fill: exchange items show "pricing…" while the background book fill runs.
   // Re-poll the (cheap, cached) endpoint so prices appear WITHOUT re-clicking, and
   // surface progress in the shared top bar. Bounded so it can't hammer the queue.
+  // Merge a re-poll's rows INTO the existing runeResultData (in place, keyed by
+  // name|qty) instead of replacing the array — processTradeQueue holds a reference
+  // to that array and fills trade rows into it, so swapping arrays made the two
+  // writers clobber each other's price fills.
+  function mergeRuneResults(data){
+    const fresh=data.results||[];
+    if(!runeResultData.length){ renderRuneResults(data); return; }
+    const key=r=>String(r.name||"")+"|"+String(r.qty||"");
+    const byKey=new Map(runeResultData.map(r=>[key(r),r]));
+    for(const f of fresh){
+      const row=byKey.get(key(f));
+      if(!row) continue;
+      // Never regress a row the trade queue already priced back to unpriced.
+      if(Number(row.total)>0 && !(Number(f.total)>0)) continue;
+      Object.assign(row,f);
+    }
+    renderRuneResults({results:runeResultData,best:bestFromResults(runeResultData)});
+  }
   const AUTO_POLL_MS=7000, AUTO_POLL_MAX=10;
   let autoPollTimer=0, autoPolls=0;
   function pendingCount(){ return (runeResultData||[]).filter(r=>/pricing/i.test(r.category||"")).length; }
@@ -226,7 +243,7 @@ window.__viewInit["rune-picker"] = function () {
       autoPolls++;
       try{
         const data=await fetch("/api/rune-prices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,league,forceFresh:false})}).then(r=>r.json());
-        if(data && (data.results||[]).length) renderRuneResults(data);
+        if(data && (data.results||[]).length) mergeRuneResults(data);
         scheduleAutoPoll(text,league);
       }catch{ stopAutoPoll(); }
     },AUTO_POLL_MS);
@@ -325,6 +342,9 @@ window.__viewInit["rune-picker"] = function () {
   }
 
   document.addEventListener("paste",(e)=>{
+    // Document-level listener in a hash-routed SPA — only act when THIS view is the
+    // active one, or pasting an image on any other tab fires the OCR flow here.
+    if((location.hash||"#home").slice(1)!=="rune-picker") return;
     const items=[...(e.clipboardData?.items||[])];
     const img=items.find(i=>i.type.startsWith("image/"));
     if(img){e.preventDefault();handleImageFile(img.getAsFile());}

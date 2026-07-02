@@ -153,4 +153,33 @@ near(pTransmute("GC"), 0.60, 0.01, "transmute P(GC)=w60/100 (suffix competes by 
   ok(rk.methods.some((m) => m.key === "annul"), "annul+exalt method offered");
 }
 
+// 11) expectedOrbs = expected total spend to FIRST success (per-attempt average / p),
+//     for spam-loop methods too — not the per-capped-attempt average.
+{
+  // easy: alchemy on the 3-mod pool always hits all 3 → p=1, cost exactly 1 Alchemy + 0 Chaos
+  const r = E.rng(31);
+  const easy = E.simulateChaosSpam(pool, ["GA", "GB", "GC"], 3000, 50, r);
+  near(easy.successPerAttempt, 1.0, 0.001, "chaos-spam easy target: p=1");
+  near(easy.expectedOrbs.Alchemy, 1.0, 0.001, "chaos-spam easy target: 1 Alchemy expected");
+  near(easy.expectedOrbs.Chaos || 0, 0, 0.001, "chaos-spam easy target: 0 Chaos expected");
+
+  // hard: 4 equal-weight prefix groups, rare caps at 3 → P(P1 on the item) = 3/4; cap=0
+  // forbids chaos, so an attempt = 1 Alchemy and expected Alchemy MUST be 1/p ≈ 4/3.
+  const quad = [
+    { key: "p1", type: "prefix", group: "P1", weight: 1, ilvl: 1 },
+    { key: "p2", type: "prefix", group: "P2", weight: 1, ilvl: 1 },
+    { key: "p3", type: "prefix", group: "P3", weight: 1, ilvl: 1 },
+    { key: "p4", type: "prefix", group: "P4", weight: 1, ilvl: 1 },
+  ];
+  const hard = E.simulateChaosSpam(quad, ["P1"], 50000, 0, r);
+  near(hard.successPerAttempt, 0.75, 0.01, "chaos-spam cap-0: p = 3/4 (3 of 4 equal groups fit)");
+  near(hard.expectedOrbs.Alchemy, 1 / hard.successPerAttempt, 1e-9, "chaos-spam expected Alchemy = 1/p (restart on cap-fail)");
+  // whittling with a real chaos budget: Alchemy count still 1/p, and Chaos = perAttemptAvg/p
+  const T = [{ group: "P1", keys: null, type: "prefix" }];
+  const wh = E.simulateWhittling(quad, T, 20000, 3, r);
+  near(wh.expectedOrbs.Alchemy, 1 / wh.successPerAttempt, 1e-9, "whittling expected Alchemy = 1/p");
+  ok(wh.expectedOrbs.Chaos * wh.successPerAttempt <= 3 + 1e-9, "whittling per-attempt Chaos average stays within cap");
+  ok(Math.abs(wh.expectedOrbs.Chaos - wh.expectedOrbs["Omen of Whittling"]) < 1e-9, "one Whittling omen per Chaos");
+}
+
 console.log(`craft-engine-test: ${pass} checks passed`);

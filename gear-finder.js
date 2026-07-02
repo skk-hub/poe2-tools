@@ -34,7 +34,10 @@ window.__viewInit["gear-finder"] = function () {
   const dpsOf = (s) => (s && (s.FullDPS || s.CombinedDPS || s.TotalDPS)) || 0;
   const deltaSpan = (d, unit) => { const c = d > 0 ? "up" : d < 0 ? "down" : "flat"; return `<span class="gf-delta ${c}">${d > 0 ? "+" : ""}${fmt(d)} ${unit}</span>`; };
 
-  const state = { xml: null, slots: {}, headless: false, curSlot: null, sel: new Set(), weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], preserveOther: false, pinned: [] };
+  // reqGen: bumped by selectSlot — in-flight analyze/rank responses check it and drop
+  // themselves if the user clicked another slot mid-flight (else slot A's weights land
+  // on slot B and realRank/pins record under the wrong slot).
+  const state = { xml: null, slots: {}, headless: false, curSlot: null, reqGen: 0, sel: new Set(), weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], preserveOther: false, pinned: [] };
   const isUnique = (raw) => /rarity:\s*unique/i.test(String(raw || ""));
   state.pinned = loadPins();
 
@@ -109,7 +112,7 @@ window.__viewInit["gear-finder"] = function () {
   // PoB code every visit. Stores the parsed build XML under a name.
   const SAVES_KEY = "poe2.gearFinder.builds";
   const loadSaves = () => { try { return JSON.parse(localStorage.getItem(SAVES_KEY) || "{}"); } catch { return {}; } };
-  const persistSaves = (o) => { try { localStorage.setItem(SAVES_KEY, JSON.stringify(o)); } catch {} };
+  const persistSaves = (o) => { try { localStorage.setItem(SAVES_KEY, JSON.stringify(o)); return true; } catch { return false; } };
   function refreshSaved() {
     const saves = loadSaves();
     const names = Object.keys(saves).sort((a, b) => a.localeCompare(b));
@@ -195,9 +198,10 @@ window.__viewInit["gear-finder"] = function () {
     if (n === 1) {
       els.optOut.innerHTML = "";
       selectSlot([...state.sel][0]);
+      const gen = state.reqGen;
       els.panel.scrollIntoView({ behavior: "smooth", block: "start" });
       await analyzeSlot();
-      if (state.weights.length) await realRank();
+      if (gen === state.reqGen && state.weights.length) await realRank();
       return;
     }
     els.panel.hidden = true;
@@ -211,7 +215,8 @@ window.__viewInit["gear-finder"] = function () {
     els.optBreaks.querySelectorAll(".gf-optbkin").forEach((i) => { if (i.value !== "") breakpoints[i.dataset.k] = Number(i.value); });
     els.find.disabled = true;
     els.optOut.innerHTML = `<p class="status">${deep ? "Deeper search — " : ""}Fetching ${picked.length} pools + scoring combinations in Path of Building… ${picked.length >= 4 ? "(4–5 slots: ~1–2 min, lots of Trade2 calls)" : "(~30s)"}${deep ? " (deeper = more Trade2 calls)" : ""}</p>`;
-    const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league, deep: !!deep }).catch((e) => ({ error: e.message || String(e) }));
+    const minDiv = Number(els.budgetMin.value) || 0;
+    const d = await api("/api/gear/optimize-set", { buildXml: state.xml, slots: picked, breakpoints, maxPriceDiv: Number(els.budget.value) || 0, ...(minDiv > 0 ? { minPriceDiv: minDiv } : {}), rarityMin: rarityMin(), league: state.league, deep: !!deep }).catch((e) => ({ error: e.message || String(e) }));
     els.find.disabled = false;
     if (d.available === false) { els.optOut.innerHTML = `<p class="status err">Headless Path of Building isn't available.</p>`; return; }
     if (d.limited) { els.optOut.innerHTML = `<p class="status err">Trade2 is rate-limited — try again shortly.</p>`; return; }
@@ -327,7 +332,7 @@ window.__viewInit["gear-finder"] = function () {
   }
 
   function selectSlot(id) {
-    state.curSlot = id; state.weights = []; state.query = null;
+    state.curSlot = id; state.reqGen++; state.weights = []; state.query = null;
     state.sel = new Set([id]);   // focusing one slot (scan/pin click) = single-slot selection
     updateFindUI();
     els.slot.textContent = id + " — " + ((state.slots[id] && state.slots[id].name) || "");
@@ -371,12 +376,14 @@ window.__viewInit["gear-finder"] = function () {
 
   async function analyzeSlot() {
     const id = state.curSlot; if (!id) return;
+    const gen = state.reqGen;
     els.find.disabled = true; setStatus("Asking Path of Building what this slot is worth…");
     const d = await api("/api/gear/weights", {
       buildXml: state.xml, slot: id, pobSlot: state.slots[id] && state.slots[id].pobSlot,
       current: { raw: state.slots[id] && state.slots[id].raw }, maxPriceDiv: Number(els.budget.value) || 0, league: state.league,
     }).catch((e) => ({ error: e.message || String(e) }));
     els.find.disabled = false;
+    if (gen !== state.reqGen) return;   // user switched slots mid-flight — this response is stale
     if (d.error) { setStatus("Failed: " + d.error, true); return; }
     if (d.available === false) { setStatus("Headless Path of Building isn't available — install PoB + LuaJIT for build-weighted search.", true); return; }
     state.weights = d.weights || []; state.query = d.query; state.league = d.league || state.league; state.metric = d.metric || "dps"; state.equip = d.equip || null; state.preserve = d.preserve || null;
@@ -405,6 +412,7 @@ window.__viewInit["gear-finder"] = function () {
   // Rank by REAL DPS: fetch in-budget candidates and score each in PoB.
   async function realRank() {
     if (!state.curSlot || !state.weights.length) { setStatus("Analyze the slot first.", true); return; }
+    const gen = state.reqGen;
     // Floor at 70% of current rolls on stats the item HAS (cur>0); `equip` keeps the
     // item's core total defence. A near-BIS item rarely beats itself on every stat, so
     // 70% (not 100%) — PoB ΔDPS sorts the rest.
@@ -412,6 +420,7 @@ window.__viewInit["gear-finder"] = function () {
     els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
     const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, minPriceDiv: Number(els.budgetMin.value) || 0, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league }).catch((e) => ({ error: e.message || String(e) }));
     els.realRankBtn.disabled = false;
+    if (gen !== state.reqGen) return;   // user switched slots mid-flight — don't post these results on the new slot
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
     if (d.sessionExpired) markSessionExpired();
@@ -457,15 +466,17 @@ window.__viewInit["gear-finder"] = function () {
       els.realOut.innerHTML = `<p class="status">All ${all.length} in-budget listing(s) were ${unit} downgrades — your current ${slotLabel(state.curSlot)} is likely near best-in-slot here. Try a higher Max div or dial a breakpoint down.</p>`;
       return;
     }
+    // Same denominator as the visible ROI badge (gain per DIVINE) so "★ best value"
+    // agrees with the numbers shown; priceDiv <= 0 (no divine price) is excluded.
     let bestK = -1, bestVal = 0;
-    top.forEach(({ c }, k) => { const g = gainOf(c); if (g > 0 && c.priceEx > 0 && g / c.priceEx > bestVal) { bestVal = g / c.priceEx; bestK = k; } });
+    top.forEach(({ c }, k) => { const g = gainOf(c); if (g > 0 && c.priceDiv > 0 && g / c.priceDiv > bestVal) { bestVal = g / c.priceDiv; bestK = k; } });
     els.realOut.innerHTML = top.map(({ c, idx }, k) => {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
       // No seller-status badge: these are instant-buyout (async) listings, buyable even
       // when the seller is offline, so online/afk/offline would just mislead.
       const r = roi(c);
       const roiHtml = r > 0 ? ` <span class="gf-roi" title="${hasDps ? "DPS" : "EHP"} gained per divine — your ROI">${fmtRoi(r)}/div</span>` : "";
-      const best = k === bestK ? ` <span class="gf-best" title="most ${hasDps ? "DPS" : "EHP"} per exalted of these upgrades">★ best value</span>` : "";
+      const best = k === bestK ? ` <span class="gf-best" title="most ${hasDps ? "DPS" : "EHP"} per divine of these upgrades">★ best value</span>` : "";
       // "Best price?" scores cheaper instant-buyout items in PoB — is any as good for less?
       // Only worth it for items costing ≥1 div (cheap ones aren't worth a price hunt).
       const check = (c.mods && c.mods.length && c.priceDiv >= 1 && c.dDPS > 0) ? ` <button type="button" class="gf-check" data-idx="${idx}" title="score cheaper instant-buyout items in PoB — is any as good for less?">best price?</button><span class="gf-verdict"></span>` : "";
@@ -551,7 +562,7 @@ window.__viewInit["gear-finder"] = function () {
 
   els.importBtn.addEventListener("click", async () => {
     const code = (els.code.value || "").trim(); if (!code) { setStatus("Paste a PoB code first.", true); return; }
-    setStatus("Importing…"); renderBuild(await api("/api/gear/import", { code }));
+    setStatus("Importing…"); renderBuild(await api("/api/gear/import", { code }).catch((e) => ({ error: e.message || String(e) })));
   });
   // "Save this build as…" is a button that reveals the name box; the box's Save confirms.
   els.saveBuild.addEventListener("click", () => {
@@ -562,7 +573,8 @@ window.__viewInit["gear-finder"] = function () {
     const name = (els.saveName.value || "").trim();
     if (!name) { setStatus("Type a name to save this build.", true); return; }
     if (!state.xml) { setStatus("Import a build first, then save it.", true); return; }
-    const saves = loadSaves(); saves[name] = state.xml; persistSaves(saves);
+    const saves = loadSaves(); saves[name] = state.xml;
+    if (!persistSaves(saves)) { setStatus(`Couldn't save "${name}" — browser storage is full. Delete an old saved build and try again.`, true); return; }
     els.saveName.value = ""; els.saveBox.hidden = true; els.saveBuild.hidden = false;
     refreshSaved(); els.saved.value = name;   // refreshSaved → syncSaveRow
     setStatus(`Saved "${name}" — pick it from My builds next time.`);
@@ -571,7 +583,7 @@ window.__viewInit["gear-finder"] = function () {
     const name = els.saved.value, saves = loadSaves();
     if (!name || !saves[name]) { setStatus("No saved build selected.", true); return; }
     setStatus(`Loading "${name}"…`);
-    renderBuild(await api("/api/gear/import", { xml: saves[name] }));
+    renderBuild(await api("/api/gear/import", { xml: saves[name] }).catch((e) => ({ error: e.message || String(e) })));
   });
   els.delSaved.addEventListener("click", () => {
     const name = els.saved.value, saves = loadSaves();
@@ -583,7 +595,7 @@ window.__viewInit["gear-finder"] = function () {
   els.find.addEventListener("click", findUpgrades);
   els.scanAll.addEventListener("click", scanAll);
   // Click a scanned slot → focus it as a single-slot rank (select + analyze + rank).
-  els.scanOut.addEventListener("click", async (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { els.optOut.innerHTML = ""; selectSlot(tr.dataset.slot); els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); await analyzeSlot(); if (state.weights.length) await realRank(); } });
+  els.scanOut.addEventListener("click", async (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { els.optOut.innerHTML = ""; selectSlot(tr.dataset.slot); const gen = state.reqGen; els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); await analyzeSlot(); if (gen === state.reqGen && state.weights.length) await realRank(); } });
   els.realRankBtn.addEventListener("click", realRank);
   els.treeRun.addEventListener("click", analyzeTree);
   // Click an optimizer pick row → open that listing on trade (same per-item link as the ranked rows).
@@ -654,7 +666,7 @@ window.__viewInit["gear-finder"] = function () {
       // PoB-based: are any CHEAPER instant-buyout items actually this good (real ΔDPS)?
       const d = await api("/api/gear/value-check", { league: state.league, slot, pobSlot, buildXml: state.xml, mods: c.mods, maxPriceDiv: c.priceDiv, targetDDPS: c.dDPS }).catch(() => null);
       if (!d || d.error || d.limited || d.available === false) { chk.disabled = false; out.textContent = d && d.limited ? "rate-limited — retry" : d && d.available === false ? "PoB unavailable" : "check failed"; return; }
-      if (d.cheaper) { const cp = d.cheaper.priceDiv ? `${fmt(d.cheaper.priceDiv)} div` : `${fmt(d.cheaper.priceEx || 0)} ex`; out.textContent = `↓ same DPS for ${cp}: ${esc(d.cheaper.name)} — you'd overpay`; out.classList.add("warn"); }
+      if (d.cheaper) { const cp = d.cheaper.priceDiv ? `${fmt(d.cheaper.priceDiv)} div` : `${fmt(d.cheaper.priceEx || 0)} ex`; out.textContent = `↓ same DPS for ${cp}: ${d.cheaper.name} — you'd overpay`; out.classList.add("warn"); }
       else if (d.scanned > 0) { out.textContent = `✓ best price — none of ${d.scanned} cheaper items match this DPS`; out.classList.add("good"); }
       else { out.textContent = "✓ nothing cheaper to compare — best price"; out.classList.add("good"); }
       chk.remove();

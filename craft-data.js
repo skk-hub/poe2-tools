@@ -75,7 +75,7 @@ module.exports = {
       "tags":["armour","buckler","default","dex_armour","dex_shield","shield"]
     },
     "Aegis Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":79,
       "implicit":"+(12-18)% to Block chance",
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
@@ -200,7 +200,7 @@ module.exports = {
       "tags":["armour","default","helmet","str_dex_armour"]
     },
     "Anima Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":52,
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -258,7 +258,7 @@ module.exports = {
       "tags":["armour","default","helmet","str_int_armour"]
     },
     "Arcing Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":51,
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -405,7 +405,7 @@ module.exports = {
       "tags":["armour","body_armour","default","str_armour"]
     },
     "Barbarous Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":48,
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -438,7 +438,7 @@ module.exports = {
       "tags":["armour","default","maraketh_basetype","shield","str_armour","str_shield"]
     },
     "Barrier Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":37,
       "implicit":"+(12-18)% to Block chance",
       "tags":["default","two_hand_weapon","twohand","vaal_basetype","warstaff","weapon"]
@@ -514,7 +514,7 @@ module.exports = {
       "tags":["armour","default","shield","str_armour","str_shield"]
     },
     "Bladed Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":59,
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -584,7 +584,7 @@ module.exports = {
       "tags":["armour","default","gloves","maraketh_basetype","str_armour"]
     },
     "Bolting Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":78,
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -1068,7 +1068,7 @@ module.exports = {
       "tags":["armour","default","helmet","maraketh_basetype","str_dex_armour"]
     },
     "Crackling Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":16,
       "tags":["default","maraketh_basetype","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -1078,7 +1078,7 @@ module.exports = {
       "tags":["axe","default","maraketh_basetype","one_hand_weapon","onehand","weapon"]
     },
     "Crescent Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":20,
       "tags":["default","maraketh_basetype","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -1415,7 +1415,7 @@ module.exports = {
       "tags":["axe","default","one_hand_weapon","onehand","weapon"]
     },
     "Dreaming Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":78,
       "tags":["default","karui_basetype","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -2208,12 +2208,12 @@ module.exports = {
       "tags":["armour","default","helmet","str_armour"]
     },
     "Gothic Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":11,
       "tags":["default","ezomyte_basetype","two_hand_weapon","twohand","warstaff","weapon"]
     },
     "Graceful Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":56,
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -2344,7 +2344,7 @@ module.exports = {
       "tags":["armour","default","helmet","str_armour"]
     },
     "Guardian Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":62,
       "implicit":"+(12-18)% to Block chance",
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
@@ -2457,7 +2457,7 @@ module.exports = {
       "tags":["armour","body_armour","default","str_armour"]
     },
     "Hefty Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":45,
       "implicit":"(20-50)% chance to Daze on Hit",
       "tags":["default","karui_basetype","two_hand_weapon","twohand","warstaff","weapon"]
@@ -2958,7 +2958,7 @@ module.exports = {
       "tags":["belt","default"]
     },
     "Long Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":0,
       "implicit":"16% increased Melee Strike Range with this weapon",
       "tags":["default","ezomyte_basetype","two_hand_weapon","twohand","warstaff","weapon"]
@@ -2980,7 +2980,7 @@ module.exports = {
       "tags":["amulet","default"]
     },
     "Lunar Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":72,
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -3728,7 +3728,7 @@ module.exports = {
       "tags":["armour","boots","default","dex_armour","ezomyte_basetype"]
     },
     "Razor Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":77,
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -3738,7 +3738,7 @@ module.exports = {
       "tags":["claw","default","one_hand_weapon","onehand","weapon"]
     },
     "Reaching Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":45,
       "implicit":"16% increased Melee Strike Range with this weapon",
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
@@ -7752,7 +7752,7 @@ module.exports = {
       "tags":["armour","body_armour","default","int_armour","runeforged","vaal_basetype"]
     },
     "Runemastered Warding Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":65,
       "implicit":"+(30-50) to maximum Runic Ward",
       "tags":["default","runeforged","two_hand_weapon","twohand","warstaff","weapon"]
@@ -8154,7 +8154,7 @@ module.exports = {
       "tags":["belt","default"]
     },
     "Sinister Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":67,
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -8180,7 +8180,7 @@ module.exports = {
       "tags":["armour","default","dex_int_armour","helmet"]
     },
     "Skullcrusher Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":75,
       "implicit":"(20-50)% chance to Daze on Hit",
       "tags":["default","karui_basetype","two_hand_weapon","twohand","warstaff","weapon"]
@@ -8211,7 +8211,7 @@ module.exports = {
       "tags":["default","flail","maraketh_basetype","one_hand_weapon","onehand","weapon"]
     },
     "Slicing Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":33,
       "tags":["default","two_hand_weapon","twohand","vaal_basetype","warstaff","weapon"]
     },
@@ -8231,7 +8231,7 @@ module.exports = {
       "tags":["default","ezomyte_basetype","mace","one_hand_weapon","onehand","weapon"]
     },
     "Smooth Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":49,
       "tags":["default","karui_basetype","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -8450,7 +8450,7 @@ module.exports = {
       "tags":["armour","default","gloves","str_dex_armour"]
     },
     "Steelpoint Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":28,
       "tags":["default","maraketh_basetype","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -8559,7 +8559,7 @@ module.exports = {
       "tags":["default","mace","one_hand_weapon","onehand","weapon"]
     },
     "Striking Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":77,
       "implicit":"16% increased Melee Strike Range with this weapon",
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
@@ -9201,7 +9201,7 @@ module.exports = {
       "tags":["bow","default","ezomyte_basetype","ranged","two_hand_weapon","twohand","weapon"]
     },
     "Warding Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":65,
       "implicit":"+(30-50) to maximum Runic Ward",
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
@@ -9244,7 +9244,7 @@ module.exports = {
       "tags":["armour","body_armour","default","dex_int_armour","ezomyte_basetype"]
     },
     "Waxing Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":54,
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -9355,7 +9355,7 @@ module.exports = {
       "tags":["armour","default","helmet","maraketh_basetype","str_armour"]
     },
     "Wrapped Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":0,
       "tags":["default","ezomyte_basetype","two_hand_weapon","twohand","warstaff","weapon"]
     },
@@ -9376,7 +9376,7 @@ module.exports = {
       "tags":["armour","default","focus","int_armour"]
     },
     "Wyrm Quarterstaff":{
-      "class":"Staff",
+      "class":"Warstaff",
       "ilvl":65,
       "tags":["default","two_hand_weapon","twohand","warstaff","weapon"]
     },

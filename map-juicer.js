@@ -9,9 +9,12 @@ window.__viewInit["map-juicer"]=function(){
   // the Mod Value table the moment live weights load.
   function mergeLive(live){
     if (!live || !live.stats) return live;
-    const have = new Set(live.stats.map(s => s.key));
+    const baked = new Map((D.marketWeights.stats || []).map(s => [s.key, s]));
+    // A sweep's ceiling is only the max roll SEEN in listings — never let it shrink the known roll cap.
+    const stats = live.stats.map(s => Object.assign({}, s, { ceiling: Math.max(s.ceiling || 0, (baked.get(s.key) || {}).ceiling || 0) }));
+    const have = new Set(stats.map(s => s.key));
     const extra = (D.marketWeights.stats || []).filter(s => !have.has(s.key));
-    return Object.assign({}, live, { stats: live.stats.concat(extra) });
+    return Object.assign({}, live, { stats: stats.concat(extra) });
   }
   const els = {
     patchline: document.getElementById("patchline"),
@@ -33,10 +36,12 @@ window.__viewInit["map-juicer"]=function(){
   let dropKeep = 115;        // dump keeps maps with Waystone Drop Chance >= this% (your sustain rule); 0 = dump any drop roll
   let monRarKeep = 80;       // dump keeps maps with Monster Rarity >= this% (user's keep rule); 0 = don't keep on monster rarity
   let packKeep = 40;         // dump keeps maps with Pack Size >= this% (now the top solo chase ~30-150ex, 2026-06-28); 0 = off
-  // Match a number ≥ pct (pct is a multiple of 10). Two-digit: first digit
-  // (pct/10)…9 + any second digit (so ≥ pct); OR any three-digit (100+). Uses
-  // [0-9] not "." so it can't swallow the trailing "%". The label token carries the
-  // stat name; we bridge the real in-stash format "Label: +X%" with ": \+…%".
+  // Match a number ≥ pct — EXACT for any threshold, not just multiples of 10
+  // (≥45 must not match 40-44; ≥5 must match 5-9). Uses [0-9] not "." so it
+  // can't swallow the trailing "%". The label token carries the stat name; we
+  // bridge the real in-stash format "Label: +X%" with ": \+…%". Multiples of 10
+  // keep the historical compact form ([d-9][0-9]) so default regexes don't churn;
+  // in-game search caps regex length, so every branch stays as short as it can.
   function geNum(pct, ceiling){
     // 3-digit threshold (e.g. Drop Chance >=115): match 1XX >= pct. Same-tens with
     // units>=u, OR any higher tens. Lets the Drop keep be an exact %, not just "100+".
@@ -46,12 +51,18 @@ window.__viewInit["map-juicer"]=function(){
       return `(1${tens}[${units}-9]${hi})`;
     }
     if (pct >= 100) return "[0-9][0-9][0-9]";                    // exactly 100% = any 3-digit
-    const d = Math.max(1, Math.floor(pct / 10));
-    const two = `[${d}-9][0-9]`;
     // If the stat can't roll into three digits, omit the 100+ alternation — keeps the
     // dump regex short enough to stack several exclusions under the 250-char limit.
-    if (ceiling && ceiling < 100) return two;
-    return `(${two}|[0-9][0-9][0-9])`;
+    const three = (ceiling && ceiling < 100) ? "" : "|[0-9][0-9][0-9]";
+    if (pct < 10) return `([${Math.max(1, pct)}-9]|[1-9][0-9]${three})`;   // single digit OR any 2-digit
+    const tens = Math.floor(pct / 10), units = pct % 10;
+    if (units === 0){                                            // multiple of 10 — compact form
+      const two = `[${tens}-9][0-9]`;
+      return three ? `(${two}${three})` : two;
+    }
+    // e.g. ≥45 → 4[5-9] (same tens, units ≥5) OR [5-9][0-9] (any higher tens)
+    const hi = tens >= 9 ? "" : `|[${tens + 1}-9][0-9]`;
+    return `(${tens}[${units}-9]${hi}${three})`;
   }
   function atLeast(token, pct, ceiling){ return `${token}: \\+${geNum(pct, ceiling)}%`; }
   function noRevivesRegex(){ return `"${T.revivesZero}"`; }
@@ -374,12 +385,6 @@ window.__viewInit["map-juicer"]=function(){
       });
     });
   }
-  function bindThresholds(){
-    const r = els.sheet.querySelector("#rxRarity"), p = els.sheet.querySelector("#rxPack");
-    if (r) r.addEventListener("change", () => { rarityMin = Number(r.value) || 60; renderSheet(); });
-    if (p) p.addEventListener("change", () => { packMin = Number(p.value) || 30; renderSheet(); });
-  }
-
   // ── Mod value table (sorted affixes) + live Trade2 refresh ────────────────
   function peakEx(s){ return s.peakEx || (s.curve && s.curve.length ? s.curve[s.curve.length-1][1] : 0) || 0; }
   let mwStatus = "", refreshing = false;
@@ -441,7 +446,7 @@ window.__viewInit["map-juicer"]=function(){
     const slot = asideSlots().t;
     const groups = tabletGroups();
     const sections = groups.map(g => {
-      const mods = g.mods.slice().sort((a, b) => (b.priceCheck - a.priceCheck) || (modWorth(b) - modWorth(a)) || a.label.localeCompare(b.label));
+      const mods = g.mods.slice().sort((a, b) => ((b.priceCheck?1:0) - (a.priceCheck?1:0)) || (modWorth(b) - modWorth(a)) || a.label.localeCompare(b.label));
       const items = mods.map(m => `<li class="tv-item">
         <div class="tv-line"><span class="tv-name">${esc(m.label)}</span>${valBadge(m)}</div>
         ${m.note ? `<div class="tv-sub">${esc(m.note)}</div>` : ""}

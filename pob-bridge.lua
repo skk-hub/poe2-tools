@@ -11,7 +11,7 @@
 --   --rpc            persistent: length-framed stdio protocol (see pob.js)
 
 -- Capture our CLI args up front — PoB's Launch.lua clobbers the global `arg`.
-local BRIDGE_MODE, BRIDGE_ARG2 = arg[1], arg[2]
+local BRIDGE_MODE, BRIDGE_ARG2, BRIDGE_ARG3, BRIDGE_ARG4 = arg[1], arg[2], arg[3], arg[4]
 
 -- ── SimpleGraphic stubs ────────────────────────────────────────────────────
 local callbackTable = {}
@@ -284,7 +284,7 @@ end
 if mode == "--treemoves" then
 	local f = assert(io.open(BRIDGE_ARG2, "r")); local xml = f:read("*a"); f:close()
 	loadBuildXML(xml)
-	io.write(treeMoves(tonumber(arg[3]) or 5) .. "\n")
+	io.write(treeMoves(tonumber(BRIDGE_ARG3) or 5) .. "\n")
 	os.exit(0)
 end
 
@@ -292,8 +292,8 @@ end
 if mode == "--calc" then
 	local bf = assert(io.open(BRIDGE_ARG2, "r")); local xml = bf:read("*a"); bf:close()
 	loadBuildXML(xml)
-	local slot = arg[3]
-	local itf = assert(io.open(arg[4], "r")); local itemText = itf:read("*a"); itf:close()
+	local slot = BRIDGE_ARG3
+	local itf = assert(io.open(BRIDGE_ARG4, "r")); local itemText = itf:read("*a"); itf:close()
 	io.write("base:    " .. jsonEncode(getStats()) .. "\n")
 	local swapped, err = calcWith(slot, itemText)
 	if swapped then io.write("swapped: " .. jsonEncode(swapped) .. "\n")

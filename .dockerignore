@@ -5,3 +5,7 @@
 .playwright-cli/
 node_modules/
 *.env
+# Never bake the git history into the image (COPY . . would copy it all).
+.git/
+# VM-local auto-deploy state (last successfully deployed sha).
+.last-deployed-sha

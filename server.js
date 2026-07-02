@@ -94,9 +94,6 @@ const TRADE_RECORD = process.env.POE_RECORD === "1";
 const TRADE_OFFLINE = process.env.POE_OFFLINE === "1";
 const TRADE_FIXTURE_FILE = path.join(__dirname, "trade-fixtures.json");
 const MAX_RUNE_LINES = 30;
-const MAX_TRADE_FALLBACKS = 0;
-const COMPARABLE_CACHE_MS = 5 * 60 * 1000;
-const QUIVER_CATEGORY = "armour.quiver";
 const tradeQueue = createTradeQueue({
   statusFile: path.join(DATA_DIR, ".trade-status.json"),
   headers: TRADE_HEADERS,
@@ -108,7 +105,6 @@ const tradeQueue = createTradeQueue({
 });
 if (TRADE_OFFLINE) console.log("[trade] OFFLINE replay mode — serving trade-fixtures.json, zero live GGG calls");
 else if (TRADE_RECORD) console.log("[trade] RECORD mode — live calls captured to trade-fixtures.json");
-const comparableCache = new Map();
 const EXALTED_ID = "exalted";
 // Listing status for the EE2-faithful exchange read. EE2's default is "online";
 // override to "any" via env if online reads too thin on the shared/VPN IP.
@@ -367,6 +363,7 @@ async function resolveArbitrageItems(league) {
   const byName = new Map();
   const iconsById = {};
   let catalog = new Map();
+  let fetched = false;
   try {
     const endpoint = "https://www.pathofexile.com/api/trade2/data/static";
     const data = await tradeQueue.request(endpoint, { method: "GET" });
@@ -375,6 +372,7 @@ async function resolveArbitrageItems(league) {
       if (entry.image) iconsById[String(entry.id)] = entry.image;
     }
     catalog = buildExchangeCatalog(data);
+    fetched = true;
   } catch {
     // Static-data lookup is a convenience. Hardcoded fallbacks keep the scanner usable.
   }
@@ -383,7 +381,9 @@ async function resolveArbitrageItems(league) {
     const resolved = names.map((name) => byName.get(normalizeNameKey(name))).find(Boolean);
     return { ...item, id: resolved || item.id, fallbackId: item.id };
   });
-  arbitrageStaticCache = { loadedAt: Date.now(), items, iconsById, catalog };
+  // A FAILED fetch must not squat the 60-min TTL with an empty catalog: backdate it
+  // so the next call ~5 min later retries, while the fallback items still serve now.
+  arbitrageStaticCache = { loadedAt: fetched ? Date.now() : Date.now() - 55 * 60 * 1000, items, iconsById, catalog };
   return items;
 }
 
@@ -474,13 +474,6 @@ function normalizeName(value) {
     .trim();
 }
 
-// Tier qualifiers make a DIFFERENT item — "Greater Orb of Transmutation" is not
-// "Orb of Transmutation". The loose substring matcher below would otherwise treat
-// the base name (a substring of the qualified one) as a match and strip the tier,
-// mispricing Greater/Perfect orbs as their base. Require the tier words to agree.
-const TIER_RE = /\b(?:greater|perfect|lesser|grand|advanced)\b/g;
-function tierKey(value) { return (String(value).match(TIER_RE) || []).sort().join(" "); }
-
 function roundPriceExalted(value) {
   if (value >= 1) return Math.round(value * 100) / 100;
   if (value >= 0.01) return Math.round(value * 10000) / 10000;
@@ -494,17 +487,6 @@ function stripQuantity(value) {
     qty: Number(match[1].replace(/[Il|l]/g, "1")) || 1,
     text: match[2].trim(),
   };
-}
-
-// poe.ninja exposes no trade count, but volumePrimaryValue is total turnover
-// (in divine) and primaryValue is the unit price, so their quotient is the
-// number of units traded in the window. More units = deeper, more reliable price.
-
-function priceConfidence(units) {
-  if (!Number.isFinite(units) || units < 0) return "unknown";
-  if (units >= 300) return "high";
-  if (units >= 30) return "medium";
-  return "low";
 }
 
 async function fetchTrade(url, options = {}) {
@@ -678,6 +660,12 @@ function ee2Cached(league, key) {
 function writeEe2Cache(league, key, p) {
   const all = readEe2All();
   (all[league] || (all[league] = {}))[key] = { ex: (p && p.ex) || 0, side: (p && p.side) || "", depth: (p && p.depth) || 0, stock: (p && p.stock) || 0, sides: (p && p.sides) || [], updated: new Date().toISOString() };
+  // Prune expired entries on write so the file (keys are catId|qty) can't grow unbounded.
+  for (const lg of Object.keys(all)) {
+    for (const [k, e] of Object.entries(all[lg] || {})) {
+      if (!e || !e.updated || Date.now() - new Date(e.updated).getTime() > EE2_PRICE_TTL_MS) delete all[lg][k];
+    }
+  }
   try { fs.writeFileSync(EE2_PRICES_FILE, JSON.stringify(all)); } catch {}
 }
 // Background-fill EE2 prices for items shown as "pricing…" this check (over the live
@@ -798,10 +786,13 @@ function refreshProxy(league) {
 async function getProxyData(league, force) {
   league = sanitizeLeague(league);
   const cached = readProxyCache();
-  const fresh = cached && cached.league === league && cached.updated && Date.now() - new Date(cached.updated).getTime() < EE2_PROXY_TTL_MS;
+  const haveCacheForLeague = cached && cached.league === league;
+  const fresh = haveCacheForLeague && cached.updated && Date.now() - new Date(cached.updated).getTime() < EE2_PROXY_TTL_MS;
   if (fresh && !force) return cached;
-  if (cached && !force) { refreshProxy(league).catch(() => {}); return cached; }
-  try { return await refreshProxy(league); } catch { return cached; }
+  // Only stale-serve a cache for the SAME league (mirrors getExchangeData) — a
+  // wrong-league cache would silently price everything off another economy.
+  if (haveCacheForLeague && !force) { refreshProxy(league).catch(() => {}); return cached; }
+  try { return await refreshProxy(league); } catch { return haveCacheForLeague ? cached : null; }
 }
 function proxyPrice(proxy, name) {
   return proxy && proxy.items ? proxy.items[normalizeName(name)] || null : null;
@@ -818,18 +809,21 @@ async function fetchExchangeData(league) {
   // per currency, used only if the proxy is unreachable.
   const proxy = await getProxyData(league).catch(() => null);
   let divineEx = (proxy && proxy.divineEx) || 0, chaosEx = (proxy && proxy.chaosEx) || 0;
+  let divAnchor = null, chAnchor = null;   // reused in the loop so divine/chaos aren't fetched twice
   if (!divineEx) {
-    const dv = await exchangePriceEx(league, "divine");
-    divineEx = dv && dv.ex > 0 ? dv.ex : 0;
-    const ch = await exchangePriceEx(league, "chaos", divineEx, 0);
-    chaosEx = ch && ch.ex > 0 ? ch.ex : 0;
+    divAnchor = await exchangePriceEx(league, "divine");
+    divineEx = divAnchor && divAnchor.ex > 0 ? divAnchor.ex : 0;
+    chAnchor = await exchangePriceEx(league, "chaos", divineEx, 0);
+    chaosEx = chAnchor && chAnchor.ex > 0 ? chAnchor.ex : 0;
   }
   for (const c of currencies) {
     let ex = 0, vol = 0, src = "ee2 (poe.ninja)";
     const pv = proxyPrice(proxy, c.name);
     if (pv && pv.ex > 0) { ex = round4(pv.ex); vol = pv.volume || 0; }
     else {
-      const p = await exchangePriceEx(league, c.id, divineEx, chaosEx);   // proxy miss → Trade2 bulk
+      const p = c.id === "divine" && divAnchor ? divAnchor
+        : c.id === "chaos" && chAnchor ? chAnchor
+        : await exchangePriceEx(league, c.id, divineEx, chaosEx);   // proxy miss → Trade2 bulk
       if (!p || !(p.ex > 0)) continue;
       ex = round4(p.ex); vol = p.depth || 0; src = "trade2 exchange";
     }
@@ -915,6 +909,9 @@ async function getExchangeData(league, force) {
 // never the slow path. Single-flight + rate-limit aware = gentle on the shared IP.
 async function warmExchange(league = DEFAULT_LEAGUE) {
   const cached = readCurrencyRatesCache();
+  // Warm the league the user is actually working in (the one in the single cache
+  // file) — always warming DEFAULT_LEAGUE clobbered a non-default league's cache.
+  if (cached && cached.league) league = cached.league;
   const ageMs = cached && cached.updated ? Date.now() - new Date(cached.updated).getTime() : Infinity;
   if (ageMs < CURRENCY_RATES_TTL_MS - 2 * 60 * 1000) return;  // still comfortably fresh
   if (tradeStatus().limited) return;
@@ -1201,137 +1198,6 @@ async function runWaystoneSweep(league) {
 // Best buyer rate (cheapest exalted-per-divine) with non-trivial stock, so a
 // single tiny-stock outlier can't skew the headline number.
 
-// Disabled: this powered the now-blanked craft-pricer off poe.ninja, which is BANNED.
-// Returns empty so /api/prices stays a valid (dead) endpoint; rebuild on Trade2 if the
-// craft-pricer comes back. ponytail: stub, not deleted — the route still references it.
-
-function percentile(values, pct) {
-  if (!values.length) return 0;
-  const sorted = values.slice().sort((a, b) => a - b);
-  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * pct)));
-  return roundPriceExalted(sorted[idx]);
-}
-
-function listingPriceEx(price, currencyRates) {
-  if (!price) return 0;
-  const amount = Number(price.amount);
-  const rate = Number(currencyRates[price.currency]);
-  if (!Number.isFinite(amount) || !Number.isFinite(rate) || amount <= 0 || rate <= 0) return 0;
-  return amount * rate;
-}
-
-function buildComparableSearch(target, tradeStats = target.tradeStats) {
-  return {
-    query: {
-      status: { option: "any" },
-      filters: {
-        type_filters: {
-          filters: {
-            category: { option: QUIVER_CATEGORY },
-            rarity: { option: "nonunique" },
-          },
-        },
-        misc_filters: {
-          filters: {
-            ilvl: { min: 75 },
-            corrupted: { option: "false" },
-          },
-        },
-      },
-      stats: [{
-        type: "and",
-        filters: tradeStats.map((stat) => {
-          const filter = { id: stat.id };
-          if (stat.value) filter.value = stat.value;
-          return filter;
-        }),
-      }],
-    },
-    sort: { price: "asc" },
-  };
-}
-
-async function fetchComparablePrices(target, league, currencyRates, fallback = false) {
-  const searchUrl = "https://www.pathofexile.com/api/trade2/search/poe2/" + encodeURIComponent(league);
-  const cacheKey = league + "|" + target.id + "|" + (fallback ? "fallback" : "strict");
-  const cached = comparableCache.get(cacheKey);
-  if (cached && Date.now() - cached.cachedAt < COMPARABLE_CACHE_MS) {
-    return { ...cached.value, cached: true };
-  }
-
-  const status = tradeStatus();
-  if (status.limited) {
-    if (cached) return { ...cached.value, cached: true, stale: true, limited: true, tradeLimitedUntil: status.tradeLimitedUntil };
-    return { targetId: target.id, count: 0, listings: [], quickSaleEx: 0, normalSaleEx: 0, premiumSaleEx: 0, confidence: "limited", liquidity: "unknown", limited: true, tradeLimitedUntil: status.tradeLimitedUntil };
-  }
-
-  try {
-    const search = await fetchTrade(searchUrl, { method: "POST", body: JSON.stringify(buildComparableSearch(target, fallback ? target.fallbackTradeStats : target.tradeStats)) });
-    const ids = (search.result || []).slice(0, 10);
-    if (!ids.length) {
-      if (!fallback && target.fallbackTradeStats) {
-        const fallbackResult = await fetchComparablePrices(target, league, currencyRates, true);
-        return {
-          ...fallbackResult,
-          fallbackUsed: true,
-          confidence: fallbackResult.confidence === "none" ? "none" : "fallback",
-          notes: "Strict target had no listings; using relaxed +1 projectile comparable baseline.",
-        };
-      }
-      const emptyResult = { targetId: target.id, count: 0, listings: [], quickSaleEx: 0, normalSaleEx: 0, premiumSaleEx: 0, confidence: "none", liquidity: "none" };
-      comparableCache.set(cacheKey, { cachedAt: Date.now(), value: emptyResult });
-      return emptyResult;
-    }
-
-    const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id);
-    const fetched = await fetchTrade(fetchUrl);
-    const listings = [];
-
-    for (const entry of fetched.result || []) {
-      const price = entry.listing && entry.listing.price;
-      const priceEx = listingPriceEx(price, currencyRates);
-      if (!(priceEx > 0)) continue;
-      const item = entry.item || {};
-      if (item.corrupted) continue;
-      if (item.rarity && String(item.rarity).toLowerCase() === "unique") continue;
-      listings.push({
-        id: entry.id,
-        itemName: [item.name, item.typeLine].filter(Boolean).join(" ").trim() || item.typeLine || "Quiver",
-        priceEx: roundPriceExalted(priceEx),
-        rawPrice: price.amount + " " + price.currency,
-        whisper: entry.listing && entry.listing.whisper ? entry.listing.whisper : "",
-      });
-    }
-
-    const prices = listings.map((item) => item.priceEx).sort((a, b) => a - b);
-    const confidence = prices.length >= 12 ? "high" : prices.length >= 5 ? "medium" : prices.length > 0 ? "low" : "none";
-    const liquidity = prices.length >= 15 ? "high" : prices.length >= 6 ? "medium" : prices.length > 0 ? "thin" : "none";
-
-    const result = {
-      targetId: target.id,
-      count: listings.length,
-      tradeTotal: Number(search.total) || 0,
-      listings,
-      quickSaleEx: percentile(prices, 0.2),
-      normalSaleEx: percentile(prices, 0.5),
-      premiumSaleEx: percentile(prices, 0.75),
-      confidence,
-      liquidity,
-      fallbackUsed: fallback,
-      notes: fallback ? "Strict target had no listings; using relaxed comparable baseline." : "",
-    };
-    comparableCache.set(cacheKey, { cachedAt: Date.now(), value: result });
-    return result;
-  } catch (err) {
-    if (String(err && err.message).includes("rate limited")) {
-      const status = tradeStatus();
-      if (cached) return { ...cached.value, cached: true, stale: true, limited: true, tradeLimitedUntil: status.tradeLimitedUntil };
-      return { targetId: target.id, count: 0, listings: [], quickSaleEx: 0, normalSaleEx: 0, premiumSaleEx: 0, confidence: "limited", liquidity: "unknown", limited: true, tradeLimitedUntil: status.tradeLimitedUntil };
-    }
-    return { targetId: target.id, count: 0, listings: [], quickSaleEx: 0, normalSaleEx: 0, premiumSaleEx: 0, confidence: "error", liquidity: "unknown", error: err.message };
-  }
-}
-
 async function fetchRunePrices(text, league, forceFresh) {
   const initialTradeStatus = tradeStatus();
   const rawLines = String(text || "")
@@ -1344,7 +1210,6 @@ async function fetchRunePrices(text, league, forceFresh) {
   }
 
   const limitedRawLines = rawLines.slice(0, MAX_RUNE_LINES);
-  let tradeFallbacks = 0;
 
   // forceFresh ("Fetch fresh prices") re-prices each pasted exchange item live inline
   // (EE2, bounded by MAX_LIVE_EXCHANGE); the default check serves the EE2 cache and
@@ -1371,8 +1236,6 @@ async function fetchRunePrices(text, league, forceFresh) {
 
   const seenCleanNames = new Set();
   const results = [];
-  let skillTradeFallbacks = 0;
-  const tradeDeadline = Date.now() + 24000;
   let tradePaused = initialTradeStatus.limited;
   for (const rawName of limitedRawLines) {
     const parsed = stripQuantity(rawName);
@@ -1447,7 +1310,6 @@ async function fetchRunePrices(text, league, forceFresh) {
       // Not in the proxy or the exchange catalog → fall through to Not found below.
     }
 
-    let tradePrice = null;
     if (isSkillOrSupport && tradePaused) {
       results.push({ qty: parsed.qty, name: cleanName, category: "Trade queued", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — live-trade is best-effort", change7d: "" });
       continue;
@@ -1455,29 +1317,6 @@ async function fetchRunePrices(text, league, forceFresh) {
 
     if (isSkillOrSupport) {
       results.push({ qty: parsed.qty, name: cleanName, category: "Trade queued", each: "", total: "", currency: "", source: "trade2", rawPrice: "queued — shared rate-limit bucket, live-trade is best-effort", change7d: "" });
-      continue;
-    } else if (tradeFallbacks < MAX_TRADE_FALLBACKS) {
-      tradeFallbacks++;
-      tradePrice = await getTradePrice(cleanName, league, currencyRates, tradeDeadline);
-      if (tradePrice && tradePrice.limited) tradePaused = true;
-    }
-    if (tradePrice) {
-      if (tradePrice.limited) {
-        results.push({ qty: parsed.qty, name: cleanName, category: "TRADE LIMITED", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — live-trade is best-effort", change7d: "" });
-        continue;
-      }
-      const total = roundPriceExalted(tradePrice.each * parsed.qty);
-      results.push({
-        qty: parsed.qty,
-        name: cleanName,
-        category: "TradeMarket",
-        each: tradePrice.each,
-        total,
-        currency: "exalted",
-        source: "trade2",
-        rawPrice: tradePrice.rawAmount + " " + tradePrice.rawCurrency,
-        change7d: "",
-      });
       continue;
     }
 
@@ -1497,8 +1336,6 @@ async function fetchRunePrices(text, league, forceFresh) {
     best,
     count: results.length,
     truncated: rawLines.length > limitedRawLines.length,
-    tradeFallbacks,
-    skillTradeFallbacks,
     tradeLimitedUntil: tradeStatus().tradeLimitedUntil,
     updated: new Date().toISOString(),
   };
@@ -2875,7 +2712,8 @@ function priceCraftMethods(result, proxy) {
       const pv = name ? proxyPrice(proxy, name) : null;
       if (pv && pv.div > 0) cost += count * pv.div; else missing.push(orb);
     }
-    m.divineCost = Math.round(cost * 100) / 100;
+    // ALL orbs unpriced → no cost at all (null sorts last below); a 0 would sort as "cheapest".
+    m.divineCost = missing.length && !(cost > 0) ? null : Math.round(cost * 100) / 100;
     if (missing.length) m.priceMissing = missing;   // e.g. an omen the proxy doesn't track → cost is a floor
   }
   // rank feasible fully-priced by Divine cost (cheapest first); partial/unpriced last
@@ -2900,7 +2738,10 @@ const server = http.createServer(async (req, res) => {
     if (GATE) {
       const qsKey = url.searchParams.get("key");
       if (qsKey === GATE) res.setHeader("Set-Cookie", "poe_auth=" + GATE + "; Path=/; Max-Age=31536000; SameSite=Lax");
-      if (qsKey !== GATE && !(req.headers.cookie || "").includes("poe_auth=" + GATE)) {
+      // Parse cookies properly (exact value match) — a substring check would accept
+      // any token that merely starts with the real one.
+      const cookies = String(req.headers.cookie || "").split(";").map((c) => c.trim());
+      if (qsKey !== GATE && !cookies.includes("poe_auth=" + GATE)) {
         send(res, 403, "Forbidden — open this URL once with ?key=YOUR_TOKEN");
         return;
       }
@@ -2973,9 +2814,13 @@ const server = http.createServer(async (req, res) => {
       const league = sanitizeLeague(url.searchParams.get("league"));
       const force = url.searchParams.get("refresh") === "1";
       // Force = sample now (manual ↻, bounded by the rate limit); otherwise sample
-      // in the background only when a twice-a-day point is due.
-      if (force) { try { await sampleEconomy(league); } catch {} }
-      else maybeSampleEconomy(league);
+      // in the background only when a twice-a-day point is due. Forced refreshes share
+      // one in-flight sample (same guard as maybeSampleEconomy) so two concurrent ↻
+      // can't append a duplicate history point.
+      if (force) {
+        if (!economySampleInFlight) economySampleInFlight = sampleEconomy(league).catch(() => null).finally(() => { economySampleInFlight = null; });
+        await economySampleInFlight;
+      } else maybeSampleEconomy(league);
       const data = readEconomy() || { league, items: ECONOMY_ITEMS, points: [] };
       // Headline + cards render off `current` — the live, strip-shared rates — so
       // they show what's current, not the last twice-a-day history point. `points`
@@ -2989,7 +2834,7 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/waystone/market-weights/refresh" && req.method === "POST") {
       const input = await readJson(req);
-      const league = input.league || "Runes of Aldur";
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
       const cached = readWaystoneWeights();
       const status = tradeStatus();
       if (status.limited) {
@@ -3015,7 +2860,7 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/rune-prices" && req.method === "POST") {
       const input = await readJson(req);
-      const league = input.league || "Runes of Aldur";
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
       const body = JSON.stringify(await fetchRunePrices(input.text || "", league, input.forceFresh === true));
       send(res, 200, body, "application/json; charset=utf-8");
       return;
@@ -3023,7 +2868,7 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/trade-price" && req.method === "POST") {
       const input = await readJson(req);
-      const league = input.league || "Runes of Aldur";
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
       const name = String(input.name || "").trim();
       const status = tradeStatus();
       if (!name) {
@@ -3232,6 +3077,9 @@ const server = http.createServer(async (req, res) => {
       const buildXml = prepBuildXml(input);
       const league = sanitizeLeague(input.league || "Runes of Aldur");
       const maxPriceDiv = Number(input.maxPriceDiv) || 0;
+      const minPriceDiv = Number(input.minPriceDiv) || 0;   // optional listing-price floor (mirrors realrank's minDiv)
+      // Divine price range shared by every non-weighted query below (same shape realrank uses).
+      const priceRange = () => { const price = { option: "divine" }; if (minPriceDiv > 0) price.min = minPriceDiv; if (maxPriceDiv > 0) price.max = maxPriceDiv; return { filters: { price } }; };
       const slotIds = (Array.isArray(input.slots) ? input.slots : []).map(String).filter(Boolean).slice(0, 5);
       if (slotIds.length < 2) { send(res, 400, JSON.stringify({ error: "Pick 2-5 slots" }), "application/json; charset=utf-8"); return; }
       let parsed; try { parsed = parsePobBuild(buildXml); } catch (e) { send(res, 400, JSON.stringify({ error: "Not a PoB build: " + e.message }), "application/json; charset=utf-8"); return; }
@@ -3286,7 +3134,7 @@ const server = http.createServer(async (req, res) => {
               ? buildWeightedGearQuery(slot, wts, league, maxPriceDiv, w.preserve)
               : { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(gearStatFilters(mods)) }, sort: { price: "desc" } };
             if (!useW) {
-              if (maxPriceDiv > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
+              if (maxPriceDiv > 0 || minPriceDiv > 0) q.query.filters.trade_filters = priceRange();
               const pf = gearStatFilters(w.preserve, 4);
               if (pf.length) { q.query.stats = q.query.stats || []; let andG = q.query.stats.find((g) => g && g.type === "and"); if (!andG) { andG = { type: "and", filters: [] }; q.query.stats.push(andG); } const have = new Set(andG.filters.map((f) => f.id)); for (const f of pf) if (!have.has(f.id)) andG.filters.push(f); }
             }
@@ -3295,7 +3143,7 @@ const server = http.createServer(async (req, res) => {
           };
           const buildDefenceQ = () => {
             const q = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [] }, sort: { [defK]: "desc" } };
-            if (maxPriceDiv > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
+            if (maxPriceDiv > 0 || minPriceDiv > 0) q.query.filters.trade_filters = priceRange();
             const pf = gearStatFilters(w.preserve, 4);
             if (pf.length) q.query.stats.push({ type: "and", filters: pf });
             injectRarityGroup(q, baseSlot, rarityMin);
@@ -3342,7 +3190,7 @@ const server = http.createServer(async (req, res) => {
             if (!fetchErr && defenceSlot) {
               try {
                 const dq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [deflectConvGroup()] }, sort: { [defK]: "desc" } };
-                if (maxPriceDiv > 0) dq.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
+                if (maxPriceDiv > 0 || minPriceDiv > 0) dq.query.filters.trade_filters = priceRange();
                 const dRes = await gearTradeSearch(dq, usedLeague || league);
                 const dFresh = ((dRes.search && dRes.search.result) || []).slice(0, 10).filter((id) => !seen.has(id));
                 dFresh.forEach((id) => seen.add(id));
@@ -3359,8 +3207,8 @@ const server = http.createServer(async (req, res) => {
               try {
                 const rid = UPGRADE_STAT_IDS.rarity;
                 const mk = (wtd) => {
-                  const q = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: wtd ? [{ type: "weight", filters: [{ id: rid, value: { weight: 1 } }], value: {} }, { type: "and", filters: [{ id: rid, min: 1 }] }] : [{ type: "and", filters: [{ id: rid, min: 15 }] }] }, sort: wtd ? { "statgroup.0": "desc" } : { price: "desc" } };
-                  if (maxPriceDiv > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: maxPriceDiv } } };
+                  const q = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: wtd ? [{ type: "weight", filters: [{ id: rid, value: { weight: 1 } }], value: {} }, { type: "and", filters: [{ id: rid, value: { min: 1 } }] }] : [{ type: "and", filters: [{ id: rid, value: { min: 15 } }] }] }, sort: wtd ? { "statgroup.0": "desc" } : { price: "desc" } };
+                  if (maxPriceDiv > 0 || minPriceDiv > 0) q.query.filters.trade_filters = priceRange();
                   return q;
                 };
                 let rRes;
@@ -3553,7 +3401,10 @@ const server = http.createServer(async (req, res) => {
         // searches armour. Fire ONE lightweight weighted query to confirm the session honestly
         // (200 = cookie valid → green, 400 = expired → red). Once-per-process: gated on
         // !sessionVerifiedFlag, so later searches add no extra call. Non-fatal.
-        if (!weighted && sessionId && !sessionVerifiedFlag && weights.length) {
+        // Also gated on !sessionExpiredFlag: a 400 only sets the expired flag, and without
+        // this gate the probe refired (one wasted live call) on every search until a new
+        // cookie was pasted (setSessionId clears the flag, re-arming the probe).
+        if (!weighted && sessionId && !sessionVerifiedFlag && !sessionExpiredFlag && weights.length) {
           try {
             await gearTradeSearch(buildWeightedGearQuery(slot, weights, league, maxDiv, input.preserve), league);
             sessionVerifiedFlag = true; sessionExpiredFlag = false;
@@ -3905,6 +3756,11 @@ const server = http.createServer(async (req, res) => {
     const fullPath = path.resolve(ROOT, requested);
     if (fullPath !== ROOT && !fullPath.startsWith(ROOT + path.sep)) {
       send(res, 403, "Forbidden");
+      return;
+    }
+    // Never serve dotfiles (.env, .poesessid.json, .git/…) — they hold secrets/state.
+    if (requested.split(/[\\/]/).some((seg) => seg.startsWith("."))) {
+      send(res, 404, "Not found");
       return;
     }
 

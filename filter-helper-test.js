@@ -74,6 +74,28 @@ Show
 `;
 ok(!groupBy(analyzeFilter(noCatchAll), "Tablets").hidden, "no catch-all: unmentioned class defaults to shown");
 
+// Unquoted Class/BaseType values (legal filter syntax: bare space-separated words).
+// The old parser only read quoted strings, so `Class Currency` looked condition-less
+// → catch-all → a Hide with it flagged EVERY group hidden.
+const unquoted = `
+Hide
+    Class Currency
+Show
+    Class "Omen"
+`;
+r = analyzeFilter(unquoted);
+ok(groupBy(r, "orbs").hidden, "unquoted Class value is parsed — the Hide hits currency");
+ok(!groupBy(r, "Omens").hidden, "unquoted Class Hide is not a false catch-all (omens stay shown)");
+
+// Mixed bare + quoted values on one Class line both count.
+const mixed = `
+Hide
+    Class Omen "Map Fragments"
+`;
+r = analyzeFilter(mixed);
+ok(groupBy(r, "Omens").hidden && groupBy(r, "Map Fragments").hidden,
+  "bare and quoted values on the same Class line are both parsed");
+
 // Continue: a styling Continue block doesn't end the cascade; a later Hide still wins.
 const withContinue = `
 Show

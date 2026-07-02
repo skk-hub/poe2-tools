@@ -39,7 +39,17 @@ const CURRENCY_GROUPS = [
 // BaseType/Class lists, whether it's leveling-only (AreaLevel cap, no floor),
 // whether it has a Continue, and whether it's a bare catch-all (no conditions at all).
 function parseFilterBlocks(text) {
-  const quoted = (s) => (s.match(/"([^"]+)"/g) || []).map((x) => x.slice(1, -1));
+  // A Class/BaseType value list is quoted strings AND/OR bare words (legal PoE
+  // filter syntax: `Class Currency` ≡ `Class "Currency"`; bare words are
+  // space-separated tokens). Unquoted values used to yield [] → the block looked
+  // condition-less → catchAll → "matches everything" (a Hide with an unquoted
+  // Class read as hiding ALL groups).
+  const values = (s) => {
+    const out = (s.match(/"([^"]+)"/g) || []).map((x) => x.slice(1, -1));
+    const bare = s.replace(/"[^"]*"/g, " ").replace(/#.*$/, "");   // strip quoted parts + trailing comment
+    for (const w of bare.split(/\s+/)) if (w) out.push(w);
+    return out;
+  };
   const lines = String(text).split(/\r?\n/);
   const blocks = [];
   let i = 0;
@@ -66,8 +76,8 @@ function parseFilterBlocks(text) {
       if (FILTER_ACTIONS.test(l)) { if (/^Continue\b/i.test(l)) hasContinue = true; continue; }
       const bm = l.match(/^BaseType\b\s*(==|>=|<=)?\s*(.+)$/i);
       const cm = l.match(/^Class\b\s*(==|>=|<=)?\s*(.+)$/i);
-      if (bm) bases.push(...quoted(bm[2]));
-      else if (cm) classes.push(...quoted(cm[2]));
+      if (bm) bases.push(...values(bm[2]));
+      else if (cm) classes.push(...values(cm[2]));
       else otherCond = true;                       // some other condition (Rarity, Sockets…)
     }
     blocks.push({ mode, line: headLine, bases, classes, hasMax, hasMin, hasContinue,

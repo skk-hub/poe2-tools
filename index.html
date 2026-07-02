@@ -559,7 +559,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
 const views=[...document.querySelectorAll("[data-view]")];
 const viewLinks=[...document.querySelectorAll("[data-view-link]")];
 window.__viewInit=window.__viewInit||{};
-function runViewInit(key){ const f=window.__viewInit[key]; if(typeof f==="function"){ window.__viewInit[key]=true; try{ f(); }catch(e){ console.error("view init failed",key,e); } } }
+function runViewInit(key){ const f=window.__viewInit[key]; if(typeof f==="function"){ try{ f(); window.__viewInit[key]=true; }catch(e){ console.error("view init failed",key,e); } } }
 // Shared clipboard helper — navigator.clipboard only exists in a secure context
 // (HTTPS/localhost); over LAN/Tailscale on plain HTTP it's undefined → execCommand
 // fallback. One copy of this; every copy button (rxdock, Regex sheet, Filter Helper)
@@ -630,6 +630,7 @@ window.__bg=(function(){
 (function(){
   const pill=document.getElementById("vpnPill"); if(!pill) return;
   const sel=document.getElementById("vpnSelect");
+  const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
   let current=null;
   function show(d){
     pill.classList.remove("busy");
@@ -637,7 +638,7 @@ window.__bg=(function(){
     pill.hidden=false; pill.classList.remove("err"); pill.classList.add("ok");
     current=d.country||null;
     if(Array.isArray(d.countries)&&sel.dataset.filled!=="1"){
-      sel.innerHTML=d.countries.map(c=>`<option>${c}</option>`).join("");
+      sel.innerHTML=d.countries.map(c=>`<option>${esc(c)}</option>`).join("");
       sel.dataset.filled="1";
     }
     if(current){
@@ -704,7 +705,7 @@ function showView(userNav){
   if(userNav){
     const sec=document.getElementById(key);
     const h=sec&&sec.querySelector("h1,h2,.tooltitle");
-    if(h){ h.setAttribute("tabindex","-1"); h.focus({preventScroll:true}); window.scrollTo({top:0,behavior:"instant"in document.documentElement.style?"instant":"auto"}); }
+    if(h){ h.setAttribute("tabindex","-1"); h.focus({preventScroll:true}); window.scrollTo({top:0,behavior:"instant"}); }
     const live=document.getElementById("view-live");
     if(live) live.textContent=(h?h.textContent.trim():key)+" — view loaded";
   }

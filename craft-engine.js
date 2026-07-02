@@ -195,9 +195,10 @@ function simulateFresh(method, mods, targetGroups, trials, rnd) {
 }
 
 // Chaos spam: build one rare (Alchemy), then Chaos until all targets present or a cap.
-// Reports success-within-cap and expected orb spend (1 Alchemy + avg Chaos among successes).
-// Spam-until-hit methods count ops over ALL trials (a trial that doesn't hit within `cap`
-// spent `cap` ops), so the expected cost reflects the real grind — not just the lucky runs.
+// An "attempt" = 1 Alchemy + up to `cap` Chaos; a capped-out attempt is scrapped and
+// restarted on a fresh base. Spam-until-hit methods count ops over ALL trials (a trial
+// that doesn't hit within `cap` spent `cap` ops), and expectedOrbs — like every other
+// method — is the expected TOTAL spend until first success: per-attempt average / p.
 function simulateChaosSpam(mods, targetGroups, trials, cap, rnd) {
   const T = normalizeTargets(targetGroups);   // normalize once, not per chaos step
   let successes = 0, chaosSum = 0;
@@ -213,7 +214,7 @@ function simulateChaosSpam(mods, targetGroups, trials, cap, rnd) {
   const p = successes / trials;
   return {
     key: "chaos_spam", label: "Alchemy, then Chaos spam", successPerAttempt: p,
-    expectedOrbs: p > 0 ? { Alchemy: 1, Chaos: chaosSum / trials } : {}, feasible: p > 0, cap,
+    expectedOrbs: p > 0 ? { Alchemy: 1 / p, Chaos: (chaosSum / trials) / p } : {}, feasible: p > 0, cap,
   };
 }
 
@@ -272,9 +273,10 @@ function simulateWhittling(mods, T, trials, cap, rnd) {
     chaosSum += n;
   }
   const p = successes / trials, avg = chaosSum / trials;
+  // expected total to first success (restart on cap-fail) = per-attempt average / p
   return {
     key: "whittling", label: "Alchemy, then Chaos + Omen of Whittling",
-    successPerAttempt: p, expectedOrbs: p > 0 ? { Alchemy: 1, Chaos: avg, "Omen of Whittling": avg } : {}, feasible: p > 0, cap,
+    successPerAttempt: p, expectedOrbs: p > 0 ? { Alchemy: 1 / p, Chaos: avg / p, "Omen of Whittling": avg / p } : {}, feasible: p > 0, cap,
   };
 }
 
@@ -295,9 +297,10 @@ function simulateErasureChaos(mods, T, trials, cap, rnd) {
     sum += n;
   }
   const p = successes / trials, avg = sum / trials;
+  // expected total to first success (restart on cap-fail) = per-attempt average / p
   return {
     key: "erasure", label: "Alchemy, then Chaos + Erasure omens (protect a side)",
-    successPerAttempt: p, expectedOrbs: p > 0 ? { Alchemy: 1, Chaos: avg, "Erasure omen": avg } : {}, feasible: p > 0, cap,
+    successPerAttempt: p, expectedOrbs: p > 0 ? { Alchemy: 1 / p, Chaos: avg / p, "Erasure omen": avg / p } : {}, feasible: p > 0, cap,
   };
 }
 
@@ -321,9 +324,10 @@ function simulateAnnulExalt(mods, T, trials, cap, rnd) {
     exSum += ex; anSum += an;                                          // count over ALL trials (failed spends count too)
   }
   const p = successes / trials;
-  const orbs = p > 0 ? { Alchemy: 1 } : {};
+  // expected total to first success (restart on cap-fail) = per-attempt average / p
+  const orbs = p > 0 ? { Alchemy: 1 / p } : {};
   if (p > 0) {
-    const ex = exSum / trials, an = anSum / trials;
+    const ex = (exSum / trials) / p, an = (anSum / trials) / p;
     if (ex > 0) { orbs.Exalted = ex; orbs["Exaltation omen"] = ex; }
     if (an > 0) { orbs.Annulment = an; orbs["Annulment omen"] = an; }
   }

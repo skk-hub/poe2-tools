@@ -20,7 +20,9 @@ function send(res, code, obj) {
 }
 function readJson(req) {
   return new Promise((resolve, reject) => {
-    let d = ""; req.on("data", (c) => { d += c; if (d.length > 16 * 1024 * 1024) req.destroy(); });
+    // Reject BEFORE destroy (like server.js's readJson): destroying first means no
+    // "end" event ever fires, the promise never settles and the handler hangs.
+    let d = ""; req.on("data", (c) => { d += c; if (d.length > 16 * 1024 * 1024) { reject(new Error("Request body is too large")); req.destroy(); } });
     req.on("end", () => { try { resolve(d ? JSON.parse(d) : {}); } catch (e) { reject(e); } });
     req.on("error", reject);
   });

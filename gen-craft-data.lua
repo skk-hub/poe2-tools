@@ -84,7 +84,9 @@ for _, f in ipairs(BASE_FILES) do
         table.sort(tags)
       end
       bases[name] = {
-        class    = b.type,
+        -- Essence.lua keys quarterstaves as "Warstaff", not "Staff" — keep the subType
+        -- so essence lookup works. (Buckler/Shield essence keys are identical; leave them.)
+        class    = (b.subType == "Warstaff") and "Warstaff" or b.type,
         tags     = tags,
         ilvl     = (b.req and b.req.level) or 0,
         implicit = b.implicit,   -- may be nil

@@ -54,9 +54,11 @@ ok(pool.Suffix.length > 5, `ring has suffixes (${pool.Suffix.length})`);
 ok(pool.Prefix.includes("IncreasedLife3"), "life prefix available on ring");
 // a body-armour-only mod should NOT leak onto a ring via the same weight list
 const armourEvasion = Object.entries(D.mods).find(([k, m]) =>
-  m.weights.length && m.weights.every(([t]) => t !== "ring" && t !== "default" || (t === "default")) &&
-  m.weights.some(([t, w]) => t === "body_armour" && w > 0) &&
-  !m.weights.some(([t, w]) => (t === "ring" || t === "amulet") && w > 0));
+  m.weights.length &&
+  // ring must not be able to resolve a positive weight: every positive entry is a tag
+  // the ring base doesn't have, and it isn't "default" (which matches every base)
+  m.weights.every(([t, w]) => w === 0 || (t !== "default" && !ring.tags.includes(t))) &&
+  m.weights.some(([t, w]) => t === "body_armour" && w > 0));
 if (armourEvasion) ok(weightFor(armourEvasion[1], ring) === 0, `${armourEvasion[0]} does not leak onto ring`);
 
 // ── essences ──
