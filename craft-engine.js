@@ -405,6 +405,83 @@ function simulateTiered(mods, T, essences, trials, rnd) {
   };
 }
 
+// ── Finish an EXISTING item ────────────────────────────────────────────────
+// The Craft Advisor path: instead of crafting from a white base, KEEP the mods already on a
+// pasted Magic/Rare item and only ADD the fill targets. Seed a rare item with the current mods
+// (they self-satisfy their own groups), then Regal (if it was Magic) + directed Exalts toward the
+// fills. This is simulateDirected with a pre-seeded item — no new mechanics.
+function seedItem(currentMods) {
+  const item = newItem(); item.rarity = "rare";
+  for (const m of (currentMods || [])) {
+    const side = m.type === "prefix" ? item.prefixes : item.suffixes;
+    side.push({ group: m.group, type: m.type, key: m.key || null, ilvl: m.ilvl || 1 });
+  }
+  return item;
+}
+const cloneItem = (it) => ({ rarity: it.rarity, prefixes: it.prefixes.slice(), suffixes: it.suffixes.slice() });
+
+// One finish variant. startRarity "magic" spends a Regal (adds 1 RANDOM mod — may waste a slot,
+// modeled) before the directed fill; "rare" fills directly. tier = minIlvl for Greater(35)/
+// Perfect(50) Exalt fills (0 = plain Exalted). Cost mirrors simulateDirected.
+function simulateFinish(seed, mods, T, trials, rnd, startRarity, tier, key, label) {
+  let hits = 0, exSum = 0;
+  for (let i = 0; i < trials; i++) {
+    const item = cloneItem(seed);
+    if (startRarity === "magic") addMod(item, mods, rnd);          // Regal: one undirected add
+    exSum += directedFill(item, mods, T, rnd, 6, tier || 0);       // directed Exalts toward unmet fills
+    if (matches(item, T)) hits++;
+  }
+  const p = hits / trials, avgEx = exSum / trials;
+  // Cost is for ONE finish attempt (you have a single item — no rerolling a fresh base like the
+  // from-scratch methods). successPerAttempt is the one-shot chance those exalts land the fills
+  // before the side fills with junk; a miss bricks the item (Annul-recovery is Phase 2). So DON'T
+  // amortize by 1/p here — report the real orbs spent in one pass + the honest one-shot odds.
+  const orbs = {};
+  if (startRarity === "magic") orbs.Regal = 1;
+  const exKey = tier >= 50 ? "Perfect Exalted" : tier >= 35 ? "Greater Exalted" : "Exalted";
+  if (avgEx > 0) { orbs[exKey] = avgEx; orbs["Exaltation omen"] = avgEx; }
+  return { key, label, successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0 };
+}
+
+// Rank ways to FINISH currentMods into (currentMods + fill targets). fillGroups = the NEW target
+// groups to add. opts: {startRarity:"magic"|"rare", trials, seed}. Returns the same shape as
+// rankMethods (impossible / methods[] with impractical + totalOrbs), so the UI renders it identically.
+function rankFinish(mods, currentMods, fillGroups, opts) {
+  opts = opts || {};
+  const trials = opts.trials || 5000;
+  const seed = (opts.seed >>> 0) || 12345;
+  const startRarity = opts.startRarity === "magic" ? "magic" : "rare";
+  const T = normalizeTargets(fillGroups);
+  const byGroup = {}; for (const m of mods) (byGroup[m.group] = byGroup[m.group] || m);
+  const keysInPool = new Set(mods.map((m) => m.key));
+  const missing = [];
+  for (const t of T) {
+    if (!byGroup[t.group]) { missing.push(t.group); continue; }
+    if (t.keys) { let any = false; for (const k of t.keys) if (keysInPool.has(k)) { any = true; break; } if (!any) missing.push(t.group + " (selected tier needs a higher item level)"); }
+  }
+  // fill targets take a side each; kept mods already occupy slots → check against the FREE budget.
+  let fillP = 0, fillS = 0; for (const t of T) { const m = byGroup[t.group]; if (m) { t.type = m.type; (m.type === "prefix" ? fillP++ : fillS++); } }
+  const usedP = (currentMods || []).filter((m) => m.type === "prefix").length;
+  const usedS = (currentMods || []).filter((m) => m.type === "suffix").length;
+  const overCap = fillP > (CAP.rare.prefix - usedP) || fillS > (CAP.rare.suffix - usedS);
+  if (missing.length || overCap) return { impossible: true, missing, overCap, prefixTargets: fillP, suffixTargets: fillS, methods: [] };
+
+  const rnd = rng(seed);
+  const seeded = seedItem(currentMods);
+  const methods = [simulateFinish(seeded, mods, T, trials, rnd, startRarity, 0, "finish", "Regal + directed Exalts (Exaltation omens)")];
+  // Tiered variant, only when every fill accepts a high tier (else it can't help — same gate as simulateTiered).
+  const floor = T.length ? Math.min(...T.map((t) => targetMinIlvl(mods, t))) : 0;
+  if (floor >= 50) methods.push(simulateFinish(seeded, mods, T, trials, rnd, startRarity, 50, "finish_perfect", "Regal + directed Perfect Exalted (high tiers)"));
+  else if (floor >= 35) methods.push(simulateFinish(seeded, mods, T, trials, rnd, startRarity, 35, "finish_greater", "Regal + directed Greater Exalted (high tiers)"));
+  // Drop the Regal label/cost for a rare start (nothing to upgrade).
+  if (startRarity === "rare") for (const m of methods) { m.label = m.label.replace("Regal + directed", "Directed"); delete m.expectedOrbs.Regal; }
+
+  const totalOrbs = (r) => Object.values(r.expectedOrbs).reduce((s, n) => s + n, 0);
+  methods.forEach((r) => { r.totalOrbs = r.feasible ? totalOrbs(r) : Infinity; r.impractical = r.feasible && r.successPerAttempt < PRACTICAL_MIN; });
+  methods.sort((a, b) => (a.impractical ? 1 : 0) - (b.impractical ? 1 : 0) || a.totalOrbs - b.totalOrbs);
+  return { impossible: false, prefixTargets: fillP, suffixTargets: fillS, trials, methods };
+}
+
 // Rank the known methods for hitting targetGroups on a base's mod pool.
 function rankMethods(mods, targetGroups, opts) {
   opts = opts || {};
@@ -452,4 +529,4 @@ function rankMethods(mods, targetGroups, opts) {
   return { impossible: false, prefixTargets: pfx, suffixTargets: sfx, trials, methods };
 }
 
-module.exports = { rng, weightedPick, addMod, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateDirected, rankMethods, CAP, newItem };
+module.exports = { rng, weightedPick, addMod, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateDirected, seedItem, simulateFinish, rankFinish, rankMethods, CAP, newItem };

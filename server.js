@@ -2713,6 +2713,132 @@ function craftModList(baseName, itemLevel) {
   return list;
 }
 
+// ── Craft Advisor: map mod TEXT → craft-data group ─────────────────────────────
+// Normalize a stat line to a template (roll ranges/numbers → #, drop commas) — same rule as
+// gen-craft-weights.js, so it collides across tiers of the same mod onto one template.
+const craftNorm = (s) => String(s)
+  .replace(/\([^)]*?\d[^)]*?\)/g, "#").replace(/\d+(\.\d+)?/g, "#")
+  .replace(/,/g, "").replace(/#+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+const craftStripTag = (l) => String(l).replace(/\s*\((?:implicit|enchant|rune|fractured|crafted|desecrated|scourge|veiled)\)\s*$/i, "").trim();
+
+// Build a template → {group,type} index over the SINGLE-STAT mods eligible on ONE base (the pool
+// from craftModList). Pool-scoping + single-stat + carrying type is what avoids the mis-maps a
+// global text match makes (e.g. "+X to maximum Life" hitting a suffix unique-mutation, or "Rarity"
+// hitting a fishing mod) — only mods that can actually roll on this base are in the index.
+function buildCraftGroupIndex(poolMods) {
+  const idx = new Map();
+  for (const pm of poolMods) {
+    const m = CRAFT_DATA.mods[pm.key];
+    if (!m || !m.stats || m.stats.length !== 1) continue;   // hybrids handled separately (Phase 2)
+    const t = craftNorm(m.stats[0]);
+    if (!idx.has(t)) idx.set(t, { group: pm.group, type: pm.type });
+  }
+  return idx;
+}
+const mapCraftLine = (line, idx) => idx.get(craftNorm(craftStripTag(line))) || null;
+
+// Desirable-mod aliases (from UPGRADE_SEARCH_STATS / PRESERVE_CONTROL_STATS_BY_SLOT) → the exact
+// normalized stat template, resolved to a group via the pool index. Composite aliases expand to
+// several concrete aliases at generation time. Unknown aliases → null (skipped as a fill).
+const ALIAS_TEMPLATE = {
+  life: "+# to maximum life", mana: "+# to maximum mana", energyShield: "+# to maximum energy shield",
+  fireRes: "+#% to fire resistance", coldRes: "+#% to cold resistance", lightningRes: "+#% to lightning resistance", chaosRes: "+#% to chaos resistance",
+  str: "+# to strength", dex: "+# to dexterity", int: "+# to intelligence", totalAllAttributes: "+# to all attributes",
+  rarity: "#% increased rarity of items found", spirit: "+# to spirit", movementSpeed: "#% increased movement speed",
+  manaRegen: "#% increased mana regeneration rate", castSpeed: "#% increased cast speed", attackSpeed: "#% increased attack speed",
+  manaOnKill: "recover # mana on kill",
+  flatFireAttack: "adds # to # fire damage to attacks", flatColdAttack: "adds # to # cold damage to attacks",
+  flatLightningAttack: "adds # to # lightning damage to attacks", flatPhysAttack: "adds # to # physical damage to attacks",
+  flatChaosAttack: "adds # to # chaos damage to attacks",
+};
+// Composite/pseudo aliases → the concrete single-mod aliases they stand for. Base/quality stats
+// (dps/evasion/armour) aren't craftable target mods → not listed (skipped).
+const ALIAS_EXPAND = {
+  totalElementalRes: ["fireRes", "coldRes", "lightningRes"],
+  totalFlatElementalAttack: ["flatFireAttack", "flatColdAttack", "flatLightningAttack"],
+  totalFlatAttack: ["flatPhysAttack", "flatFireAttack", "flatColdAttack", "flatLightningAttack"],
+};
+const aliasCraftGroup = (alias, idx) => { const t = ALIAS_TEMPLATE[alias]; return t ? (idx.get(t) || null) : null; };
+
+// Reverse of UPGRADE_STAT_IDS — a desirable entry that carries a trade `id` maps back to its alias.
+const STATID_TO_ALIAS = Object.fromEntries(Object.entries(UPGRADE_STAT_IDS).map(([k, v]) => [v, k]));
+// craft-data class → the advisor's slot key (a key in UPGRADE_SEARCH_STATS). Martial weapons share
+// the `bow` desirable set; casters have no resale profile yet (best-effort, Phase 2).
+const CRAFT_CLASS_SLOT = {
+  Ring: "ring", Amulet: "amulet", Belt: "belt", "Body Armour": "chest", Boots: "boots",
+  Gloves: "gloves", Helmet: "helmet", Focus: "focus", Quiver: "quiver", Jewel: "jewel", Shield: "shield", Buckler: "buckler",
+};
+const MARTIAL_CLASSES = new Set(["Bow", "Crossbow", "Claw", "Dagger", "Flail", "Spear", "Sceptre", "Warstaff", "One Hand Axe", "One Hand Mace", "One Hand Sword", "Two Hand Axe", "Two Hand Mace", "Two Hand Sword"]);
+const craftAdviseSlot = (cls) => CRAFT_CLASS_SLOT[cls] || (MARTIAL_CLASSES.has(cls) ? "bow" : null);
+// advisor slot → a gear-finder slot id (for gearSlotCfg category + gearStatId). ring→ring1 (variants share category).
+const ADVISE_TO_GEAR_SLOT = { ring: "ring1", amulet: "amulet", belt: "belt", chest: "chest", boots: "boots", gloves: "gloves", helmet: "helmet", quiver: "quiver", jewel: "jewel", shield: "shield", buckler: "buckler", bow: "bow", focus: "focus" };
+
+// Human label for a group: its top-tier stat text with roll ranges shown as #.
+function craftGroupLabel(group) {
+  for (const m of Object.values(CRAFT_DATA.mods)) if (m.group === group) return m.stats.join(", ").replace(/\([^)]*?\d[^)]*?\)/g, "#").replace(/\b\d+\b/g, "#");
+  return group;
+}
+
+// Auto-pick 1–3 candidate finished-item targets: keep the pasted item's mapped mods, fill open
+// prefix/suffix slots from the slot's curated meta desirables (UPGRADE_SEARCH_STATS), respecting
+// the 3/3 caps. Returns [{fills:[{group,type,alias,label}], targets:[group]}] deepest-first.
+function generateCraftCandidates(slot, kept, poolMods, idx) {
+  const desir = UPGRADE_SEARCH_STATS[slot] || [];
+  const poolGroups = new Set(poolMods.map((m) => m.group));
+  let freeP = 3 - kept.filter((k) => k.type === "prefix").length;
+  let freeS = 3 - kept.filter((k) => k.type === "suffix").length;
+  const seen = new Set(kept.map((k) => k.group));
+  const fills = [];
+  for (const d of desir) {
+    const baseAlias = d.key || STATID_TO_ALIAS[d.id];
+    if (!baseAlias) continue;
+    for (const a of (ALIAS_EXPAND[baseAlias] || [baseAlias])) {
+      const g = aliasCraftGroup(a, idx);
+      if (!g || !poolGroups.has(g.group) || seen.has(g.group)) continue;
+      if (g.type === "prefix" ? freeP <= 0 : freeS <= 0) continue;
+      fills.push({ group: g.group, type: g.type, alias: a, label: craftGroupLabel(g.group) });
+      seen.add(g.group);
+      if (g.type === "prefix") freeP--; else freeS--;
+    }
+  }
+  if (!fills.length) return [];
+  // Full fill + shallower alternates (fewer mods = cheaper), deepest first, deduped.
+  const sizes = [...new Set([fills.length, Math.min(2, fills.length), 1])].sort((a, b) => b - a);
+  return sizes.map((n) => ({ fills: fills.slice(0, n), targets: fills.slice(0, n).map((f) => f.group) }));
+}
+
+// Turn a ranked finish-method into an ordered, human step-by-step recipe.
+function craftRecipeSteps(method, ctx) {
+  const steps = [];
+  const kept = (ctx.keptLabels && ctx.keptLabels.length) ? ctx.keptLabels.join(", ") : "its current mods";
+  steps.push(`Start with your ${ctx.base} (${ctx.startRarity === "magic" ? "Magic" : "Rare"}) — keep ${kept}.`);
+  if (ctx.startRarity === "magic") steps.push("Regal Orb → upgrade to Rare (adds one random mod).");
+  const o = method.expectedOrbs || {};
+  const exOrb = o["Perfect Exalted"] ? "Perfect Exalted Orb" : o["Greater Exalted"] ? "Greater Exalted Orb" : "Exalted Orb";
+  for (const f of ctx.fills) {
+    const omen = f.type === "prefix" ? "Omen of Sinistral Exaltation" : "Omen of Dextral Exaltation";
+    steps.push(`${omen} + ${exOrb} → exalt the ${f.type} side toward ${f.label}.`);
+  }
+  const cost = method.divineCost != null ? `${method.divineCost} div`
+    : Object.entries(o).filter(([, n]) => n > 0).map(([k, n]) => `${(Math.round(n * 10) / 10)} ${k}`).join(" + ");
+  const pct = Math.round(method.successPerAttempt * 100);
+  steps.push(`≈ ${cost} for one attempt · ~${pct}% to land it${pct < 60 ? " (a miss can brick the item — Annul to recover)" : ""}.`);
+  return steps;
+}
+
+// Resale search filters for a finished item (kept + fills): top-2 stat ids + a rarity floor.
+function buildResaleFilters(gearSlot, kept, fills, idx) {
+  const g2a = {}; for (const a in ALIAS_TEMPLATE) { const g = aliasCraftGroup(a, idx); if (g && !g2a[g.group]) g2a[g.group] = a; }
+  const items = [...fills.map((f) => f.alias), ...kept.map((k) => g2a[k.group])].filter(Boolean);
+  let rarityMin = 0; const filters = [];
+  for (const alias of items) {
+    if (alias === "rarity") { rarityMin = Math.max(rarityMin, 15); continue; }
+    const statId = gearStatId(alias, gearSlot);
+    if (statId && !filters.some((f) => f.statId === statId)) filters.push({ statId, min: 1 });
+  }
+  return { statFilters: filters.slice(0, 2), rarityMin };
+}
+
 // Essences that can guarantee a mod on this base's class, at this item level — the
 // craft-engine's essence input. Only essences whose forced mod exists in the normal
 // pool (some Perfect/essence-exclusive mods aren't in ModItem) and is reachable at ilvl.
@@ -3795,6 +3921,99 @@ const server = http.createServer(async (req, res) => {
       const result = craftEngine.rankMethods(mods, targets, { seed, essences });
       try { priceCraftMethods(result, await getProxyData(sanitizeLeague(input.league))); } catch { /* pricing is a bonus; fall back to orb-count ranking */ }
       send(res, 200, JSON.stringify(result), J);
+      return;
+    }
+
+    // Craft Advisor: paste an item → auto-suggest valuable finished items + the route to each,
+    // KEEPING the item's current mods (offline, no Trade2). Resale value is a separate on-demand call.
+    if (url.pathname === "/api/craft/advise" && req.method === "POST") {
+      const J = "application/json; charset=utf-8";
+      if (!CRAFT_DATA) { send(res, 503, JSON.stringify({ error: "craft-data.js not generated — run gen-craft-data.lua" }), J); return; }
+      const input = await readJson(req, 1 * 1024 * 1024);
+      const baseName = String(input.base || "");
+      const b = CRAFT_DATA.bases[baseName];
+      if (!b) { send(res, 404, JSON.stringify({ error: "unknown base" }), J); return; }
+      const ilvl = Math.max(1, Math.min(100, Number(input.ilvl) || 100));
+      const slot = craftAdviseSlot(b.class);
+      if (!slot || !UPGRADE_SEARCH_STATS[slot]) { send(res, 200, JSON.stringify({ advisable: false, reason: `No resale profile for ${b.class} yet — pick target mods manually below.` }), J); return; }
+      const gearSlot = ADVISE_TO_GEAR_SLOT[slot] || slot;
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
+      const poolMods = craftModList(baseName, ilvl);
+      const idx = buildCraftGroupIndex(poolMods);
+      // Map the pasted item's explicit lines → kept mods (dedup by group; skip unmappable lines).
+      const kept = [];
+      const keptGroups = new Set();
+      for (const line of (Array.isArray(input.currentMods) ? input.currentMods : [])) {
+        const g = mapCraftLine(String(line), idx);
+        if (g && !keptGroups.has(g.group)) { keptGroups.add(g.group); kept.push({ group: g.group, type: g.type, text: craftStripTag(String(line)) }); }
+      }
+      const startRarity = String(input.rarity || "").toLowerCase() === "rare" ? "rare" : "magic";
+      const candidates = generateCraftCandidates(slot, kept, poolMods, idx);
+      if (!candidates.length) { send(res, 200, JSON.stringify({ advisable: true, base: baseName, ilvl, slot, startRarity, kept: kept.map((k) => k.text), candidates: [], note: "This item already carries the desirable mods, or has no open slots to add value." }), J); return; }
+      const proxy = await getProxyData(league).catch(() => null);
+      const seed = (Math.random() * 4294967296) >>> 0;
+      const keptForEngine = kept.map((k) => ({ group: k.group, type: k.type }));
+      const category = (() => { try { const s = gearSlotCfg(gearSlot); return s ? s.category : null; } catch { return null; } })();
+      const out = [];
+      for (const c of candidates) {
+        const r = craftEngine.rankFinish(poolMods, keptForEngine, c.targets, { startRarity, seed });
+        if (r.impossible || !r.methods.length) continue;
+        try { priceCraftMethods(r, proxy); } catch { /* orb-count ranking is fine */ }
+        const best = r.methods.find((m) => m.feasible && !m.impractical) || r.methods.find((m) => m.feasible);
+        if (!best) continue;
+        const steps = craftRecipeSteps(best, { base: baseName, startRarity, keptLabels: kept.map((k) => k.text), fills: c.fills });
+        const rf = buildResaleFilters(gearSlot, kept, c.fills, idx);
+        out.push({
+          label: c.fills.map((f) => f.label).join(" + "),
+          fillCount: c.fills.length,
+          fills: c.fills.map((f) => ({ group: f.group, type: f.type, label: f.label })),
+          method: { label: best.label, steps, expectedOrbs: best.expectedOrbs, divineCost: best.divineCost != null ? best.divineCost : null, successPerAttempt: best.successPerAttempt, impractical: !!best.impractical },
+          resale: category ? { category, statFilters: rf.statFilters, rarityMin: rf.rarityMin, baseSlot: gearSlot } : null,
+        });
+      }
+      // Recommend the MOST valuable achievable finish first: practical (≥2% one-shot) before
+      // impractical, then more mods (higher resale) before fewer, then cheaper. Resale check
+      // reveals true value; this is the offline proxy.
+      out.sort((a, b2) => (a.method.impractical ? 1 : 0) - (b2.method.impractical ? 1 : 0)
+        || b2.fillCount - a.fillCount
+        || (a.method.divineCost == null ? Infinity : a.method.divineCost) - (b2.method.divineCost == null ? Infinity : b2.method.divineCost));
+      send(res, 200, JSON.stringify({ advisable: true, base: baseName, ilvl, slot, startRarity, kept: kept.map((k) => k.text), candidates: out, league }), J);
+      return;
+    }
+
+    // Craft Advisor: on-demand RESALE price of a finished item (the only arbitrary-rare pricer —
+    // 1 Trade2 search + 1 fetch, gated on trade-status). Mirrors /api/gear/basic-link + the
+    // cheapest-cluster/bait-drop read used across the gear search.
+    if (url.pathname === "/api/craft/resale" && req.method === "POST") {
+      const J = "application/json; charset=utf-8";
+      if (tradeStatus().limited) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), J); return; }
+      const input = await readJson(req, 256 * 1024);
+      const category = String(input.category || "");
+      if (!category) { send(res, 400, JSON.stringify({ error: "missing category" }), J); return; }
+      const league = sanitizeLeague(input.league || "Runes of Aldur");
+      const mods = gearStatFilters(Array.isArray(input.statFilters) ? input.statFilters : []);
+      const q = {
+        query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) },
+        sort: { price: "asc" },
+      };
+      injectRarityGroup(q, String(input.baseSlot || ""), Number(input.rarityMin) || 0);
+      try {
+        const { search, league: used } = await gearTradeSearch(q, league);
+        const total = (search && search.total) || 0;
+        const url2 = search && search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(used) + "/" + search.id : null;
+        if (!search || !search.result || !search.result.length) { send(res, 200, JSON.stringify({ priced: true, cheapestDiv: null, count: total, url: url2, league: used }), J); return; }
+        const rates = await getExchangeRates(used).catch(() => ({}));
+        const ids = search.result.slice(0, 10).join(",");
+        const fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids + "?query=" + encodeURIComponent(search.id));
+        const prices = [];
+        for (const e of (fetched.result || [])) { const p = listingPriceFromEntry(e, rates); if (p && p.divine > 0) prices.push(p.divine); }
+        prices.sort((a, b2) => a - b2);
+        let i = 0; while (i < prices.length - 1 && prices[i] < prices[i + 1] * 0.5) i++;   // drop lowball baits
+        send(res, 200, JSON.stringify({ priced: true, cheapestDiv: prices[i] != null ? prices[i] : null, count: total, url: url2, league: used }), J);
+      } catch (err) {
+        if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), J); return; }
+        send(res, 200, JSON.stringify({ error: String(err.message) }), J);
+      }
       return;
     }
 

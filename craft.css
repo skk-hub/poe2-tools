@@ -56,6 +56,28 @@
 .toolroot-craft .cf-method-cost b{color:var(--text);font-weight:700}
 .toolroot-craft .cf-method.best .cf-method-cost b{color:var(--gold-bright)}
 .toolroot-craft .cf-method-sub{color:var(--text-faint);font:400 11.5px var(--font-mono);margin-top:3px}
+/* Craft Advisor */
+.toolroot-craft .cf-advisebar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0}
+.toolroot-craft .cf-adviseout{margin:0 0 6px}
+.toolroot-craft .cf-adviseout:empty{display:none}
+.toolroot-craft .cf-advise-card{padding:12px 14px;border-bottom:1px solid var(--border)}
+.toolroot-craft .cf-advise-card:last-child{border-bottom:0}
+.toolroot-craft .cf-advise-card.best{background:var(--gold-soft)}
+.toolroot-craft .cf-advise-card.dim{opacity:.55}
+.toolroot-craft .cf-advise-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.toolroot-craft .cf-advise-name{color:var(--text);font:600 13px var(--font-ui)}
+.toolroot-craft .cf-advise-card.best .cf-advise-name{color:var(--gold-bright)}
+.toolroot-craft .cf-advise-cost{color:var(--text-muted);font:500 12.5px var(--font-mono);text-align:right;white-space:nowrap}
+.toolroot-craft .cf-advise-cost b{color:var(--text);font-weight:700}
+.toolroot-craft .cf-advise-card.best .cf-advise-cost b{color:var(--gold-bright)}
+.toolroot-craft .cf-advise-chips{display:flex;flex-wrap:wrap;gap:5px;margin:7px 0 4px}
+.toolroot-craft .cf-advise-steps{margin:6px 0 8px;padding-left:20px;color:var(--text-muted);font:400 12.5px var(--font-ui);line-height:1.5}
+.toolroot-craft .cf-advise-steps li{margin:2px 0}
+.toolroot-craft .cf-resale-btn{padding:5px 10px;border:1px solid var(--border-gold);background:transparent;color:var(--gold-bright);border-radius:var(--r-sm,6px);font:600 12px var(--font-ui);cursor:pointer}
+.toolroot-craft .cf-resale-btn:hover{background:var(--gold-soft)}
+.toolroot-craft .cf-resale-btn:disabled{opacity:.5;cursor:default}
+.toolroot-craft .cf-resale-out{color:var(--text-muted);font:400 12px var(--font-mono)}
+.toolroot-craft .cf-resale-out b{color:var(--gold-bright)}
 .toolroot-craft .cf-tier{display:flex;align-items:center;gap:8px;padding:7px 12px;border-top:1px solid var(--border);font-size:12.5px;cursor:pointer;user-select:none}
 .toolroot-craft .cf-tier:hover{background:oklch(100% 0 0 / .02)}
 .toolroot-craft .cf-tier:has(.cf-tsel:checked){background:var(--gold-soft)}

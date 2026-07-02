@@ -211,9 +211,15 @@ window.__viewInit["craft"] = function () {
     for (const name in byName) { if (hay.includes(name.toLowerCase()) && (!best || name.length > best.length)) best = name; }
     return best;
   }
+  // ── Craft Advisor: paste → suggested finish route (keeps current mods) ──
+  const adviseBar = $("cfAdviseBar"), adviseBtn = $("cfAdviseBtn"), adviseOut = $("cfAdviseOut");
+  let lastItem = null;   // the parsed pasted item, for the advisor
   function onPaste() {
     const it = parseItem(paste.value);
     itemView.innerHTML = renderTip(it);
+    lastItem = it; if (adviseOut) adviseOut.innerHTML = "";
+    // Advisor only makes sense for a Magic/Rare item with mods to keep + room to add.
+    if (adviseBar) adviseBar.hidden = !(it && (it.rarity === "magic" || it.rarity === "rare") && it.explicits && it.explicits.length);
     if (!it) return;
     const base = detectBase(it);
     if (base) {
@@ -223,6 +229,59 @@ window.__viewInit["craft"] = function () {
     }
   }
   paste.addEventListener("input", onPaste);
+
+  async function advise() {
+    if (!lastItem) return;
+    const base = baseIn.value.trim();
+    if (!byName[base]) { adviseOut.innerHTML = `<div class="cf-simerr">Couldn't match this item to a known base.</div>`; return; }
+    const ilvl = Math.max(1, Math.min(100, parseInt(ilvlIn.value, 10) || 100));
+    adviseBtn.disabled = true; adviseOut.innerHTML = `<div class="cf-simload">Finding the best craft…</div>`;
+    try {
+      const r = await fetch("/api/craft/advise", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base, ilvl, rarity: lastItem.rarity, currentMods: (lastItem.explicits || []).map((e) => e.text) }) });
+      renderAdvise(await r.json());
+    } catch (e) { adviseOut.innerHTML = `<div class="cf-simerr">Failed: ${esc(e.message || e)}</div>`; }
+    finally { adviseBtn.disabled = false; }
+  }
+  adviseBtn.addEventListener("click", advise);
+
+  function renderAdvise(d) {
+    if (!d || d.error) { adviseOut.innerHTML = `<div class="cf-simerr">${esc((d && d.error) || "no advice")}</div>`; return; }
+    if (d.advisable === false) { adviseOut.innerHTML = `<div class="cf-simerr">${esc(d.reason || "No suggestion for this item type yet.")}</div>`; return; }
+    if (!d.candidates || !d.candidates.length) { adviseOut.innerHTML = `<div class="cf-simerr">${esc(d.note || "No profitable finish found — the item may already be complete.")}</div>`; return; }
+    const chip = (f) => `<span class="cf-tchip">${esc(f.label)} <em>${f.type}</em></span>`;
+    const head = `<div class="cf-simresult-head">Keep: ${d.kept.length ? d.kept.map(esc).join(", ") : "—"} · add to make it sell</div>`;
+    const cards = d.candidates.map((c, i) => {
+      const m = c.method, pct = Math.round(m.successPerAttempt * 100);
+      const cost = m.divineCost != null ? `<b>${fmtDiv(m.divineCost)}</b> div` : fmtOrbs(m.expectedOrbs);
+      const cls = "cf-advise-card" + (i === 0 && !m.impractical ? " best" : "") + (m.impractical ? " dim" : "");
+      const steps = m.steps.map((s) => `<li>${esc(s)}</li>`).join("");
+      const resaleBtn = c.resale ? `<button type="button" class="cf-resale-btn" data-i="${i}">Check resale value</button><span class="cf-resale-out" data-i="${i}"></span>` : "";
+      return `<div class="${cls}"><div class="cf-advise-top"><span class="cf-advise-name">${i === 0 && !m.impractical ? "★ " : ""}Add ${esc(c.label)}</span>` +
+        `<span class="cf-advise-cost">${cost} · ${pct}%${m.impractical ? " — impractical" : ""}</span></div>` +
+        `<div class="cf-advise-chips">${c.fills.map(chip).join("")}</div>` +
+        `<ol class="cf-advise-steps">${steps}</ol>${resaleBtn}</div>`;
+    }).join("");
+    adviseOut.innerHTML = `<div class="cf-simresult">${head}${cards}</div>`;
+    // Wire the on-demand resale buttons (1-2 Trade2 calls each, gated server-side on trade-status).
+    adviseOut.querySelectorAll(".cf-resale-btn").forEach((btn) => btn.addEventListener("click", async () => {
+      const i = Number(btn.dataset.i), c = d.candidates[i], outEl = adviseOut.querySelector(`.cf-resale-out[data-i="${i}"]`);
+      btn.disabled = true; outEl.textContent = " checking…";
+      try {
+        const r = await fetch("/api/craft/resale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...c.resale, league: d.league }) });
+        const rd = await r.json();
+        if (rd.limited) { outEl.textContent = " Trade is rate-limited — try again shortly."; }
+        else if (rd.error) { outEl.textContent = " " + rd.error; }
+        else if (rd.cheapestDiv == null) { outEl.innerHTML = rd.count ? ` ~${rd.count} listed, none priced in divine` + (rd.url ? ` · <a href="${esc(rd.url)}" target="_blank" rel="noopener">view</a>` : "") : " none listed like this"; }
+        else {
+          const profit = c.method.divineCost != null ? rd.cheapestDiv - c.method.divineCost : null;
+          outEl.innerHTML = ` sells from <b>${fmtDiv(rd.cheapestDiv)}</b> div (${rd.count} listed)` +
+            (profit != null ? ` · est. ${profit >= 0 ? "profit" : "loss"} <b>${fmtDiv(Math.abs(profit))}</b> div` : "") +
+            (rd.url ? ` · <a href="${esc(rd.url)}" target="_blank" rel="noopener">view</a>` : "");
+        }
+      } catch (e) { outEl.textContent = " failed: " + (e.message || e); }
+      finally { btn.disabled = false; }
+    }));
+  }
 
   // ── simulate: best crafting route to the selected target mods ──
   const fmtN = (n) => !isFinite(n) ? "?" : n >= 100 ? Math.round(n).toLocaleString() : n >= 10 ? Math.round(n) : n >= 0.1 ? n.toFixed(1) : n.toFixed(2);

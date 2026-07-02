@@ -104,6 +104,29 @@ near(pTransmute("GC"), 0.60, 0.01, "transmute P(GC)=w60/100 (suffix competes by 
   ok(easy.methods.filter((m) => m.feasible).every((m) => !m.impractical), "an always-hittable target flags no method impractical");
 }
 
+// 5c) rankFinish: finishing a seeded item (keep current mods, add fills) beats crafting the same
+//     full combo from scratch, and respects the cap budget already used by kept mods.
+{
+  const pool = [
+    { key: "A", type: "prefix", group: "GA", weight: 100, ilvl: 1 },
+    { key: "B", type: "prefix", group: "GB", weight: 100, ilvl: 1 },
+    { key: "C", type: "suffix", group: "GC", weight: 100, ilvl: 1 },
+    { key: "J", type: "prefix", group: "GJ", weight: 100, ilvl: 1 },
+  ];
+  const current = [{ group: "GA", type: "prefix" }, { group: "GC", type: "suffix" }];   // magic item, 2 good mods
+  const fin = E.rankFinish(pool, current, ["GB"], { startRarity: "magic", trials: 8000, seed: 7 });
+  ok(!fin.impossible && fin.methods.length && fin.methods[0].feasible, "rankFinish returns a feasible finish route");
+  const finP = fin.methods[0].successPerAttempt;
+  const scr = E.rankMethods(pool, ["GA", "GB", "GC"], { trials: 8000, seed: 7 }).methods.filter((m) => m.feasible)[0];
+  ok(finP >= scr.successPerAttempt, `finishing (keep GA+GC, add GB) is easier than the full combo from scratch (${(finP * 100).toFixed(0)}% ≥ ${(scr.successPerAttempt * 100).toFixed(0)}%)`);
+  // finish cost is per-attempt (not amortized by 1/p) — one item, no reroll. Regal counted once.
+  ok(fin.methods[0].expectedOrbs.Regal === 1, "magic finish spends exactly one Regal (per-attempt cost, not 1/p)");
+  // over-cap: 3 prefixes already used, adding another prefix is impossible
+  const full = [{ group: "GA", type: "prefix" }, { group: "GB", type: "prefix" }, { group: "GJ", type: "prefix" }];
+  const oc = E.rankFinish([...pool, { key: "D", type: "prefix", group: "GD", weight: 100, ilvl: 1 }], full, ["GD"], { startRarity: "rare", trials: 100 });
+  ok(oc.impossible && oc.overCap, "adding a prefix with 3 prefixes already used → over-cap");
+}
+
 // 6) tier-restricted targets: two tiers of one group; targeting a specific tier halves
 //    the hit vs "any tier" (transmute picks each equally at weight 1).
 {
