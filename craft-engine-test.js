@@ -71,7 +71,37 @@ near(pTransmute("GC"), 0.60, 0.01, "transmute P(GC)=w60/100 (suffix competes by 
   ok(!res.impossible && res.methods.length >= 2, "rankMethods returns methods for a reachable target");
   const feasible = res.methods.filter((m) => m.feasible);
   ok(feasible.length >= 1, "at least one feasible method");
-  for (let i = 1; i < res.methods.length; i++) ok(res.methods[i - 1].totalOrbs <= res.methods[i].totalOrbs, "methods sorted cheapest-first");
+  // cheapest-first WITHIN the practical tier (impractical routes are sorted after all practical
+  // ones regardless of orb count, so only compare like-with-like).
+  for (let i = 1; i < res.methods.length; i++) {
+    if (!!res.methods[i - 1].impractical === !!res.methods[i].impractical) ok(res.methods[i - 1].totalOrbs <= res.methods[i].totalOrbs, "methods sorted cheapest-first within tier");
+  }
+  ok(res.methods.every((m, i) => i === 0 || !(res.methods[i - 1].impractical && !m.impractical)), "practical methods always rank above impractical ones");
+}
+
+// 5b) impractical flag: a route that rarely completes within its reroll budget gets flagged
+//     and sorted after every practical route; a trivially-easy target flags nothing.
+{
+  // one specific prefix + one specific suffix among lots of junk groups, with a tiny chaos cap
+  // so raw chaos spam almost never lands both before scrapping the base → < PRACTICAL_MIN.
+  const P1 = { key: "P1", type: "prefix", group: "GP", weight: 1, ilvl: 1 };
+  const Pjunk = Array.from({ length: 40 }, (_, i) => ({ key: "PJ" + i, type: "prefix", group: "GPJ" + i, weight: 1, ilvl: 1 }));
+  const S1 = { key: "S1", type: "suffix", group: "GS", weight: 1, ilvl: 1 };
+  const Sjunk = Array.from({ length: 40 }, (_, i) => ({ key: "SJ" + i, type: "suffix", group: "GSJ" + i, weight: 1, ilvl: 1 }));
+  const tight = [P1, ...Pjunk, S1, ...Sjunk];
+  const res = E.rankMethods(tight, ["GP", "GS"], { trials: 4000, seed: 5, chaosCap: 4 });
+  const chaos = res.methods.find((m) => m.key === "chaos_spam");
+  ok(chaos && chaos.impractical, "raw chaos spam that rarely completes is flagged impractical");
+  // it must never rank above a practical method, and never be the ★ pick
+  const star = res.methods.findIndex((m) => m.feasible && !m.impractical);
+  ok(star === -1 || res.methods[star].key !== "chaos_spam", "impractical chaos spam is never the ★ pick");
+  // once an impractical method appears, every method after it is also impractical (or infeasible)
+  const firstImpract = res.methods.findIndex((m) => m.impractical);
+  ok(firstImpract === -1 || res.methods.slice(firstImpract).every((m) => m.impractical || !m.feasible), "no practical method is sorted after an impractical one");
+
+  // easy target: the only group in a 1-mod pool — every route completes, nothing impractical
+  const easy = E.rankMethods([{ key: "E", type: "prefix", group: "GE", weight: 1, ilvl: 1 }], ["GE"], { trials: 2000, seed: 6 });
+  ok(easy.methods.filter((m) => m.feasible).every((m) => !m.impractical), "an always-hittable target flags no method impractical");
 }
 
 // 6) tier-restricted targets: two tiers of one group; targeting a specific tier halves

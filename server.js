@@ -2743,11 +2743,14 @@ function priceCraftMethods(result, proxy) {
     m.divineCost = missing.length && !(cost > 0) ? null : Math.round(cost * 100) / 100;
     if (missing.length) m.priceMissing = missing;   // e.g. an omen the proxy doesn't track → cost is a floor
   }
-  // rank feasible fully-priced by Divine cost (cheapest first); partial/unpriced last
+  // rank feasible fully-priced by Divine cost (cheapest first); partial/unpriced last.
+  // Impractical routes (<2% per attempt — the engine's flag) always sink below realistic ones,
+  // even if their theoretical divine cost looks cheap (cheap chaos × a 0.02% success is a
+  // fantasy number, not a plan).
   result.methods.sort((a, b) => {
     const av = a.feasible && a.divineCost != null ? a.divineCost : Infinity;
     const bv = b.feasible && b.divineCost != null ? b.divineCost : Infinity;
-    return av - bv;
+    return (a.impractical ? 1 : 0) - (b.impractical ? 1 : 0) || av - bv;
   });
   result.priced = true;
 }

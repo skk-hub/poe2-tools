@@ -21,6 +21,9 @@
 // tweak here, not a rewrite.
 
 const CAP = { normal: { prefix: 0, suffix: 0 }, magic: { prefix: 1, suffix: 1 }, rare: { prefix: 3, suffix: 3 } };
+// Below this per-attempt success a route is "impractical" — you'd reroll the whole item too
+// many times for it to be a real plan (see rankMethods).
+const PRACTICAL_MIN = 0.02;
 
 // Deterministic RNG (mulberry32) so tests are reproducible; server passes a random seed.
 function rng(seed) {
@@ -437,8 +440,15 @@ function rankMethods(mods, targetGroups, opts) {
   if (tiered) methods.push(tiered);
   // rank by total expected orb count (cheapest first); price-weighting is Phase 3.
   const totalOrbs = (r) => Object.values(r.expectedOrbs).reduce((s, n) => s + n, 0);
-  methods.forEach((r) => { r.totalOrbs = r.feasible ? totalOrbs(r) : Infinity; });
-  methods.sort((a, b) => a.totalOrbs - b.totalOrbs);
+  // "Impractical": a route that completes on <2% of fresh bases means you'd reroll the WHOLE
+  // item 50+ times, scrapping expensive currency each miss — the reported expected cost is a
+  // cap/p extrapolation nobody actually runs (this is the "0.02%, 120 chaos" chaos-spam the
+  // user flagged). Flag it, sink it below realistic routes, and never let it be the ★ pick.
+  // Cheap fresh rerolls (Alchemy) at low % are fine — but at <2% even those are absurd, so a
+  // flat success floor is the honest line. ponytail: naive threshold; tune PRACTICAL_MIN if the
+  // cutoff feels wrong for a specific goal.
+  methods.forEach((r) => { r.totalOrbs = r.feasible ? totalOrbs(r) : Infinity; r.impractical = r.feasible && r.successPerAttempt < PRACTICAL_MIN; });
+  methods.sort((a, b) => (a.impractical ? 1 : 0) - (b.impractical ? 1 : 0) || a.totalOrbs - b.totalOrbs);
   return { impossible: false, prefixTargets: pfx, suffixTargets: sfx, trials, methods };
 }
 

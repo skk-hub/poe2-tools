@@ -48,6 +48,7 @@
 .toolroot-craft .cf-method:last-child{border-bottom:0}
 .toolroot-craft .cf-method.best{background:var(--gold-soft)}
 .toolroot-craft .cf-method.dim{opacity:.5}
+.toolroot-craft .cf-simwarn{padding:10px 14px;color:var(--gold-bright);background:var(--gold-soft);border-bottom:1px solid var(--border);font:500 12px var(--font-ui)}
 .toolroot-craft .cf-method-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .toolroot-craft .cf-method-name{color:var(--text);font:600 13px var(--font-ui)}
 .toolroot-craft .cf-method.best .cf-method-name{color:var(--gold-bright)}
