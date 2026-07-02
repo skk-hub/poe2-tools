@@ -118,3 +118,7 @@ fh:write("module.exports = " .. body .. ";\n")
 fh:close()
 
 print(string.format("wrote craft-data.js: %d bases, %d mods, %d essences", nBases, nMods, nEss))
+-- PoB has NO real spawn weights (weightVal is a binary 1/0 eligibility gate), so the pool above
+-- is weight-flat. Run `node gen-craft-weights.js` NEXT to overlay real Craft-of-Exile weights,
+-- else every mod tier is treated as equally likely and the crafter's odds are wrong.
+print("NEXT: node gen-craft-weights.js   (overlays real spawn weights — REQUIRED for accurate odds)")

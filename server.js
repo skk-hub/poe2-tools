@@ -17,6 +17,7 @@ try { POB_BASES = require("./pob-bases.js"); } catch { /* not generated → keyw
 let CRAFT_DATA = null;
 try { CRAFT_DATA = require("./craft-data.js"); } catch { /* run gen-craft-data.lua to create */ }
 const craftEngine = require("./craft-engine.js");   // Monte Carlo crafting simulator
+const { archetypeKey } = require("./craft-archetype.js");   // base → Craft-of-Exile weight archetype
 // Desecrated modifier REFERENCE (Abyssal Bones + Well of Souls) scraped from poe2db —
 // PoB lacks this data. Browsable list only; not simulated (reveal 3, pick 1; no odds data).
 let DESECRATED = null;
@@ -2627,6 +2628,16 @@ function craftWeightFor(mod, tagset) {
   for (const [tag, w] of mod.weights) { if (tag === "default" || tagset.has(tag)) return w; }
   return 0;
 }
+// Effective spawn weight: PoB's binary tag weight decides ELIGIBILITY (a 0 means the mod can't
+// roll on this base — authoritative), but when eligible we use the REAL Craft-of-Exile weight
+// baked as mod.cw[archetype] (gen-craft-weights.js). Unmatched mods keep the binary weight (1),
+// so odds are never worse than before. archKey = the base's CoE archetype (null → binary only).
+function craftEffWeight(mod, tagset, archKey) {
+  const binW = craftWeightFor(mod, tagset);
+  if (binW <= 0) return 0;                                      // ineligible on this base
+  const cw = archKey && mod.cw ? mod.cw[archKey] : undefined;
+  return cw != null ? cw : binW;                               // real weight, else binary fallback
+}
 // Bases that can roll at least one explicit mod (early-exits) — filters out jewels/
 // flasks whose pools live in other PoB files we don't extract. Memoized (data is static).
 let _craftBaseList = null;
@@ -2652,10 +2663,11 @@ function craftPool(baseName, itemLevel) {
   if (!base) return null;
   const ilvl = Math.max(1, Math.min(100, itemLevel | 0 || 100));
   const tagset = new Set(base.tags);
+  const archKey = archetypeKey(base.class, base.tags);
   const buckets = { Prefix: new Map(), Suffix: new Map() };
   for (const [key, m] of Object.entries(CRAFT_DATA.mods)) {
     if (m.ilvl > ilvl) continue;
-    const w = craftWeightFor(m, tagset);
+    const w = craftEffWeight(m, tagset, archKey);
     if (w <= 0) continue;
     const bucket = buckets[m.type];
     if (!bucket) continue;
@@ -2690,10 +2702,11 @@ function craftModList(baseName, itemLevel) {
   if (!base) return null;
   const ilvl = Math.max(1, Math.min(100, itemLevel | 0 || 100));
   const tagset = new Set(base.tags);
+  const archKey = archetypeKey(base.class, base.tags);
   const list = [];
   for (const [key, m] of Object.entries(CRAFT_DATA.mods)) {
     if (m.ilvl > ilvl) continue;
-    const w = craftWeightFor(m, tagset);
+    const w = craftEffWeight(m, tagset, archKey);
     if (w <= 0) continue;
     list.push({ key, type: m.type === "Prefix" ? "prefix" : "suffix", group: m.group, weight: w, ilvl: m.ilvl });
   }

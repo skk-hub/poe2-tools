@@ -61,6 +61,17 @@ const armourEvasion = Object.entries(D.mods).find(([k, m]) =>
   m.weights.some(([t, w]) => t === "body_armour" && w > 0));
 if (armourEvasion) ok(weightFor(armourEvasion[1], ring) === 0, `${armourEvasion[0]} does not leak onto ring`);
 
+// ── real spawn weights (Craft of Exile overlay, gen-craft-weights.js) ──
+// PoB ships only binary 1/0 weights; the .cw map carries real per-archetype tier weights so
+// higher tiers are correctly rarer. Skipped gracefully if weights haven't been baked yet.
+const physTop = D.mods["LocalIncreasedPhysicalDamagePercent7"];   // iL75, (155-169)%
+const physLow = D.mods["LocalIncreasedPhysicalDamagePercent1"];   // iL1,  (40-49)%
+if (physTop && physTop.cw) {
+  ok(physTop.cw.Bow != null && physLow.cw.Bow != null, "phys% tiers carry real Bow weights");
+  ok(physTop.cw.Bow < physLow.cw.Bow, `top phys tier rarer than base tier on Bow (${physTop.cw.Bow} < ${physLow.cw.Bow})`);
+  ok(physTop.weights.every(([, w]) => w === 0 || w === 1), "binary PoB weights preserved alongside .cw");
+}
+
 // ── essences ──
 const bodyEss = D.essences["Lesser Essence of the Body"];
 ok(bodyEss && bodyEss.mods["Helmet"] === "IncreasedLife3", "Body essence forces IncreasedLife3 on Helmet");

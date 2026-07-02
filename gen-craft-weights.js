@@ -1,0 +1,113 @@
+// gen-craft-weights.js — overlay REAL PoE2 spawn weights onto craft-data.js.
+//
+//   node gen-craft-weights.js            (fetch Craft of Exile data, augment craft-data.js)
+//   node gen-craft-weights.js path.json  (use a local CoE poec_data.json instead of fetching)
+//
+// WHY: PoB's ModItem.lua has no real spawn weights — every mod is a binary 1/0 eligibility
+// gate (confirmed: the value is never anything but 0 or 1). So gen-craft-data.lua can only tell
+// us WHICH mods roll, not how OFTEN, which made every tier look equally likely (top tiers far
+// too common). GGG never shipped PoE2 weights; Craft of Exile derived them (recombinator
+// experiments + trade parsing). This baker joins CoE's per-tier, per-base-archetype `weighting`
+// onto our mods so the Monte-Carlo engine samples realistically.
+//
+// JOIN: CoE modifier `name_modifier` is a "#"-templated stat line — normalize PoB's stat text
+// the same way (roll ranges/numbers → #) and match on (template + affix). Then match the tier
+// by item level, and read `weighting` for the base archetype (see craft-archetype.js). ~94% of
+// eligible mod-slots match; the unmatched (a few hybrid mods, generic casters, Charms/Jewels/
+// Flasks whose pools live in other PoB files) keep PoB's binary weight — no regression.
+//
+// Run AFTER gen-craft-data.lua (this reads and rewrites craft-data.js in place). Re-run on a
+// league/data update. Result stays offline at runtime — the weights are baked into the file.
+const fs = require("path") && require("fs");
+const path = require("path");
+const { archetypeKey } = require("./craft-archetype.js");
+
+const COE_URL = "https://www.craftofexile.com/json/poe2/main/poec_data.json";
+const CRAFT_DATA_PATH = path.join(__dirname, "craft-data.js");
+
+// PoB stat text / CoE name_modifier → comparable template: roll ranges "(155-169)" and bare
+// numbers → "#", drop commas (CoE joins hybrid lines with ", ", PoB with a newline).
+const norm = (s) => String(s)
+  .replace(/\([^)]*?\d[^)]*?\)/g, "#").replace(/\d+(\.\d+)?/g, "#")
+  .replace(/,/g, "").replace(/#+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+
+async function loadCoe(arg) {
+  if (arg) {
+    const raw = fs.readFileSync(arg, "utf8").trim();
+    return JSON.parse(raw.replace(/^poecd\s*=\s*/, "").replace(/;\s*$/, ""));
+  }
+  const res = await fetch(COE_URL);
+  if (!res.ok) throw new Error("CoE fetch HTTP " + res.status);
+  const raw = (await res.text()).trim();
+  return JSON.parse(raw.replace(/^poecd\s*=\s*/, "").replace(/;\s*$/, ""));
+}
+
+async function main() {
+  const coe = await loadCoe(process.argv[2]);
+  const P = require(CRAFT_DATA_PATH);
+
+  const baseByName = Object.fromEntries(coe.bases.seq.map((b) => [b.name_base, b.id_base]));
+  // (template|affix) → [modId] ; modifiers.seq modgroups/nvalues are JSON strings.
+  const byText = {};
+  for (const m of coe.modifiers.seq) {
+    if (m.affix !== "prefix" && m.affix !== "suffix") continue;   // skip socket/corrupted
+    const k = norm(m.name_modifier) + "|" + m.affix;
+    (byText[k] = byText[k] || []).push(m.id_modifier);
+  }
+  // weight for a PoB mod tier on one CoE base id, or null
+  const weightFor = (stats, type, ilvl, baseId) => {
+    const affix = type === "Prefix" ? "prefix" : "suffix";
+    const cands = byText[norm(stats.join(" ")) + "|" + affix];
+    if (!cands) return null;
+    for (const modId of cands) {
+      const t = coe.tiers[modId];
+      if (!t || !t[baseId]) continue;
+      for (const tier of t[baseId]) if (+tier.ilvl === ilvl) return +tier.weighting;
+    }
+    return null;
+  };
+
+  // Every archetype our bases resolve to → its CoE base id (skip archetypes CoE lacks).
+  const archToId = {};
+  for (const b of Object.values(P.bases)) {
+    const ak = archetypeKey(b.class, b.tags);
+    if (ak && baseByName[ak] != null && archToId[ak] == null) archToId[ak] = baseByName[ak];
+  }
+
+  // For each mod, cw = { archetypeKey: weighting } for every archetype CoE prices this tier on.
+  let withCw = 0, cwEntries = 0;
+  for (const m of Object.values(P.mods)) {
+    const cw = {};
+    for (const [ak, baseId] of Object.entries(archToId)) {
+      const w = weightFor(m.stats, m.type, m.ilvl, baseId);
+      if (w != null) { cw[ak] = w; cwEntries++; }
+    }
+    if (Object.keys(cw).length) { m.cw = cw; withCw++; } else delete m.cw;
+  }
+
+  // Coverage over eligible (base × mod) slots — the real accuracy metric.
+  let tot = 0, hit = 0;
+  for (const b of Object.values(P.bases)) {
+    const ak = archetypeKey(b.class, b.tags), tagset = new Set(b.tags);
+    for (const m of Object.values(P.mods)) {
+      let w = 0; for (const [tag, ww] of m.weights) { if (tag === "default" || tagset.has(tag)) { w = ww; break; } }
+      if (w <= 0) continue;
+      tot++; if (ak && m.cw && m.cw[ak] != null) hit++;
+    }
+  }
+
+  const body = {
+    generated: P.generated, bases: P.bases, mods: P.mods, essences: P.essences,
+    weightsFrom: "Craft of Exile (craftofexile.com) — PoE2 spawn weights, community-derived",
+  };
+  const header =
+    "// AUTO-GENERATED by gen-craft-data.lua (pool) + gen-craft-weights.js (real spawn weights).\n" +
+    "// Item data (c) GGG. Spawn weights (mod .cw = {archetype: weight}) (c) Craft of Exile.\n" +
+    "// Re-run: `luajit gen-craft-data.lua && node gen-craft-weights.js`; do NOT hand-edit.\n";
+  fs.writeFileSync(CRAFT_DATA_PATH, header + "module.exports = " + JSON.stringify(body) + ";\n");
+
+  console.log(`craft-data.js updated: ${withCw}/${Object.keys(P.mods).length} mods got weights, ` +
+    `${cwEntries} (mod×archetype) entries; eligible-slot coverage ${hit}/${tot} (${(100 * hit / tot).toFixed(1)}%).`);
+}
+
+main().catch((e) => { console.error("gen-craft-weights failed:", e.message); process.exit(1); });
