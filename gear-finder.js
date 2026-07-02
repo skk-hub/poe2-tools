@@ -5,7 +5,7 @@ window.__viewInit["gear-finder"] = function () {
     mode: $("gfMode"),
     saved: $("gfSaved"), savedRow: $("gfSavedRow"), myBuilds: $("gfMyBuilds"), loadSaved: $("gfLoadSaved"), delSaved: $("gfDelSaved"),
     code: $("gfCode"), importBtn: $("gfImport"), paste: $("gfPaste"), saveName: $("gfSaveName"), saveBuild: $("gfSaveBuild"), saveBox: $("gfSaveBox"), saveConfirm: $("gfSaveConfirm"),
-    build: $("gfBuild"), slots: $("gfSlots"),
+    build: $("gfBuild"), sets: $("gfSets"), slots: $("gfSlots"),
     scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), budgetMin: $("gfBudgetMin"),
     findBar: $("gfFindBar"), find: $("gfFind"), findHint: $("gfFindHint"), rarityChk: $("gfRarityChk"), rarityVal: $("gfRarityVal"), rakiataRow: $("gfRakiataRow"), ignoreRakiata: $("gfIgnoreRakiata"),
@@ -37,7 +37,7 @@ window.__viewInit["gear-finder"] = function () {
   // reqGen: bumped by selectSlot — in-flight analyze/rank responses check it and drop
   // themselves if the user clicked another slot mid-flight (else slot A's weights land
   // on slot B and realRank/pins record under the wrong slot).
-  const state = { xml: null, slots: {}, headless: false, curSlot: null, reqGen: 0, sel: new Set(), weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], preserveOther: false, pinned: [] };
+  const state = { xml: null, slots: {}, sets: [], activeSet: null, headless: false, curSlot: null, reqGen: 0, sel: new Set(), weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], preserveOther: false, pinned: [] };
   const isUnique = (raw) => /rarity:\s*unique/i.test(String(raw || ""));
   state.pinned = loadPins();
 
@@ -150,6 +150,14 @@ window.__viewInit["gear-finder"] = function () {
     if (Number(b.SpiritUnreserved) < 0) {
       els.build.innerHTML += `<span class="gf-warn" title="Toggle off the auras you don't actually run in Path of Building so the build matches your in-game character, then re-import. Until then, DPS/EHP and spirit-based filtering use an unrunnable aura setup.">⚠ over-reserved spirit by ${fmt(-b.SpiritUnreserved)} — auras exceed your Spirit; DPS/EHP inflated. Fix toggles in PoB &amp; re-import.</span>`;
     }
+    // Item-set switcher (only when the build has 2+ sets) — clicking one re-imports with that
+    // set active, so slots + headless stats both reflect it.
+    state.sets = d.sets || []; state.activeSet = d.activeSet;
+    if (state.sets.length > 1) {
+      els.sets.hidden = false;
+      els.sets.innerHTML = `<span class="gf-sets-label">Item set:</span>` + state.sets.map((s) =>
+        `<button class="gf-set${String(s.id) === String(state.activeSet) ? " on" : ""}" type="button" data-set="${esc(s.id)}">${esc(s.title)}</button>`).join("");
+    } else { els.sets.hidden = true; els.sets.innerHTML = ""; }
     els.slots.innerHTML = Object.entries(state.slots).map(([id, s]) =>
       `<button class="gf-slot" type="button" data-slot="${esc(id)}">${esc(slotLabel(id))}<span class="gf-slot-name">${esc(s.name || "—")}</span></button>`).join("");
     els.scanRow.hidden = !Object.keys(state.slots).length;
@@ -592,6 +600,13 @@ window.__viewInit["gear-finder"] = function () {
     setStatus(`Deleted "${name}".`);
   });
   els.slots.addEventListener("click", (e) => { const b = e.target.closest("[data-slot]"); if (b) toggleSlot(b.dataset.slot); });
+  // Switch item set → re-import the same build XML with that set active.
+  els.sets.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-set]");
+    if (!b || String(b.dataset.set) === String(state.activeSet) || !state.xml) return;
+    setStatus("Switching set…");
+    renderBuild(await api("/api/gear/import", { xml: state.xml, setId: b.dataset.set }).catch((err) => ({ error: err.message || String(err) })));
+  });
   els.find.addEventListener("click", findUpgrades);
   els.scanAll.addEventListener("click", scanAll);
   // Click a scanned slot → focus it as a single-slot rank (select + analyze + rank).

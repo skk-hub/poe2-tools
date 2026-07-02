@@ -2266,8 +2266,9 @@ function pobWeaponSlot(raw) {
   return null;
 }
 
-function parsePobBuild(xml) {
-  // id -> item text (strip child tags like <ModRange/>, keep mod lines)
+function parsePobBuild(xml, setId) {
+  // id -> item text (strip child tags like <ModRange/>, keep mod lines). Items are shared
+  // children of <Items>; the per-set <Slot>s just reference them by id.
   const items = {};
   let m;
   const itemRe = /<Item\b([^>]*)>([\s\S]*?)<\/Item>/g;
@@ -2276,10 +2277,29 @@ function parsePobBuild(xml) {
     if (!id) continue;
     items[id] = unescapeXml(m[2].replace(/<[^>]+>/g, "")).split("\n").map((l) => l.trim()).filter(Boolean).join("\n");
   }
+  // Item sets: PoB stores each gear loadout in its own <ItemSet id title>…</ItemSet> holding
+  // that set's <Slot>s. Scope slot parsing to ONE set (else 2+ sets mix, first-slot-wins).
+  const sets = [];
+  const setBodies = {};
+  const setRe = /<ItemSet\b([^>]*)>([\s\S]*?)<\/ItemSet>/g;
+  while ((m = setRe.exec(xml))) {
+    const id = (m[1].match(/\bid="(\d+)"/) || [])[1];
+    if (!id) continue;
+    const title = unescapeXml((m[1].match(/\btitle="([^"]*)"/) || [])[1] || "");
+    sets.push({ id, title: title || ("Set " + id) });
+    setBodies[id] = m[2];
+  }
+  const activeAttr = (xml.match(/<Items\b[^>]*\bactiveItemSet="(\d+)"/) || [])[1];
+  // Resolve which set to read: explicit setId → build's active set → first set. Falls back to
+  // the whole XML when a build has no <ItemSet> wrapper at all.
+  const activeSet = (setId && setBodies[setId]) ? String(setId)
+    : (activeAttr && setBodies[activeAttr]) ? activeAttr
+    : (sets[0] && sets[0].id) || null;
+  const slotSrc = (activeSet && setBodies[activeSet]) || xml;
   // slot name -> itemId
   const slots = {};
   const slotRe = /<Slot\b([^>]*?)\/?>/g;
-  while ((m = slotRe.exec(xml))) {
+  while ((m = slotRe.exec(slotSrc))) {
     const attrs = m[1];
     const name = (attrs.match(/\bname="([^"]*)"/) || [])[1];
     const itemId = (attrs.match(/\bitemId="(\d+)"/) || [])[1];
@@ -2316,7 +2336,14 @@ function parsePobBuild(xml) {
     const s = (m[1].match(/\bstat="([^"]+)"/) || [])[1];
     if (s != null && v != null) build[s] = isNaN(Number(v)) ? v : Number(v);
   }
-  return { slots, build };
+  return { slots, build, sets, activeSet };
+}
+
+// Flip which item set a build XML treats as active — so headless PoB computes stats for the
+// set the user picked in the UI (its <Slot>s become the equipped gear).
+function setActiveItemSet(xml, id) {
+  if (!id) return xml;
+  return String(xml).replace(/(<Items\b[^>]*\bactiveItemSet=")\d+(")/, `$1${id}$2`);
 }
 
 // "Ignore Rakiata's Flow" toggle. Rakiata's Flow inverts enemy elemental resistance, which PoB scores
@@ -2926,7 +2953,10 @@ const server = http.createServer(async (req, res) => {
         }
       } catch (e) { send(res, 400, JSON.stringify({ error: "Could not read/decode build: " + e.message }), "application/json; charset=utf-8"); return; }
       let parsed;
-      try { parsed = parsePobBuild(xml); } catch (e) { send(res, 400, JSON.stringify({ error: "Not a Path of Building build: " + e.message }), "application/json; charset=utf-8"); return; }
+      try { parsed = parsePobBuild(xml, input.setId); } catch (e) { send(res, 400, JSON.stringify({ error: "Not a Path of Building build: " + e.message }), "application/json; charset=utf-8"); return; }
+      // Make the XML's active set match the parsed set, so headless PoB (and every downstream
+      // scoring call that reuses this xml) computes against the same gear the UI shows.
+      if (parsed.activeSet) xml = setActiveItemSet(xml, parsed.activeSet);
       const headless = { available: await pob.ready() };
       if (headless.available) { try { headless.stats = await pob.load(xml); } catch (e) { headless.error = String(e.message); } }
       // STALE-AGENT DETECTOR: every PoE2 character has a Spirit pool, so the bridge always
@@ -2935,7 +2965,7 @@ const server = http.createServer(async (req, res) => {
       // predates the spirit keys → spirit floor/guard silently no-op. Flag it LOUDLY instead of
       // shipping no-spirit recommendations. (This cost ~5 debugging passes once; never again.)
       if (headless.stats && headless.stats.Spirit === undefined) headless.staleAgent = true;
-      send(res, 200, JSON.stringify({ slots: parsed.slots, build: parsed.build, headless, xml, hasRakiata: buildHasRakiata(xml) }), "application/json; charset=utf-8");
+      send(res, 200, JSON.stringify({ slots: parsed.slots, build: parsed.build, sets: parsed.sets, activeSet: parsed.activeSet, headless, xml, hasRakiata: buildHasRakiata(xml) }), "application/json; charset=utf-8");
       return;
     }
 
