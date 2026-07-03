@@ -2819,10 +2819,14 @@ function craftRecipeSteps(method, ctx) {
     const omen = f.type === "prefix" ? "Omen of Sinistral Exaltation" : "Omen of Dextral Exaltation";
     steps.push(`${omen} + ${exOrb} → exalt the ${f.type} side toward ${f.label}.`);
   }
+  const pct = Math.round(method.successPerAttempt * 100);
+  // Annul route: the reroll-a-jammed-side loop is the whole point — spell it out.
+  if (o.Annulment > 0) steps.push("If a side jams with a junk mod: Omen of Sinistral/Dextral Annulment removes it (risks a kept mod), then Exalt that side again.");
   const cost = method.divineCost != null ? `${method.divineCost} div`
     : Object.entries(o).filter(([, n]) => n > 0).map(([k, n]) => `${(Math.round(n * 10) / 10)} ${k}`).join(" + ");
-  const pct = Math.round(method.successPerAttempt * 100);
-  steps.push(`≈ ${cost} for one attempt · ~${pct}% to land it${pct < 60 ? " (a miss can brick the item — Annul to recover)" : ""}.`);
+  // Headline cost is AMORTIZED (expect to redo on fresh bases when an attempt misses); the % is the
+  // per-item one-shot chance — low % just means more re-tries, already folded into the cost.
+  steps.push(`≈ ${cost} expected to land one${pct < 100 ? ` · ~${pct}% per attempt (redo a cheap base if it misses)` : ""}.`);
   return steps;
 }
 
@@ -3959,22 +3963,32 @@ const server = http.createServer(async (req, res) => {
         const r = craftEngine.rankFinish(poolMods, keptForEngine, c.targets, { startRarity, seed });
         if (r.impossible || !r.methods.length) continue;
         try { priceCraftMethods(r, proxy); } catch { /* orb-count ranking is fine */ }
-        const best = r.methods.find((m) => m.feasible && !m.impractical) || r.methods.find((m) => m.feasible);
-        if (!best) continue;
-        const steps = craftRecipeSteps(best, { base: baseName, startRarity, keptLabels: kept.map((k) => k.text), fills: c.fills });
+        const feas = r.methods.filter((m) => m.feasible);
+        if (!feas.length) continue;
+        // Methods are sorted cheapest-AMORTIZED first (expected orbs to obtain the item). The best
+        // route is the cheapest that isn't brick-prone; a pricier "more reliable on THIS item" route
+        // (usually the Annul reroll) is surfaced separately so the user can trade cost for one-shot odds.
+        const best = feas.find((m) => !m.impractical) || feas[0];
+        const reliable = feas.filter((m) => m !== best && m.successPerAttempt > best.successPerAttempt + 0.10).sort((a, b) => b.successPerAttempt - a.successPerAttempt)[0] || null;
+        const ctx = { base: baseName, startRarity, keptLabels: kept.map((k) => k.text), fills: c.fills };
         const rf = buildResaleFilters(gearSlot, kept, c.fills, idx);
+        const packMethod = (m) => ({ label: m.label, steps: craftRecipeSteps(m, ctx), expectedOrbs: m.expectedOrbs, divineCost: m.divineCost != null ? m.divineCost : null, successPerAttempt: m.successPerAttempt, impractical: !!m.impractical });
         out.push({
           label: c.fills.map((f) => f.label).join(" + "),
           fillCount: c.fills.length,
           fills: c.fills.map((f) => ({ group: f.group, type: f.type, label: f.label })),
-          method: { label: best.label, steps, expectedOrbs: best.expectedOrbs, divineCost: best.divineCost != null ? best.divineCost : null, successPerAttempt: best.successPerAttempt, impractical: !!best.impractical },
+          method: packMethod(best),
+          reliable: reliable ? packMethod(reliable) : null,
           resale: category ? { category, statFilters: rf.statFilters, rarityMin: rf.rarityMin, baseSlot: gearSlot } : null,
         });
       }
-      // Recommend the MOST valuable achievable finish first: practical (≥2% one-shot) before
-      // impractical, then more mods (higher resale) before fewer, then cheaper. Resale check
-      // reveals true value; this is the offline proxy.
-      out.sort((a, b2) => (a.method.impractical ? 1 : 0) - (b2.method.impractical ? 1 : 0)
+      // Recommend the deepest WORTH-IT finish: most mods (resale value) among routes whose expected
+      // (amortized) craft cost stays sane — a 3-mod finish costing ~170 div isn't a real rec for a
+      // ring, so it sinks below the sane 2-mod one (shown dimmed as a stretch). The resale button
+      // reveals true value; a cost cap is the offline proxy. ponytail: flat cap, tune per feedback.
+      const FINISH_DIV_CAP = 15, FINISH_ORB_CAP = 400;
+      out.forEach((o) => { const m = o.method; o.achievable = !m.impractical && (m.divineCost != null ? m.divineCost <= FINISH_DIV_CAP : Object.values(m.expectedOrbs).reduce((s, n) => s + n, 0) <= FINISH_ORB_CAP); });
+      out.sort((a, b2) => (a.achievable ? 0 : 1) - (b2.achievable ? 0 : 1)
         || b2.fillCount - a.fillCount
         || (a.method.divineCost == null ? Infinity : a.method.divineCost) - (b2.method.divineCost == null ? Infinity : b2.method.divineCost));
       send(res, 200, JSON.stringify({ advisable: true, base: baseName, ilvl, slot, startRarity, kept: kept.map((k) => k.text), candidates: out, league }), J);

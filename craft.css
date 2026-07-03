@@ -78,6 +78,10 @@
 .toolroot-craft .cf-resale-btn:disabled{opacity:.5;cursor:default}
 .toolroot-craft .cf-resale-out{color:var(--text-muted);font:400 12px var(--font-mono)}
 .toolroot-craft .cf-resale-out b{color:var(--gold-bright)}
+.toolroot-craft .cf-gamble{margin:0 0 8px}
+.toolroot-craft .cf-gamble>summary{cursor:pointer;color:var(--text-muted);font:500 12px var(--font-ui);padding:2px 0}
+.toolroot-craft .cf-gamble>summary b{color:var(--text)}
+.toolroot-craft .cf-gamble .cf-advise-steps{margin-top:4px}
 .toolroot-craft .cf-tier{display:flex;align-items:center;gap:8px;padding:7px 12px;border-top:1px solid var(--border);font-size:12.5px;cursor:pointer;user-select:none}
 .toolroot-craft .cf-tier:hover{background:oklch(100% 0 0 / .02)}
 .toolroot-craft .cf-tier:has(.cf-tsel:checked){background:var(--gold-soft)}

@@ -432,20 +432,51 @@ function simulateFinish(seed, mods, T, trials, rnd, startRarity, tier, key, labe
     if (matches(item, T)) hits++;
   }
   const p = hits / trials, avgEx = exSum / trials;
-  // Cost is for ONE finish attempt (you have a single item — no rerolling a fresh base like the
-  // from-scratch methods). successPerAttempt is the one-shot chance those exalts land the fills
-  // before the side fills with junk; a miss bricks the item (Annul-recovery is Phase 2). So DON'T
-  // amortize by 1/p here — report the real orbs spent in one pass + the honest one-shot odds.
+  // expectedOrbs = AMORTIZED cost = expected orbs to end up WITH the finished item, retrying on
+  // fresh (cheap) magic/rare bases when an attempt bricks (÷p). That's the number that compares to
+  // the resale/buy price. successPerAttempt is kept as the ONE-SHOT chance (per-item brick risk).
   const orbs = {};
-  if (startRarity === "magic") orbs.Regal = 1;
-  const exKey = tier >= 50 ? "Perfect Exalted" : tier >= 35 ? "Greater Exalted" : "Exalted";
-  if (avgEx > 0) { orbs[exKey] = avgEx; orbs["Exaltation omen"] = avgEx; }
+  if (p > 0) {
+    if (startRarity === "magic") orbs.Regal = 1 / p;
+    const exKey = tier >= 50 ? "Perfect Exalted" : tier >= 35 ? "Greater Exalted" : "Exalted";
+    if (avgEx > 0) { orbs[exKey] = avgEx / p; orbs["Exaltation omen"] = avgEx / p; }
+  }
   return { key, label, successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0 };
 }
 
+// Finish variant that REROLLS a jammed side: when the target's side is full of junk (an unwanted
+// mod took the slot), directed-Annul (Sinistral/Dextral Annulment omen) opens it, then re-Exalt.
+// Because annul removes a RANDOM mod ON THAT SIDE, it can destroy a KEPT good mod — so here T
+// includes the kept groups too (losing one = failure). Much higher one-shot success than pure
+// Exalt (you get repeated tries on the same item), at the cost of annuls + omens + the brick risk.
+function simulateFinishAnnul(seed, mods, Tall, trials, rnd, startRarity, cap) {
+  let hits = 0, exSum = 0, anSum = 0;
+  for (let i = 0; i < trials; i++) {
+    const item = cloneItem(seed);
+    if (startRarity === "magic") addMod(item, mods, rnd);              // Regal
+    let n = 0, ok = matches(item, Tall);
+    while (!ok && n < cap) {
+      const side = unmetSide(item, Tall); if (!side) break;
+      const full = side === "prefix" ? item.prefixes.length >= CAP.rare.prefix : item.suffixes.length >= CAP.rare.suffix;
+      if (!full) { if (addMod(item, mods, rnd, side)) exSum++; }        // directed Exalt toward the unmet target
+      else { removeRandomOnSide(item, side, rnd); anSum++; }            // directed Annul to unjam the side (may hit a kept mod)
+      n++; ok = matches(item, Tall);
+    }
+    if (ok) hits++;
+  }
+  const p = hits / trials, avgEx = exSum / trials, avgAn = anSum / trials;
+  const orbs = {};                                                     // amortized (÷p), like simulateFinish
+  if (p > 0) {
+    if (startRarity === "magic") orbs.Regal = 1 / p;
+    if (avgEx > 0) { orbs.Exalted = avgEx / p; orbs["Exaltation omen"] = avgEx / p; }
+    if (avgAn > 0) { orbs.Annulment = avgAn / p; orbs["Annulment omen"] = avgAn / p; }
+  }
+  return { key: "finish_annul", label: "Regal + Annul/Exalt with omens (reroll a jammed side)", successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0 };
+}
+
 // Rank ways to FINISH currentMods into (currentMods + fill targets). fillGroups = the NEW target
-// groups to add. opts: {startRarity:"magic"|"rare", trials, seed}. Returns the same shape as
-// rankMethods (impossible / methods[] with impractical + totalOrbs), so the UI renders it identically.
+// groups to add. opts: {startRarity:"magic"|"rare", trials, seed, finishCap}. Returns the same shape
+// as rankMethods (impossible / methods[] with impractical + totalOrbs), so the UI renders it identically.
 function rankFinish(mods, currentMods, fillGroups, opts) {
   opts = opts || {};
   const trials = opts.trials || 5000;
@@ -473,8 +504,14 @@ function rankFinish(mods, currentMods, fillGroups, opts) {
   const floor = T.length ? Math.min(...T.map((t) => targetMinIlvl(mods, t))) : 0;
   if (floor >= 50) methods.push(simulateFinish(seeded, mods, T, trials, rnd, startRarity, 50, "finish_perfect", "Regal + directed Perfect Exalted (high tiers)"));
   else if (floor >= 35) methods.push(simulateFinish(seeded, mods, T, trials, rnd, startRarity, 35, "finish_greater", "Regal + directed Greater Exalted (high tiers)"));
+  // Annul/Exalt reroll: T includes the KEPT groups (annul can destroy them). typeOf resolves each
+  // group's side from the pool, falling back to the kept mod's own type.
+  const typeOf = {}; for (const m of mods) if (!(m.group in typeOf)) typeOf[m.group] = m.type; for (const m of (currentMods || [])) typeOf[m.group] = m.type;
+  const Tall = normalizeTargets([...(currentMods || []).map((m) => m.group), ...fillGroups]);
+  for (const t of Tall) t.type = typeOf[t.group];
+  methods.push(simulateFinishAnnul(seeded, mods, Tall, trials, rnd, startRarity, opts.finishCap || 30));
   // Drop the Regal label/cost for a rare start (nothing to upgrade).
-  if (startRarity === "rare") for (const m of methods) { m.label = m.label.replace("Regal + directed", "Directed"); delete m.expectedOrbs.Regal; }
+  if (startRarity === "rare") for (const m of methods) { m.label = m.label.replace("Regal + directed", "Directed").replace("Regal + Annul/Exalt", "Annul/Exalt"); delete m.expectedOrbs.Regal; }
 
   const totalOrbs = (r) => Object.values(r.expectedOrbs).reduce((s, n) => s + n, 0);
   methods.forEach((r) => { r.totalOrbs = r.feasible ? totalOrbs(r) : Infinity; r.impractical = r.feasible && r.successPerAttempt < PRACTICAL_MIN; });
@@ -529,4 +566,4 @@ function rankMethods(mods, targetGroups, opts) {
   return { impossible: false, prefixTargets: pfx, suffixTargets: sfx, trials, methods };
 }
 
-module.exports = { rng, weightedPick, addMod, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateDirected, seedItem, simulateFinish, rankFinish, rankMethods, CAP, newItem };
+module.exports = { rng, weightedPick, addMod, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, rankFinish, rankMethods, CAP, newItem };

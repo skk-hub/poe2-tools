@@ -125,6 +125,18 @@ near(pTransmute("GC"), 0.60, 0.01, "transmute P(GC)=w60/100 (suffix competes by 
   const full = [{ group: "GA", type: "prefix" }, { group: "GB", type: "prefix" }, { group: "GJ", type: "prefix" }];
   const oc = E.rankFinish([...pool, { key: "D", type: "prefix", group: "GD", weight: 100, ilvl: 1 }], full, ["GD"], { startRarity: "rare", trials: 100 });
   ok(oc.impossible && oc.overCap, "adding a prefix with 3 prefixes already used → over-cap");
+
+  // Annul/Exalt reroll BEATS pure Exalt when the target's side JAMS with junk. Pool: target GT
+  // (prefix) buried among many junk prefixes, so pure Exalt often fills the 2 free prefix slots
+  // with junk and gives up; the annul route unjams and retries.
+  const jam = [{ key: "GT", type: "prefix", group: "GT", weight: 1, ilvl: 1 },
+    ...Array.from({ length: 12 }, (_, i) => ({ key: "PJ" + i, type: "prefix", group: "GPJ" + i, weight: 1, ilvl: 1 })),
+    { key: "KP", type: "prefix", group: "KP", weight: 1, ilvl: 1 }, { key: "KS", type: "suffix", group: "KS", weight: 1, ilvl: 1 }];
+  const keep = [{ group: "KP", type: "prefix" }, { group: "KS", type: "suffix" }];
+  const jr = E.rankFinish(jam, keep, ["GT"], { startRarity: "rare", trials: 6000, seed: 4 });
+  const pureM = jr.methods.find((m) => m.key === "finish"), annM = jr.methods.find((m) => m.key === "finish_annul");
+  ok(annM && pureM && annM.successPerAttempt > pureM.successPerAttempt + 0.05, `annul route beats pure exalt on a jammed side (${(annM.successPerAttempt * 100).toFixed(0)}% > ${(pureM.successPerAttempt * 100).toFixed(0)}%)`);
+  ok(annM.expectedOrbs.Annulment > 0 && annM.expectedOrbs.Exalted > 0, "annul route spends both Annulments and Exalts");
 }
 
 // 6) tier-restricted targets: two tiers of one group; targeting a specific tier halves

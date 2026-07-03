@@ -253,13 +253,19 @@ window.__viewInit["craft"] = function () {
     const cards = d.candidates.map((c, i) => {
       const m = c.method, pct = Math.round(m.successPerAttempt * 100);
       const cost = m.divineCost != null ? `<b>${fmtDiv(m.divineCost)}</b> div` : fmtOrbs(m.expectedOrbs);
-      const cls = "cf-advise-card" + (i === 0 && !m.impractical ? " best" : "") + (m.impractical ? " dim" : "");
+      const cls = "cf-advise-card" + (i === 0 && c.achievable ? " best" : "") + (c.achievable ? "" : " dim");
       const steps = m.steps.map((s) => `<li>${esc(s)}</li>`).join("");
       const resaleBtn = c.resale ? `<button type="button" class="cf-resale-btn" data-i="${i}">Check resale value</button><span class="cf-resale-out" data-i="${i}"></span>` : "";
-      return `<div class="${cls}"><div class="cf-advise-top"><span class="cf-advise-name">${i === 0 && !m.impractical ? "★ " : ""}Add ${esc(c.label)}</span>` +
-        `<span class="cf-advise-cost">${cost} · ${pct}%${m.impractical ? " — impractical" : ""}</span></div>` +
+      // Pricier but higher one-shot alternate (the Annul reroll) — for finishing THIS exact item
+      // without bricking it, when you don't want to redo on fresh bases.
+      const g = c.reliable;
+      const gamble = g ? `<details class="cf-gamble"><summary>More reliable on this item: ${g.divineCost != null ? "<b>" + fmtDiv(g.divineCost) + "</b> div" : fmtOrbs(g.expectedOrbs)} · ${Math.round(g.successPerAttempt * 100)}% per attempt</summary>` +
+        `<ol class="cf-advise-steps">${g.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></details>` : "";
+      const tag = m.impractical ? " — impractical" : !c.achievable ? " — a stretch" : "";
+      return `<div class="${cls}"><div class="cf-advise-top"><span class="cf-advise-name">${i === 0 && c.achievable ? "★ " : ""}Add ${esc(c.label)}</span>` +
+        `<span class="cf-advise-cost">${cost} · ${pct}%${tag}</span></div>` +
         `<div class="cf-advise-chips">${c.fills.map(chip).join("")}</div>` +
-        `<ol class="cf-advise-steps">${steps}</ol>${resaleBtn}</div>`;
+        `<ol class="cf-advise-steps">${steps}</ol>${gamble}${resaleBtn}</div>`;
     }).join("");
     adviseOut.innerHTML = `<div class="cf-simresult">${head}${cards}</div>`;
     // Wire the on-demand resale buttons (1-2 Trade2 calls each, gated server-side on trade-status).
