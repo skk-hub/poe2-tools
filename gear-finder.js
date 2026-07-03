@@ -339,6 +339,32 @@ window.__viewInit["gear-finder"] = function () {
     }).join("");
   }
 
+  // Pins hold a FROZEN dDPS/dEHP from when they were scored, so toggling "ignore Rakiata"
+  // (which only rewrites new requests) leaves the board showing the old, Rakiata-inflated
+  // gain. Re-score every scorable pin against the loaded build under the current toggle.
+  // The checkbox only shows when a Rakiata build is loaded, so state.xml is always present.
+  async function rescorePins() {
+    const scorable = (state.pinned || []).filter((p) => p.raw && p.pobSlot);
+    if (!state.xml || !state.headless || !scorable.length) return;
+    const bySlot = {};
+    for (const p of scorable) (bySlot[p.pobSlot] = bySlot[p.pobSlot] || []).push(p);
+    setStatus("Re-scoring pins…");
+    for (const [pobSlot, group] of Object.entries(bySlot)) {
+      // ponytail: /api/gear/score caps at 5 items/slot — a slot with >5 pins is unheard of; skip the tail if it ever happens.
+      const d = await api("/api/gear/score", { buildXml: state.xml, pobSlot, items: group.slice(0, 5).map((p) => ({ name: p.name, raw: p.raw })) }).catch(() => null);
+      if (!d || !d.available || d.error || !d.base) continue;
+      const baseDps = dpsOf(d.base), baseEhp = ehpOf(d.base);
+      (d.results || []).forEach((r, i) => {
+        if (!r.stats || !group[i]) return;
+        group[i].dDPS = dpsOf(r.stats) - baseDps;
+        group[i].dEHP = ehpOf(r.stats) - baseEhp;
+      });
+    }
+    savePins(); renderPins();
+    setStatus(`Pins re-scored ${els.ignoreRakiata.checked ? "without" : "with"} Rakiata's Flow.`);
+  }
+  if (els.ignoreRakiata) els.ignoreRakiata.addEventListener("change", rescorePins);
+
   function selectSlot(id) {
     state.curSlot = id; state.reqGen++; state.weights = []; state.query = null;
     state.sel = new Set([id]);   // focusing one slot (scan/pin click) = single-slot selection
