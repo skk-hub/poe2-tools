@@ -3732,6 +3732,14 @@ const server = http.createServer(async (req, res) => {
             seenStat.add(w.statId);
             await weaponSubPool(w.statId, Math.max(1, Math.round(Number(w.cur) || 0)), { price: "desc" }, 40);
           }
+          // Min gain/div is set → also pull the CHEAPEST bows that still clear the DPS floor +
+          // your #1 key stat. The price-DESC pools above only score the priciest bows, which have
+          // inherently LOW DPS-per-divine — so a "45/div" filter finds nothing in them. High ROI
+          // (cheap + real upgrade) lives at the price-ASC end; without this pool it's never fetched.
+          // Gated on minRoi so a normal rank doesn't spend the extra ~4 fetches.
+          if (!fetchErr && (Number(input.minRoi) || 0) > 0 && topStats[0] && topStats[0].statId) {
+            await weaponSubPool(topStats[0].statId, Math.max(1, Math.round(Number(topStats[0].cur) || 0)), { price: "asc" }, 40);
+          }
         }
         if (!cands.length && fetchErr) throw fetchErr;   // total failure → outer catch (rate-limit msg etc.)
         // Preserve-the-OTHER-metric (pre-scan toggle): drop any candidate that lowers the
