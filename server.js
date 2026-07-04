@@ -2495,19 +2495,30 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
 // query: the candidate must roll at least 60% of your current item's value on
 // the top-weighted stat. Anonymous POST of a weight group 400s ("log in") — so
 // this is POSTed by the user's logged-in browser (the snippet).
-function buildWeightedGearQuery(slot, weights, league, maxPriceDiv, preserve) {
-  // Cap the weight group: GGG 400s a query with too many filters ("too complex"), and
-  // realrank also stacks equipment_filters + preserve floors. Top 4 weights rank fine;
-  // PoB scores the real winners anyway. Drop the extra "gate" and-filter for the same
-  // reason — equipment_filters/preserve already keep the candidate's core value.
+function buildWeightedGearQuery(slot, weights, league, maxPriceDiv, preserve, opts = {}) {
+  // Cap the weight group: GGG 400s a query with too many filters ("too complex").
+  // Top 4 weights rank fine; PoB scores the real winners anyway.
   const top4 = weights.slice(0, 4);
   const stats = [{ type: "weight", filters: top4.map((w) => ({ id: w.statId, value: { weight: w.weight } })), value: {} }];
-  // Preserve floors (spirit, boots movement speed) as a hard AND gate — the weight SUM
-  // can trade these away (a high-DPS neck with 0 spirit still scores top), so without this
-  // the browser/bookmarklet weighted search surfaces no-spirit necks. realrank adds the
-  // same floors separately; this makes the snippet query enforce them too.
-  const pf = gearStatFilters(preserve, 4);
-  if (pf.length) stats.push({ type: "and", filters: pf });
+  // Hard AND gate = "this item or better". Two sources, deduped by stat id:
+  //   (1) PRESERVE floors (spirit, boots movement speed) at the FULL current roll — the
+  //       weight SUM can trade these away (a high-DPS neck with 0 spirit still scores top),
+  //       so without this the weighted browse search surfaces no-spirit necks.
+  //   (2) "Or better" floors: the stats the current item ACTUALLY HAS, floored at 70% of
+  //       their roll (same rule realrank uses) — a pure weighted sum only RANKS, it doesn't
+  //       filter, so without these the copied search lists a flood of strict downgrades.
+  //       Capped at the top 3 by weight so gate + preserve + equipment stay under GGG's
+  //       "query too complex" limit. Preserve wins ties (its floor is the full roll).
+  const orBetter = (Array.isArray(weights) ? weights : [])
+    .filter((w) => w && (w.cur || 0) > 0)
+    .slice(0, 3)
+    .map((w) => ({ statId: w.statId, min: Math.floor((w.cur || 1) * 0.7) }));
+  const andFilters = [];
+  const seen = new Set();
+  for (const f of [...gearStatFilters(preserve, 4), ...gearStatFilters(orBetter, 3)]) {
+    if (!seen.has(f.id)) { seen.add(f.id); andFilters.push(f); }
+  }
+  if (andFilters.length) stats.push({ type: "and", filters: andFilters });
   const q = {
     query: {
       status: { option: GEAR_TRADE_STATUS },
@@ -2516,7 +2527,22 @@ function buildWeightedGearQuery(slot, weights, league, maxPriceDiv, preserve) {
     },
     sort: { "statgroup.0": "desc" },
   };
-  if (Number(maxPriceDiv) > 0) q.query.filters.trade_filters = { filters: { price: { option: "divine", max: Number(maxPriceDiv) } } };
+  // Price band — respects BOTH the "Min div" (skip junk below the floor) and "Max div" inputs.
+  const minDiv = Number(opts.minPriceDiv) || 0, maxDiv = Number(maxPriceDiv) || 0;
+  if (minDiv > 0 || maxDiv > 0) {
+    const price = { option: "divine" };
+    if (minDiv > 0) price.min = minDiv;
+    if (maxDiv > 0) price.max = maxDiv;
+    q.query.filters.trade_filters = { filters: { price } };
+  }
+  // Keep the item's CORE base defence: floor the dominant ev/ar/es (or dps) at 70% when it's
+  // substantial (≥500) — a saturated base stat (evasion ~2800) the marginal weights can't see.
+  const equip = opts.equip;
+  if (equip && typeof equip === "object") {
+    let bestK = null, bestV = 0;
+    for (const k of ["ev", "ar", "es", "dps"]) { const v = Number(equip[k]) || 0; if (v > bestV) { bestV = v; bestK = k; } }
+    if (bestK && bestV >= 500) q.query.filters.equipment_filters = { filters: { [bestK]: { min: Math.floor(bestV * 0.7) } } };
+  }
   return q;
 }
 
@@ -3125,7 +3151,7 @@ const server = http.createServer(async (req, res) => {
       const league = sanitizeLeague(input.league || "Runes of Aldur");
       try {
         const w = await computeGearWeights(prepBuildXml(input), pobSlot, slot.baseId || slotId, String((input.current && input.current.raw) || ""));
-        const query = w.weights.length ? buildWeightedGearQuery(slot, w.weights, league, input.maxPriceDiv, w.preserve) : null;
+        const query = w.weights.length ? buildWeightedGearQuery(slot, w.weights, league, input.maxPriceDiv, w.preserve, { minPriceDiv: input.minPriceDiv, equip: w.equip }) : null;
         send(res, 200, JSON.stringify({ available: true, slot: slotId, metric: w.metric, base: w.base, weights: w.weights, equip: w.equip, preserve: w.preserve, league, query }), "application/json; charset=utf-8");
       } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
       return;
@@ -3307,7 +3333,7 @@ const server = http.createServer(async (req, res) => {
           if (defenceSlot) weighted = false;
           const buildQ = (useW) => {
             const q = useW
-              ? buildWeightedGearQuery(slot, wts, league, maxPriceDiv, w.preserve)
+              ? buildWeightedGearQuery(slot, wts, league, maxPriceDiv, w.preserve, { minPriceDiv, equip: w.equip })
               : { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(gearStatFilters(mods)) }, sort: { price: "desc" } };
             if (!useW) {
               if (maxPriceDiv > 0 || minPriceDiv > 0) q.query.filters.trade_filters = priceRange();
@@ -3499,7 +3525,7 @@ const server = http.createServer(async (req, res) => {
       // "too complex"/"log in") and fall back to non-weighted.
       const buildQ = (useWeighted) => {
         const q = useWeighted
-          ? buildWeightedGearQuery(slot, weights, league, maxDiv, input.preserve)
+          ? buildWeightedGearQuery(slot, weights, league, maxDiv, input.preserve, { minPriceDiv: minDiv, equip: input.equip })
           : { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: gearStatGroup(mods) }, sort: { price: sortDir } };
         if (!useWeighted && (maxDiv > 0 || minDiv > 0)) {
           const price = { option: "divine" };

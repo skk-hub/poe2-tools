@@ -414,7 +414,7 @@ window.__viewInit["gear-finder"] = function () {
     els.find.disabled = true; setStatus("Asking Path of Building what this slot is worth…");
     const d = await api("/api/gear/weights", {
       buildXml: state.xml, slot: id, pobSlot: state.slots[id] && state.slots[id].pobSlot,
-      current: { raw: state.slots[id] && state.slots[id].raw }, maxPriceDiv: Number(els.budget.value) || 0, league: state.league,
+      current: { raw: state.slots[id] && state.slots[id].raw }, maxPriceDiv: Number(els.budget.value) || 0, minPriceDiv: Number(els.budgetMin.value) || 0, league: state.league,
     }).catch((e) => ({ error: e.message || String(e) }));
     els.find.disabled = false;
     if (gen !== state.reqGen) return;   // user switched slots mid-flight — this response is stale
@@ -615,8 +615,24 @@ window.__viewInit["gear-finder"] = function () {
     els.scanOut.innerHTML = renderScan(rows, tail);
   }
 
+  // The weighted browse query the user COPIES. state.query is built at analyze time with the
+  // "this item or better" stat floors baked in (server-side); here we just overwrite the price
+  // band from the LIVE Min/Max div inputs so a change after analyzing is always honoured.
+  function queryForCopy() {
+    const q = JSON.parse(JSON.stringify(state.query));
+    const min = Number(els.budgetMin.value) || 0, max = Number(els.budget.value) || 0;
+    q.query.filters = q.query.filters || {};
+    if (min > 0 || max > 0) {
+      const price = { option: "divine" };
+      if (min > 0) price.min = min;
+      if (max > 0) price.max = max;
+      q.query.filters.trade_filters = { filters: { price } };
+    } else { delete q.query.filters.trade_filters; }
+    return q;
+  }
+
   function snippetText() {
-    const league = state.league, q = JSON.stringify(state.query);
+    const league = state.league, q = JSON.stringify(queryForCopy());
     return `fetch("/api/trade2/search/poe2/${encodeURIComponent(league)}",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(${q})}).then(r=>r.json()).then(d=>{if(d.id){location.href="/trade2/search/poe2/${encodeURIComponent(league)}/"+d.id}else{alert("Search failed: "+JSON.stringify(d))}}).catch(e=>alert(e));`;
   }
 
@@ -746,7 +762,7 @@ window.__viewInit["gear-finder"] = function () {
   els.scoreBtn.addEventListener("click", scoreItems);
   els.copyQuery.addEventListener("click", () => {
     if (!state.query) { setStatus("Analyze a slot first.", true); return; }
-    copyText(JSON.stringify({ league: state.league, query: state.query })).then((ok) => {
+    copyText(JSON.stringify({ league: state.league, query: queryForCopy() })).then((ok) => {
       els.copyQuery.textContent = ok ? "Copied" : "Copy failed";
       setStatus(ok ? "Copied — now switch to a logged-in pathofexile.com tab and click your ⚡ PoB Trade Search bookmark." : "Copy failed — try the console snippet.");
       setTimeout(() => { els.copyQuery.textContent = "Copy search"; }, 1600);
