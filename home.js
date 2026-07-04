@@ -160,6 +160,12 @@ window.__viewInit["home"] = function () {
   let econSelId = null;           // clicked card → isolate that series, grey the rest
   let econView = null;            // last-painted {series, points, latest, ...} for re-paint on select
 
+  // Every point is priced in exalted; chaos is the exception — it's the base unit the
+  // cards read AGAINST, so it's not in the per-point ex map. Its value in exalted lives
+  // in p.chaosEx, recorded on every historical point, so we can plot chaos's own trend
+  // (in exalted) straight from the existing history. valOf routes chaos to chaosEx.
+  const valOf = (p, id) => id === "chaos" ? (p && p.chaosEx) : (p && p.ex && p.ex[id]);
+
   function fmtDur(s) {
     s = Math.max(0, Math.round(s));
     if (s < 60) return s + "s";
@@ -193,7 +199,7 @@ window.__viewInit["home"] = function () {
   function buildSeries(points, items) {
     return items.map((it, idx) => {
       const pts = [];
-      points.forEach((p, i) => { const v = p.ex && p.ex[it.id]; if (v > 0) pts.push({ i, v }); });
+      points.forEach((p, i) => { const v = valOf(p, it.id); if (v > 0) pts.push({ i, v }); });
       return { it, idx, pts };
     }).filter(s => s.pts.length);
   }
@@ -262,7 +268,7 @@ window.__viewInit["home"] = function () {
   }
 
   function sparkline(points, id, color) {
-    const vals = points.map(p => p.ex && p.ex[id]).filter(x => x > 0);
+    const vals = points.map(p => valOf(p, id)).filter(x => x > 0);
     if (vals.length < 2) return "";
     const w = 76, h = 22, min = Math.min(...vals), max = Math.max(...vals), rng = (max - min) || 1;
     const d = vals.map((v, i) => (i ? "L" : "M") + (i / (vals.length - 1) * w).toFixed(1) + " " + ((1 - (v - min) / rng) * (h - 3) + 1.5).toFixed(1)).join(" ");
@@ -273,18 +279,22 @@ window.__viewInit["home"] = function () {
     const toC = (ex) => chaosEx ? ex / chaosEx : ex;     // ponytail: falls back to ex if chaos rate missing
     const unit = chaosEx ? "c" : "ex";
     return items.map((it, idx) => {
-      const v = latest.ex && latest.ex[it.id];
+      const v = valOf(latest, it.id);
       if (!(v > 0)) return "";
       const isDiv = it.id === "divine";
+      const isChaos = it.id === "chaos";
       const divVal = exPerDiv ? v / exPerDiv : 0;
       // Worth less than a Divine reads better in chaos (e.g. Greater Exalted,
       // not "0.07 div"). Lead with the natural unit; show the other as the sub.
-      const underDiv = !isDiv && divVal > 0 && divVal < 1;
-      const main = (isDiv || underDiv) ? fmtEx(toC(v)) + ' <small>' + unit + '</small>' : fmtDiv(divVal) + ' <small>div</small>';
-      const subEx = isDiv ? ""
+      // Chaos is the base unit, so it can't price itself in chaos (would be a flat
+      // "1 c") — it leads in exalted instead.
+      const underDiv = !isDiv && !isChaos && divVal > 0 && divVal < 1;
+      const main = isChaos ? fmtEx(v) + ' <small>ex</small>'
+        : (isDiv || underDiv) ? fmtEx(toC(v)) + ' <small>' + unit + '</small>' : fmtDiv(divVal) + ' <small>div</small>';
+      const subEx = (isDiv || isChaos) ? ""
         : underDiv ? '<span class="econ-card-ex">' + fmtDiv(divVal) + " div</span>"
         : '<span class="econ-card-ex">' + fmtEx(toC(v)) + " " + unit + "</span>";
-      const hist = points.map(p => p.ex && p.ex[it.id]).filter(x => x > 0);
+      const hist = points.map(p => valOf(p, it.id)).filter(x => x > 0);
       const chg = hist.length > 1 ? Math.round((v / hist[0] - 1) * 100) : null;
       const cls = chg > 0 ? "up" : chg < 0 ? "down" : "";
       const chgHtml = chg === null ? "" : '<span class="econ-card-chg ' + cls + '">' + fmtChg(chg) + ' <small>vs start</small></span>';
@@ -330,11 +340,17 @@ window.__viewInit["home"] = function () {
     econ.hidden = false;
     const limited = !!(d && d.limited);
     if (!limited) { clearLimitCountdown(); econLimited = false; if (econRefresh) econRefresh.disabled = false; }
-    const points = (d && d.points) || [], items = (d && d.items) || [];
+    const points = (d && d.points) || [];
+    let items = (d && d.items) || [];
     // Headline + cards show CURRENT (live, shared with the currency strip); the
     // history points only drive the trend graph + "% vs start".
     const cur = d && d.current && d.current.ex && Object.keys(d.current.ex).length ? d.current : null;
     const latest = cur || (points.length ? points[points.length - 1] : null);
+    // Chaos as a plotted series/card (from chaosEx history) — see valOf. Appended so
+    // it takes the next color and doesn't reshuffle the others'.
+    if ((latest && latest.chaosEx > 0) || points.some(p => p.chaosEx > 0)) {
+      items = items.concat([{ id: "chaos", name: "Chaos Orb" }]);
+    }
     if (!latest) {
       econChartWrap.hidden = true; econCards.innerHTML = ""; econHeadline.innerHTML = "";
       econEmpty.hidden = false;
