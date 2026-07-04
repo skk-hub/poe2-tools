@@ -497,7 +497,11 @@ window.__viewInit["gear-finder"] = function () {
     // this price) or the search is biasing it. Lower the Min div if you want to reach other bases.
     const baseList = Object.entries(d.bases || {}).sort((a, b) => b[1] - a[1]);
     const baseNote = baseList.length ? ` · bases scored: ${baseList.slice(0, 6).map(([b, n]) => `${b.replace(/ Bow$| Amulet$| Ring$/, "")}×${n}`).join(", ")}${baseList.length > 6 ? ", …" : ""}` : "";
-    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB${rankNote}${state.preserveOther && d.otherDropped ? ` — Preserve ${secLabel} dropped ${d.otherDropped}` : ""}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.${baseNote}`);
+    // Coverage: how big the matching pool is vs how many we sampled — a wide band means the ~95
+    // scored is a thin slice (real upgrades can fall outside it), so tighten Min/Max div to concentrate it.
+    const scored = d.scored || cands.length;
+    const coverage = (d.total && d.total > scored) ? ` of ~${Number(d.total).toLocaleString()} matching your budget (tighten Min/Max div to scan a narrower slice more fully)` : "";
+    setStatus(`Scored ${scored}${coverage} instant-buyout candidates in PoB${rankNote}${state.preserveOther && d.otherDropped ? ` — Preserve ${secLabel} dropped ${d.otherDropped}` : ""}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.${baseNote}`);
   }
 
   // Render the realrank pool: sort by the slot's gain metric, show the top 10. The Preserve-EHP
