@@ -1802,6 +1802,8 @@ function parseItemStats(text, slotHint) {
   let weaponAverageHit = 0;
   let weaponAps = 0;
   let explicitDps = 0;
+  let weaponPhysAvg = 0;      // physical portion of the average hit (for a phys-DPS floor)
+  let explicitPhysDps = 0;    // trade-copied "Physical DPS:" line
 
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage to Attacks/gi)) addStat(stats, "flatPhysAttack", avgPair(match));
   for (const match of source.matchAll(/Adds\s+(\d+)\s+to\s+(\d+)\s+Physical Damage(?! to Attacks| to Spells)/gi)) {
@@ -1918,9 +1920,9 @@ function parseItemStats(text, slotHint) {
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Hit Chance for Spells/gi)) addStat(stats, "critChance", match[1]);
   for (const match of source.matchAll(/(\d+(?:\.\d+)?)% increased Critical Spell Damage Bonus/gi)) addStat(stats, "critDamage", match[1]);
 
-  for (const match of source.matchAll(/Physical DPS:\s*(\d+(?:\.\d+)?)/gi)) explicitDps += Number(match[1]);
+  for (const match of source.matchAll(/Physical DPS:\s*(\d+(?:\.\d+)?)/gi)) { explicitDps += Number(match[1]); explicitPhysDps += Number(match[1]); }
   for (const match of source.matchAll(/Elemental DPS:\s*(\d+(?:\.\d+)?)/gi)) explicitDps += Number(match[1]);
-  for (const match of source.matchAll(/Physical Damage:\s*(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)/gi)) weaponAverageHit += avgPair(match);
+  for (const match of source.matchAll(/Physical Damage:\s*(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)/gi)) { weaponAverageHit += avgPair(match); weaponPhysAvg += avgPair(match); }
   for (const match of source.matchAll(/(?:Fire|Cold|Lightning) Damage:\s*(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)/gi)) weaponAverageHit += avgPair(match);
   for (const match of source.matchAll(/Attacks per Second:\s*(\d+(?:\.\d+)?)/gi)) weaponAps = Math.max(weaponAps, Number(match[1]) || 0);
 
@@ -1929,6 +1931,10 @@ function parseItemStats(text, slotHint) {
   } else if (explicitDps > 0) {
     addStat(stats, "dps", explicitDps);
   }
+  // Physical DPS on its own — a phys build wants "more phys than mine", not total (which an
+  // elemental weapon can inflate). Prefer physAvg×aps; fall back to the trade "Physical DPS:" line.
+  if (weaponPhysAvg > 0 && weaponAps > 0) addStat(stats, "pdps", weaponPhysAvg * weaponAps);
+  else if (explicitPhysDps > 0) addStat(stats, "pdps", explicitPhysDps);
 
   if (weaponAps > 0) addStat(stats, "attackSpeed", weaponAps * 10);
 
@@ -2453,6 +2459,11 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
   const evM = String(currentRaw || "").match(/^\s*Evasion(?: Rating)?:\s*(\d+)/im); if (evM) equip.ev = Number(evM[1]);
   const arM = String(currentRaw || "").match(/^\s*Armour(?: Rating)?:\s*(\d+)/im); if (arM) equip.ar = Number(arM[1]);
   const esM = String(currentRaw || "").match(/^\s*Energy Shield:\s*(\d+)/im); if (esM) equip.es = Number(esM[1]);
+  // Weapon slots: carry the current weapon's PHYSICAL dps (or total, as fallback) so the
+  // search can floor a replacement at "more phys than mine" — the phys-build value the
+  // marginal stat weights can't express (and total dps overstates for an elemental weapon).
+  if ((Number(currentStats.pdps) || 0) > 0) equip.pdps = Math.round(currentStats.pdps);
+  else if ((Number(currentStats.dps) || 0) > 0) equip.dps = Math.round(currentStats.dps);
   // Metric: a slot with base defences (helmet/body/boots/belt/shield) is FIRST a
   // survivability item — rank it by EHP even when it also moves some DPS ("the DPS is
   // extra"). EXCEPT gloves: they're an armour piece but carry the build's offensive rolls
@@ -2535,13 +2546,20 @@ function buildWeightedGearQuery(slot, weights, league, maxPriceDiv, preserve, op
     if (maxDiv > 0) price.max = maxDiv;
     q.query.filters.trade_filters = { filters: { price } };
   }
-  // Keep the item's CORE base defence: floor the dominant ev/ar/es (or dps) at 70% when it's
-  // substantial (≥500) — a saturated base stat (evasion ~2800) the marginal weights can't see.
+  // Keep the item's CORE value the marginal weights can't see, floored at 70%:
   const equip = opts.equip;
   if (equip && typeof equip === "object") {
+    const ef = {};
+    // Armour: the dominant base defence, only when SUBSTANTIAL (≥500) — a saturated base stat
+    // (evasion ~2800). Minor defence (boots ~300) skips it (and stays under the complexity cap).
     let bestK = null, bestV = 0;
-    for (const k of ["ev", "ar", "es", "dps"]) { const v = Number(equip[k]) || 0; if (v > bestV) { bestV = v; bestK = k; } }
-    if (bestK && bestV >= 500) q.query.filters.equipment_filters = { filters: { [bestK]: { min: Math.floor(bestV * 0.7) } } };
+    for (const k of ["ev", "ar", "es"]) { const v = Number(equip[k]) || 0; if (v > bestV) { bestV = v; bestK = k; } }
+    if (bestK && bestV >= 500) ef[bestK] = { min: Math.floor(bestV * 0.7) };
+    // Weapon: PHYSICAL dps ("more phys than mine") — a phys build's real value; total dps can be
+    // inflated by an elemental weapon. Falls back to total dps when phys isn't separable.
+    const wdKey = Number(equip.pdps) > 0 ? "pdps" : Number(equip.dps) > 0 ? "dps" : null;
+    if (wdKey) ef[wdKey] = { min: Math.floor(Number(equip[wdKey]) * 0.7) };
+    if (Object.keys(ef).length) q.query.filters.equipment_filters = { filters: ef };
   }
   return q;
 }
@@ -4137,6 +4155,7 @@ module.exports = {
   parsePobBuild,
   listPobBuilds,
   computeGearWeights,
+  parseItemStats,
   optimizeBreakpoints, checkBreakpoints, dominationPrune, itemBreakpointContrib,
   pobItemFromTradeEntry, extractRuneFill,
   buildWeightedGearQuery,
