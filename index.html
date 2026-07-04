@@ -292,7 +292,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <div class="econ-head">
         <div>
           <h2 class="section-label">Economy</h2>
-          <p class="econ-sub" id="econSub">Priced in Divine — tracking what's inflating against what.</p>
+          <p class="econ-sub" id="econSub"></p>
         </div>
         <div class="econ-headline" id="econHeadline"></div>
         <button class="fxstrip-refresh" id="econRefresh" type="button" title="Sample the market now (~1 min)" aria-label="Sample economy now">↻</button>
@@ -367,7 +367,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <div class="pagehead mj-head">
         <div>
           <h1>Regex Cheat Sheet</h1>
-          <p class="sub" id="patchline">Waystone &amp; tablet stash regex.</p>
+          <p class="sub" id="patchline"></p>
         </div>
       </div>
 
@@ -454,9 +454,9 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div id="gfStatus" class="status"></div>
         <div id="gfWeights"></div>
         <div id="gfActions" class="gf-actions" hidden>
-          <button class="btn btn-primary" id="gfRealRank" type="button">Rank by real DPS</button>
+          <button class="btn btn-primary" id="gfRealRank" type="button">Re-rank</button>
           <label id="gfPreserveRow" class="gf-checkrow" hidden><input type="checkbox" id="gfPreserveBox"> <span id="gfPreserveLabel">Preserve EHP</span> <span class="sub" id="gfPreserveSub">— hide upgrades that lower it</span></label>
-          <span class="sub">fetches in-budget candidates and scores each in Path of Building — accurate, uses a Trade2 search</span>
+          <span class="sub">re-runs the scoring after you change a budget/rarity/Preserve setting — “Find upgrades” already ranks on the first pass</span>
           <div id="gfRealOut" class="gf-realout"></div>
           <details id="gfPins" class="gf-pins" hidden>
             <summary>📌 Pinned to compare (<span id="gfPinCount">0</span>) — across slots</summary>
@@ -540,7 +540,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     </div>
     <div id="cfAdviseOut" class="cf-adviseout"></div>
     <div id="cfSummary" class="cf-summary"></div>
-    <p id="cfScopeNote" class="cf-note" hidden>Shows modifiers <b>normal currency</b> can roll (Transmute → Regal → Exalt / Chaos / Alchemy). Mods from <b>Soul Cores, desecration, and corruption</b> can appear on a ring but aren't in this pool — they'll get their own layer in the crafting engine.</p>
+    <p id="cfScopeNote" class="cf-note" hidden>Shows modifiers <b>normal currency</b> can roll (Transmute → Regal → Exalt / Chaos / Alchemy). Mods from <b>corruption</b> can appear on a ring but aren't in this pool. <b>Desecration</b> mods are listed separately below.</p>
     <div id="cfSimBar" class="cf-simbar" hidden>
       <div class="cf-simhead">
         <span class="cf-simlabel">Target mods</span>

@@ -172,7 +172,7 @@ if (typeof window !== "undefined") {
 
     function run() {
       const text = filterArea.value.trim();
-      if (!text) { wrap.hidden = true; blockWrap.hidden = true; setStatus("Paste your .filter above and it'll show what currency it hides.", ""); return; }
+      if (!text) { wrap.hidden = true; blockWrap.hidden = true; setStatus("Paste your .filter below to check it.", ""); return; }
       const report = analyzeFilter(text);
       if (!report.blocks) { wrap.hidden = true; blockWrap.hidden = true; setStatus("No Show/Hide blocks found — is this a PoE2 loot filter?", "err"); return; }
       render(report);

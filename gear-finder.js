@@ -672,7 +672,7 @@ window.__viewInit["gear-finder"] = function () {
   els.preserveBox.addEventListener("change", () => {
     state.preserveOther = els.preserveBox.checked;
     const sec = state.realHasDps ? "EHP" : "DPS";
-    if (state.realCands && state.realCands.length) setStatus(`Preserve ${sec} ${state.preserveOther ? "on" : "off"} — click “Rank by real DPS” to apply.`);
+    if (state.realCands && state.realCands.length) setStatus(`Preserve ${sec} ${state.preserveOther ? "on" : "off"} — click “Re-rank” to apply.`);
   });
   if (els.pinBody) els.pinBody.addEventListener("click", async (ev) => {
     // Score all pins together in one PoB calc (real compounded gain).
