@@ -160,6 +160,25 @@ function tradeStatus() {
   return tradeQueue.status();
 }
 
+// Smallest remaining hit-count across the live GGG rate windows (limit − used, from the last
+// response headers the queue saw). Infinity when unknown. Lets a deep scan keep fetching while
+// there's headroom and stop just SHORT of the limit — "scan until it almost trips". At the queue's
+// 3s spacing a solo user's short (4s/12s) fetch windows barely deplete, so this mostly gates the
+// shared-IP case (someone else burned the budget → we back off instead of tripping a 9-min ban).
+function tradeBudgetRemaining() {
+  const rl = tradeStatus().rateLimit;
+  if (!rl || !rl.rules) return Infinity;
+  let min = Infinity;
+  for (const rule of Object.values(rl.rules)) {
+    const limits = rule.limits || [], states = rule.states || [];
+    for (let i = 0; i < Math.min(limits.length, states.length); i++) {
+      const limit = Number(limits[i][0]) || 0, used = Number(states[i][0]) || 0;
+      if (limit > 0) min = Math.min(min, limit - used);
+    }
+  }
+  return min;
+}
+
 function readJson(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -3648,11 +3667,12 @@ const server = http.createServer(async (req, res) => {
         // chest that's mid-pack on raw evasion but top on real EHP) still gets scored. 100 ids = 10
         // fetch calls (~30s through the 3s-spaced queue, on the VM's own VPN IP — fine for a user
         // action). The all-slots SCAN passes scoreCap:10 (1 fetch/slot) to stay cheap across ~12 slots.
-        // Weapon finds spend most of their budget on the targeted key-stat sub-pools below (where the real combo
-        // upgrades hide over a ~10k pool), so the main weighted pool is shallower for martial weapons (40 vs 100)
-        // to keep the TOTAL Trade2 calls per find rate-safe on the shared IP. Scans still pass scoreCap:10.
+        // Score the FULL returned page (100) for weapons too — the extra depth is just spaced fetches
+        // (no extra searches), and the tradeBudgetRemaining() guard in scoreIds stops short of the
+        // limit if the shared IP is busy. (Was capped at 40 for weapons to save the shared budget;
+        // now budget-guarded instead, so a solo user scans deep.) Scans still pass scoreCap:10.
         const isWeaponSlot = MARTIAL_WEAPON_SLOTS.has(slot.baseId || String(input.slot || ""));
-        const SCORE_CAP = Math.max(10, Math.min(100, Number(input.scoreCap) || (isWeaponSlot ? 40 : 100)));
+        const SCORE_CAP = Math.max(10, Math.min(100, Number(input.scoreCap) || 100));
         const m = Math.min(all.length, SCORE_CAP);
         // Weighted = best-value-first, score the top m. Otherwise sample a SPREAD across
         // the result page: for price-DESC that's the priciest 100 (where real upgrades
@@ -3708,12 +3728,18 @@ const server = http.createServer(async (req, res) => {
         let spiritSkipped = 0;
         let cands = [];
         let fetchErr = null;
+        let lowBudget = false;   // stopped a deep scan just SHORT of the rate limit (not a trip)
+        const BUDGET_MARGIN = 3; // leave this many hits in the tightest window as a safety cushion
         const seenId = new Set();   // dedup listings across the main pool + weapon-DPS sub-pool
         // Fetch (chunked by 10) + PoB-score a list of listing ids into `cands`. `qid` is the search id
         // those ids belong to — each (sub-)pool MUST be fetched with its OWN id (the set path's scoreInto
         // does the same; a mismatched query id can return nothing for foreign ids).
         const scoreIds = async (ids, qid) => {
           for (let i = 0; i < ids.length; i += 10) {   // Trade2 fetch caps at 10 ids/call
+            // Deep-scan budget guard: stop just SHORT of the rate limit rather than trip it (a trip
+            // = ~9-min ban). Solo, the 3s-spaced fetch windows stay full so this rarely fires; it's
+            // the shared-IP backstop. Keeps whatever we've already scored (partial result).
+            if (tradeBudgetRemaining() <= BUDGET_MARGIN) { lowBudget = true; break; }
             let fetched;
             try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(qid)); }
             catch (e) { fetchErr = e; break; }   // rate-limit/error mid-sweep → keep what we scored
@@ -3776,10 +3802,10 @@ const server = http.createServer(async (req, res) => {
           // DPS floor — i.e. "bows with at least my DPS that are at least as good as mine on my key stat", priciest
           // first. This is the user's recipe generalised: read my item's top stats, require ≥ them — so a +2 bow
           // that beats mine still surfaces (a hard ≥3 would have dropped it). `w.cur` = current roll (from weights).
-          const topStats = weights.slice(0, 2);
+          const topStats = weights.slice(0, 3);
           const seenStat = new Set();
           for (const w of topStats) {
-            if (fetchErr) break;
+            if (fetchErr || lowBudget) break;   // stop deepening once we're near the rate limit
             if (!w || !w.statId || seenStat.has(w.statId)) continue;
             seenStat.add(w.statId);
             await weaponSubPool(w.statId, Math.max(1, Math.round(Number(w.cur) || 0)), { price: "desc" }, 40);
@@ -3789,7 +3815,7 @@ const server = http.createServer(async (req, res) => {
           // inherently LOW DPS-per-divine — so a "45/div" filter finds nothing in them. High ROI
           // (cheap + real upgrade) lives at the price-ASC end; without this pool it's never fetched.
           // Gated on minRoi so a normal rank doesn't spend the extra ~4 fetches.
-          if (!fetchErr && (Number(input.minRoi) || 0) > 0 && topStats[0] && topStats[0].statId) {
+          if (!fetchErr && !lowBudget && (Number(input.minRoi) || 0) > 0 && topStats[0] && topStats[0].statId) {
             await weaponSubPool(topStats[0].statId, Math.max(1, Math.round(Number(topStats[0].cur) || 0)), { price: "asc" }, 40);
           }
         }
@@ -3818,7 +3844,7 @@ const server = http.createServer(async (req, res) => {
         // canDeepen: more of the returned result page is still unscored (true for weapons,
         // whose main pool is capped at 40 of a ~100-id page) → the client can re-rank with a
         // bigger scoreCap to hunt for higher gain/div. False once the page is fully scored.
-        send(res, 200, JSON.stringify({ available: true, weighted, sortMode, sessionExpired, metric, spiritSkipped, otherDropped, searchUrl, scored: scoredCount, canDeepen: m < all.length, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), bases, candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, weighted, sortMode, sessionExpired, metric, spiritSkipped, otherDropped, searchUrl, scored: scoredCount, canDeepen: m < all.length, partial: !!fetchErr, lowBudget, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), bases, candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         const msg = String(err.message);
