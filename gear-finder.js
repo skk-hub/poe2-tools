@@ -493,7 +493,11 @@ window.__viewInit["gear-finder"] = function () {
     els.preserveBox.checked = state.preserveOther;
     renderRealCands();
     const rankNote = d.sortMode === "defence" ? " (ranked by defence — highest-EHP first)" : d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)";
-    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB${rankNote}${state.preserveOther && d.otherDropped ? ` — Preserve ${secLabel} dropped ${d.otherDropped}` : ""}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.`);
+    // Base spread of the scored pool — so you can SEE if it's genuinely one base (market reality at
+    // this price) or the search is biasing it. Lower the Min div if you want to reach other bases.
+    const baseList = Object.entries(d.bases || {}).sort((a, b) => b[1] - a[1]);
+    const baseNote = baseList.length ? ` · bases scored: ${baseList.slice(0, 6).map(([b, n]) => `${b.replace(/ Bow$| Amulet$| Ring$/, "")}×${n}`).join(", ")}${baseList.length > 6 ? ", …" : ""}` : "";
+    setStatus(`Scored ${d.scored || cands.length} instant-buyout candidates in PoB${rankNote}${state.preserveOther && d.otherDropped ? ` — Preserve ${secLabel} dropped ${d.otherDropped}` : ""}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.${baseNote}`);
   }
 
   // Render the realrank pool: sort by the slot's gain metric, show the top 10. The Preserve-EHP

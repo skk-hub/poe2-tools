@@ -3760,8 +3760,10 @@ const server = http.createServer(async (req, res) => {
             try {
               const wq = { query: { status: { option: GEAR_TRADE_STATUS }, filters: { type_filters: { filters: { category: { option: slot.category }, rarity: { option: "nonunique" } } } }, stats: [] }, sort };
               if (maxDiv > 0 || minDiv > 0) { const price = { option: "divine" }; if (minDiv > 0) price.min = minDiv; if (maxDiv > 0) price.max = maxDiv; wq.query.filters.trade_filters = { filters: { price } }; }
-              // DPS floor: only consider bows with at least ~your current weapon DPS (the user's "phys dps > mine").
-              if (curWeaponDps > 0) wq.query.filters.equipment_filters = { filters: { dps: { min: Math.floor(curWeaponDps * 0.9) } } };
+              // DPS floor: only consider bows in the ballpark of your current weapon DPS. 70% (not 90%)
+              // — a 90% floor on TOTAL sheet dps collapses the pool to just the top base (Obliterator),
+              // since base type sets most of a bow's dps; 70% lets near-top bases in and PoB sorts the rest.
+              if (curWeaponDps > 0) wq.query.filters.equipment_filters = { filters: { dps: { min: Math.floor(curWeaponDps * 0.7) } } };
               const andF = gearStatFilters(input.preserve, 4).slice();
               if (extraStat) andF.push({ id: extraStat, value: { min: extraMin } });
               if (andF.length) wq.query.stats.push({ type: "and", filters: andF });
@@ -3809,10 +3811,14 @@ const server = http.createServer(async (req, res) => {
         // candidates (no per-item permalink exists on PoE trade). Each row links here.
         const searchUrl = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(usedLeague) + "/" + search.id : "";
         const sortMode = usedDefenceSort ? "defence" : (weighted ? "weighted" : "price");
+        // Base distribution of everything scored — so the UI can SHOW whether the fetched pool
+        // is genuinely one base (market reality at this price) or the search is biasing it.
+        const bases = {};
+        for (const c of cands) { const b = String(c.base || "").trim() || "?"; bases[b] = (bases[b] || 0) + 1; }
         // canDeepen: more of the returned result page is still unscored (true for weapons,
         // whose main pool is capped at 40 of a ~100-id page) → the client can re-rank with a
         // bigger scoreCap to hunt for higher gain/div. False once the page is fully scored.
-        send(res, 200, JSON.stringify({ available: true, weighted, sortMode, sessionExpired, metric, spiritSkipped, otherDropped, searchUrl, scored: scoredCount, canDeepen: m < all.length, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
+        send(res, 200, JSON.stringify({ available: true, weighted, sortMode, sessionExpired, metric, spiritSkipped, otherDropped, searchUrl, scored: scoredCount, canDeepen: m < all.length, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), bases, candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         const msg = String(err.message);
