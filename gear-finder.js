@@ -7,7 +7,7 @@ window.__viewInit["gear-finder"] = function () {
     code: $("gfCode"), importBtn: $("gfImport"), paste: $("gfPaste"), saveName: $("gfSaveName"), saveBuild: $("gfSaveBuild"), saveBox: $("gfSaveBox"), saveConfirm: $("gfSaveConfirm"),
     build: $("gfBuild"), sets: $("gfSets"), slots: $("gfSlots"),
     scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
-    panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), budgetMin: $("gfBudgetMin"),
+    panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), budgetMin: $("gfBudgetMin"), minRoi: $("gfMinRoi"),
     findBar: $("gfFindBar"), find: $("gfFind"), findHint: $("gfFindHint"), rarityChk: $("gfRarityChk"), rarityVal: $("gfRarityVal"), rakiataRow: $("gfRakiataRow"), ignoreRakiata: $("gfIgnoreRakiata"),
     status: $("gfStatus"), weights: $("gfWeights"),
     actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"),
@@ -444,15 +444,21 @@ window.__viewInit["gear-finder"] = function () {
   }
 
   // Rank by REAL DPS: fetch in-budget candidates and score each in PoB.
-  async function realRank() {
+  // `deep` (auto-set on the retry) asks the server to score the WHOLE returned page
+  // (scoreCap 100) instead of the shallow weapon default — used when a Min gain/div
+  // was set and nothing in the first pass cleared it.
+  async function realRank(deep) {
     if (!state.curSlot || !state.weights.length) { setStatus("Analyze the slot first.", true); return; }
+    const minRoi = Number(els.minRoi && els.minRoi.value) || 0;
+    if (!deep) state.roiDeepened = false;
     const gen = state.reqGen;
     // Floor at 70% of current rolls on stats the item HAS (cur>0); `equip` keeps the
     // item's core total defence. A near-BIS item rarely beats itself on every stat, so
     // 70% (not 100%) — PoB ΔDPS sorts the rest.
     const mods = state.weights.filter((w) => (w.cur || 0) > 0).slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((w.cur || 1) * 0.7)) }));
-    els.realRankBtn.disabled = true; els.realOut.innerHTML = ""; setStatus("Fetching candidates and scoring them in Path of Building…");
-    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, minPriceDiv: Number(els.budgetMin.value) || 0, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league }).catch((e) => ({ error: e.message || String(e) }));
+    els.realRankBtn.disabled = true; els.realOut.innerHTML = "";
+    setStatus(deep ? `No upgrade ≥ ${minRoi}/div in the first pass — scanning deeper…` : "Fetching candidates and scoring them in Path of Building…");
+    const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, minPriceDiv: Number(els.budgetMin.value) || 0, maxPriceDiv: Number(els.budget.value) || 0, rarityMin: rarityMin(), league: state.league, ...(deep ? { scoreCap: 100 } : {}) }).catch((e) => ({ error: e.message || String(e) }));
     els.realRankBtn.disabled = false;
     if (gen !== state.reqGen) return;   // user switched slots mid-flight — don't post these results on the new slot
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
@@ -469,6 +475,14 @@ window.__viewInit["gear-finder"] = function () {
       setStatus(why, false); return;
     }
     const hasDps = (d.metric || (d.baseDps > 0 ? "dps" : "ehp")) === "dps";
+    // Min gain/div: if nothing in this pass clears the bar and there's more of the page
+    // to score (weapons only, d.canDeepen), re-rank deeper ONCE. The queue paces the
+    // extra fetches; if it's already the deep pass, fall through and show the best found.
+    state.minRoi = minRoi;
+    if (minRoi > 0 && !deep && d.canDeepen) {
+      const met = cands.some((c) => { const g = hasDps ? c.dDPS : c.dEHP; return g > 0 && c.priceDiv > 0 && g / c.priceDiv >= minRoi; });
+      if (!met) { state.roiDeepened = true; return realRank(true); }
+    }
     state.realHasDps = hasDps;
     state.realSearchUrl = d.searchUrl || "";   // fallback when an item lacks base/account
     state.realCands = cands;                   // referenced by the value-check + pin handlers
@@ -494,17 +508,29 @@ window.__viewInit["gear-finder"] = function () {
     // Drop downgrades — only show real upgrades (positive gain on the slot's metric).
     let list = all.map((c, idx) => ({ c, idx })).filter(({ c }) => gainOf(c) > 0);
     list.sort((a, b) => gainOf(b.c) - gainOf(a.c));
-    const top = list.slice(0, 10);
-    if (!top.length) {
+    if (!list.length) {
       const unit = hasDps ? "DPS" : "EHP";
       els.realOut.innerHTML = `<p class="status">All ${all.length} in-budget listing(s) were ${unit} downgrades — your current ${slotLabel(state.curSlot)} is likely near best-in-slot here. Try a higher Max div or dial a breakpoint down.</p>`;
       return;
     }
+    // Min gain/div filter: keep only upgrades worth at least the set ROI. If none clear
+    // it (even after the deeper scan), show the best found under a note rather than empty.
+    const minRoi = state.minRoi || 0;
+    let roiNote = "";
+    if (minRoi > 0) {
+      const met = list.filter(({ c }) => roi(c) >= minRoi);
+      if (met.length) { list = met; }
+      else {
+        const best = list.reduce((m, { c }) => Math.max(m, roi(c)), 0);
+        roiNote = `<p class="status">No upgrade reached <b>${fmtRoi(minRoi)}/div</b>${state.roiDeepened ? " even after scanning deeper" : ""} — best was ${fmtRoi(best)}/div. Showing the biggest upgrades; lower the threshold or raise Max div for more value.</p>`;
+      }
+    }
+    const top = list.slice(0, 10);
     // Same denominator as the visible ROI badge (gain per DIVINE) so "★ best value"
     // agrees with the numbers shown; priceDiv <= 0 (no divine price) is excluded.
     let bestK = -1, bestVal = 0;
     top.forEach(({ c }, k) => { const g = gainOf(c); if (g > 0 && c.priceDiv > 0 && g / c.priceDiv > bestVal) { bestVal = g / c.priceDiv; bestK = k; } });
-    els.realOut.innerHTML = top.map(({ c, idx }, k) => {
+    els.realOut.innerHTML = roiNote + top.map(({ c, idx }, k) => {
       const price = c.priceDiv ? `${fmt(c.priceDiv)} div` : `${fmt(c.priceEx || 0)} ex`;
       // No seller-status badge: these are instant-buyout (async) listings, buyable even
       // when the seller is offline, so online/afk/offline would just mislead.
@@ -637,7 +663,7 @@ window.__viewInit["gear-finder"] = function () {
   els.scanAll.addEventListener("click", scanAll);
   // Click a scanned slot → focus it as a single-slot rank (select + analyze + rank).
   els.scanOut.addEventListener("click", async (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { els.optOut.innerHTML = ""; selectSlot(tr.dataset.slot); const gen = state.reqGen; els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); await analyzeSlot(); if (gen === state.reqGen && state.weights.length) await realRank(); } });
-  els.realRankBtn.addEventListener("click", realRank);
+  els.realRankBtn.addEventListener("click", () => realRank());
   els.treeRun.addEventListener("click", analyzeTree);
   // Click an optimizer pick row → open that listing on trade (same per-item link as the ranked rows).
   els.optOut.addEventListener("click", (ev) => { const row = ev.target.closest(".gf-opt-link"); if (!row) return; let mods = []; try { mods = JSON.parse(row.dataset.mods || "[]"); } catch {} openItemListing(row.dataset.base, row.dataset.account, "", mods); });

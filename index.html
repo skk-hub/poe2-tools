@@ -440,6 +440,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div class="gf-row">
           <label>Min div <span class="muted">(optional)</span> <input id="gfBudgetMin" type="number" value="0" min="0" step="0.5" style="width:6em" title="skip items cheaper than this — raises the floor past junk so a real upgrade shows"></label>
           <label>Max div <span class="muted">(0 = any)</span> <input id="gfBudget" type="number" value="0" min="0" step="0.5" style="width:6em" title="cap the upgrade price; 0 = find the best at any price (ROI tells you if it's worth it)"></label>
+          <label>Min gain/div <span class="muted">(0 = any)</span> <input id="gfMinRoi" type="number" value="0" min="0" step="5" style="width:6em" title="only show upgrades worth at least this much DPS (or EHP) per divine spent — cuts the flood of mediocre listings. If none clear the bar, the scan automatically goes deeper before giving up."></label>
           <button class="btn btn-primary" id="gfFind" type="button">Find upgrades</button>
           <span class="sub" id="gfFindHint">select one or more slots</span>
         </div>

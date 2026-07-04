@@ -3751,7 +3751,10 @@ const server = http.createServer(async (req, res) => {
         // candidates (no per-item permalink exists on PoE trade). Each row links here.
         const searchUrl = search.id ? "https://www.pathofexile.com/trade2/search/poe2/" + encodeURIComponent(usedLeague) + "/" + search.id : "";
         const sortMode = usedDefenceSort ? "defence" : (weighted ? "weighted" : "price");
-        send(res, 200, JSON.stringify({ available: true, weighted, sortMode, sessionExpired, metric, spiritSkipped, otherDropped, searchUrl, scored: scoredCount, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
+        // canDeepen: more of the returned result page is still unscored (true for weapons,
+        // whose main pool is capped at 40 of a ~100-id page) → the client can re-rank with a
+        // bigger scoreCap to hunt for higher gain/div. False once the page is fully scored.
+        send(res, 200, JSON.stringify({ available: true, weighted, sortMode, sessionExpired, metric, spiritSkipped, otherDropped, searchUrl, scored: scoredCount, canDeepen: m < all.length, partial: !!fetchErr, total: Number(search.total) || pick.length, baseDps: dpsOfOut(base), baseEhp: ehpOfOut(base), candidates: cands.slice(0, 25) }), "application/json; charset=utf-8");
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeLimitedUntil: tradeStatus().tradeLimitedUntil }), "application/json; charset=utf-8"); return; }
         const msg = String(err.message);
