@@ -10,7 +10,7 @@ window.__viewInit["gear-finder"] = function () {
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), budgetMin: $("gfBudgetMin"), minRoi: $("gfMinRoi"),
     findBar: $("gfFindBar"), find: $("gfFind"), findHint: $("gfFindHint"), rarityChk: $("gfRarityChk"), rarityVal: $("gfRarityVal"), rakiataRow: $("gfRakiataRow"), ignoreRakiata: $("gfIgnoreRakiata"),
     status: $("gfStatus"), weights: $("gfWeights"),
-    actions: $("gfActions"), realRankBtn: $("gfRealRank"), realOut: $("gfRealOut"),
+    actions: $("gfActions"), realOut: $("gfRealOut"),
     optBreaks: $("gfOptBreaks"), optOut: $("gfOptOut"),
     treeRow: $("gfTreeRow"), treeDepth: $("gfTreeDepth"), treeRun: $("gfTreeRun"), treeHint: $("gfTreeHint"), treeOut: $("gfTreeOut"), preserveBox: $("gfPreserveBox"), preserveRow: $("gfPreserveRow"), preserveLabel: $("gfPreserveLabel"), preserveSub: $("gfPreserveSub"), copyQuery: $("gfCopyQuery"), bookmarklet: $("gfBookmarklet"), showSnippet: $("gfShowSnippet"), basicBtn: $("gfBasic"), snippetBox: $("gfSnippetBox"),
     item: $("gfItem"), scoreBtn: $("gfScoreBtn"), scoreOut: $("gfScoreOut"),
@@ -37,7 +37,7 @@ window.__viewInit["gear-finder"] = function () {
   // reqGen: bumped by selectSlot — in-flight analyze/rank responses check it and drop
   // themselves if the user clicked another slot mid-flight (else slot A's weights land
   // on slot B and realRank/pins record under the wrong slot).
-  const state = { xml: null, slots: {}, sets: [], activeSet: null, headless: false, curSlot: null, reqGen: 0, sel: new Set(), weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], preserveOther: false, pinned: [] };
+  const state = { xml: null, slots: {}, sets: [], activeSet: null, headless: false, curSlot: null, reqGen: 0, sel: new Set(), weights: [], metric: "dps", query: null, league: "Runes of Aldur", realSearchUrl: "", realCands: [], preserveOther: false, ranking: false, pinned: [] };
   const isUnique = (raw) => /rarity:\s*unique/i.test(String(raw || ""));
   state.pinned = loadPins();
 
@@ -372,7 +372,7 @@ window.__viewInit["gear-finder"] = function () {
     els.slot.textContent = id + " — " + ((state.slots[id] && state.slots[id].name) || "");
     els.panel.hidden = false; els.weights.innerHTML = ""; els.actions.hidden = true; els.snippetBox.hidden = true;
     els.item.value = ""; els.scoreOut.innerHTML = "";
-    // Clear the previous slot's "Rank by real DPS" results + their state — else the stale
+    // Clear the previous slot's real-DPS rank results + their state — else the stale
     // rows stay visible and pinning one records it under the NEW slot (wrong-slot pins).
     els.realOut.innerHTML = ""; state.realCands = []; state.realSearchUrl = ""; state.realHasDps = false; els.preserveRow.hidden = true;
     setStatus("Set a budget and analyze this slot — or paste an item below to score it directly.");
@@ -449,6 +449,7 @@ window.__viewInit["gear-finder"] = function () {
   // was set and nothing in the first pass cleared it.
   async function realRank(deep) {
     if (!state.curSlot || !state.weights.length) { setStatus("Analyze the slot first.", true); return; }
+    if (state.ranking) return;   // no button to grey out anymore — guard against overlapping ranks (rate limit)
     const minRoi = Number(els.minRoi && els.minRoi.value) || 0;
     if (!deep) state.roiDeepened = false;
     const gen = state.reqGen;
@@ -456,10 +457,10 @@ window.__viewInit["gear-finder"] = function () {
     // item's core total defence. A near-BIS item rarely beats itself on every stat, so
     // 70% (not 100%) — PoB ΔDPS sorts the rest.
     const mods = state.weights.filter((w) => (w.cur || 0) > 0).slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((w.cur || 1) * 0.7)) }));
-    els.realRankBtn.disabled = true; els.realOut.innerHTML = "";
+    state.ranking = true; els.realOut.innerHTML = "";
     setStatus(deep ? `No upgrade ≥ ${minRoi}/div in the first pass — scanning deeper…` : "Fetching candidates and scoring them in Path of Building…");
     const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, minPriceDiv: Number(els.budgetMin.value) || 0, maxPriceDiv: Number(els.budget.value) || 0, minRoi, rarityMin: rarityMin(), league: state.league, ...(deep ? { scoreCap: 100 } : {}) }).catch((e) => ({ error: e.message || String(e) }));
-    els.realRankBtn.disabled = false;
+    state.ranking = false;
     if (gen !== state.reqGen) return;   // user switched slots mid-flight — don't post these results on the new slot
     if (d.available === false) { setStatus("Headless Path of Building isn't available.", true); return; }
     if (d.limited) { setStatus("Trade2 is rate-limited — try again shortly.", true); return; }
@@ -570,7 +571,7 @@ window.__viewInit["gear-finder"] = function () {
     let html = tableFor("dps", "DPS") + tableFor("ehp", "EHP");
     if (without.length) {
       // Clickable (except uniques) so you can drill into a "none" slot — the quick scan
-      // only scores 10 candidates/slot; "Rank by real DPS" scores 50 and digs deeper.
+      // only scores 10 candidates/slot; the per-slot real-DPS rank scores 50 and digs deeper.
       const rest = without.map((r) => { const link = !/unique/.test(r.none || "") && !/unavailable/.test(r.none || ""); return `<tr class="gf-scan-none${link ? " gf-scan-link" : ""}"${link ? ` data-slot="${esc(r.id)}" title="click to search this slot deeper"` : ""}><td><b>${esc(r.id)}</b> <span class="muted">${esc(r.name || "")}</span></td><td class="muted">${esc(r.none)}</td></tr>`; }).join("");
       html += `<table class="gf-scantable gf-scan-rest"><tbody>${rest}</tbody></table>`;
     }
@@ -679,16 +680,15 @@ window.__viewInit["gear-finder"] = function () {
   els.scanAll.addEventListener("click", scanAll);
   // Click a scanned slot → focus it as a single-slot rank (select + analyze + rank).
   els.scanOut.addEventListener("click", async (e) => { const tr = e.target.closest(".gf-scan-link"); if (tr) { els.optOut.innerHTML = ""; selectSlot(tr.dataset.slot); const gen = state.reqGen; els.panel.scrollIntoView({ behavior: "smooth", block: "start" }); await analyzeSlot(); if (gen === state.reqGen && state.weights.length) await realRank(); } });
-  els.realRankBtn.addEventListener("click", () => realRank());
   els.treeRun.addEventListener("click", analyzeTree);
   // Click an optimizer pick row → open that listing on trade (same per-item link as the ranked rows).
   els.optOut.addEventListener("click", (ev) => { const row = ev.target.closest(".gf-opt-link"); if (!row) return; let mods = []; try { mods = JSON.parse(row.dataset.mods || "[]"); } catch {} openItemListing(row.dataset.base, row.dataset.account, "", mods); });
-  // Preserve EHP is a PRE-scan setting (applied server-side before ranking), so changing it
-  // after results prompts a re-rank rather than silently re-filtering — no surprise re-fetch.
+  // Preserve EHP is a PRE-scan setting (applied server-side before ranking), so toggling it
+  // after results re-ranks with the new setting (a deliberate single action — one Trade2 call,
+  // same as the old manual button, minus the confusing greyed-out button).
   els.preserveBox.addEventListener("change", () => {
     state.preserveOther = els.preserveBox.checked;
-    const sec = state.realHasDps ? "EHP" : "DPS";
-    if (state.realCands && state.realCands.length) setStatus(`Preserve ${sec} ${state.preserveOther ? "on" : "off"} — click “Re-rank” to apply.`);
+    if (state.realCands && state.realCands.length) realRank();
   });
   if (els.pinBody) els.pinBody.addEventListener("click", async (ev) => {
     // Score all pins together in one PoB calc (real compounded gain).

@@ -99,7 +99,7 @@ function staticChecks() {
     check(/snippetText/.test(read("gear-finder.js")) && /BOOKMARKLET/.test(read("gear-finder.js")) && idx.includes('id="gfBookmarklet"') && idx.includes('id="gfCopyQuery"') && idx.includes('id="gfWeights"'), "gear-finder: weight breakdown + bookmarklet/copy-search (+ console fallback)");
     check(/\/api\/gear\/score/.test(srvG) && /scoreItems/.test(read("gear-finder.js")) && idx.includes('id="gfItem"'), "gear-finder has paste-an-item exact DPS/EHP gain (headless, no trade)");
     check(/poe2\.gearFinder\.builds/.test(read("gear-finder.js")) && idx.includes('id="gfSaved"') && /else if \(input\.xml\)/.test(srvG), "gear-finder has named localStorage build saves (+ import accepts xml)");
-    check(/\/api\/gear\/realrank/.test(srvG) && /function pobItemFromTradeEntry/.test(srvG) && /realRank/.test(read("gear-finder.js")) && idx.includes('id="gfRealRank"'), "gear-finder has real-DPS ranking (fetch + headless score)");
+    check(/\/api\/gear\/realrank/.test(srvG) && /function pobItemFromTradeEntry/.test(srvG) && /realRank/.test(read("gear-finder.js")) && idx.includes('id="gfRealOut"'), "gear-finder has real-DPS ranking (fetch + headless score)");
     check(/POB_BRIDGE_URL/.test(read("pob.js")) && /async function ready/.test(read("pob.js")) && fs.existsSync("pob-agent.js"), "pob.js remote mode + pob-agent.js (VM→PC headless bridge)");
     check(fs.existsSync("ecosystem.config.js") && /pob-agent/.test(read("ecosystem.config.js")), "pm2 ecosystem config for the pob-agent");
     const zlib = require("zlib");
