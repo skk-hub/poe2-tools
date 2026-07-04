@@ -2557,8 +2557,14 @@ function buildWeightedGearQuery(slot, weights, league, maxPriceDiv, preserve, op
     if (bestK && bestV >= 500) ef[bestK] = { min: Math.floor(bestV * 0.7) };
     // Weapon: PHYSICAL dps ("more phys than mine") — a phys build's real value; total dps can be
     // inflated by an elemental weapon. Falls back to total dps when phys isn't separable.
-    const wdKey = Number(equip.pdps) > 0 ? "pdps" : Number(equip.dps) > 0 ? "dps" : null;
-    if (wdKey) ef[wdKey] = { min: Math.floor(Number(equip[wdKey]) * 0.7) };
+    // ONLY on opts.weaponFloor (the raw browse/copy query, which the user reads unscored): a bow's
+    // phys dps is set almost entirely by its BASE TYPE, so a 70% floor near a top bow collapses the
+    // pool to just the highest base (Obliterator). realrank/optimize DON'T set it — they PoB-score
+    // every candidate and only surface real gains, so the floor there just hides varied bases.
+    if (opts.weaponFloor) {
+      const wdKey = Number(equip.pdps) > 0 ? "pdps" : Number(equip.dps) > 0 ? "dps" : null;
+      if (wdKey) ef[wdKey] = { min: Math.floor(Number(equip[wdKey]) * 0.7) };
+    }
     if (Object.keys(ef).length) q.query.filters.equipment_filters = { filters: ef };
   }
   return q;
@@ -3169,7 +3175,7 @@ const server = http.createServer(async (req, res) => {
       const league = sanitizeLeague(input.league || "Runes of Aldur");
       try {
         const w = await computeGearWeights(prepBuildXml(input), pobSlot, slot.baseId || slotId, String((input.current && input.current.raw) || ""));
-        const query = w.weights.length ? buildWeightedGearQuery(slot, w.weights, league, input.maxPriceDiv, w.preserve, { minPriceDiv: input.minPriceDiv, equip: w.equip }) : null;
+        const query = w.weights.length ? buildWeightedGearQuery(slot, w.weights, league, input.maxPriceDiv, w.preserve, { minPriceDiv: input.minPriceDiv, equip: w.equip, weaponFloor: true }) : null;
         send(res, 200, JSON.stringify({ available: true, slot: slotId, metric: w.metric, base: w.base, weights: w.weights, equip: w.equip, preserve: w.preserve, league, query }), "application/json; charset=utf-8");
       } catch (e) { send(res, 200, JSON.stringify({ available: true, error: String(e.message) }), "application/json; charset=utf-8"); }
       return;
