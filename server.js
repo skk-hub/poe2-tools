@@ -1655,6 +1655,15 @@ const UPGRADE_SEARCH_STATS = {
     { id: UPGRADE_STAT_IDS.localCritChance },
     { key: "totalFlatElementalAttack" },
   ],
+  // Caster/minion sceptre — what SELLS (build-agnostic resale), best first. Aliases resolve
+  // to single-stat sceptre pool mods via ALIAS_TEMPLATE; the hybrid "increased Spirit | +Mana"
+  // tiers are skipped by the pool index (single-stat only), so this targets the pure rolls.
+  sceptre: [
+    { key: "spiritPct" },             // up to 65% increased Spirit (the marquee sceptre stat)
+    { key: "levelAllMinionSkills" },  // +Level of all Minion Skills
+    { key: "levelAllSpellSkills" },   // +Level of all Spell Skills
+    { key: "minionDamageIncr" },      // Minions deal increased Damage
+  ],
   quiver: [
     { id: UPGRADE_STAT_IDS.projectileLevels, value: { min: 1 } },
     { id: UPGRADE_STAT_IDS.attackCrit, value: { min: 20 } },
@@ -2836,6 +2845,9 @@ const ALIAS_TEMPLATE = {
   flatFireAttack: "adds # to # fire damage to attacks", flatColdAttack: "adds # to # cold damage to attacks",
   flatLightningAttack: "adds # to # lightning damage to attacks", flatPhysAttack: "adds # to # physical damage to attacks",
   flatChaosAttack: "adds # to # chaos damage to attacks",
+  // Caster/minion sceptre sellables (templates match craftNorm of the pool mod text):
+  spiritPct: "#% increased spirit", levelAllMinionSkills: "+# to level of all minion skills",
+  levelAllSpellSkills: "+# to level of all spell skills", minionDamageIncr: "minions deal #% increased damage",
 };
 // Composite/pseudo aliases → the concrete single-mod aliases they stand for. Base/quality stats
 // (dps/evasion/armour) aren't craftable target mods → not listed (skipped).
@@ -2853,6 +2865,7 @@ const STATID_TO_ALIAS = Object.fromEntries(Object.entries(UPGRADE_STAT_IDS).map(
 const CRAFT_CLASS_SLOT = {
   Ring: "ring", Amulet: "amulet", Belt: "belt", "Body Armour": "chest", Boots: "boots",
   Gloves: "gloves", Helmet: "helmet", Focus: "focus", Quiver: "quiver", Jewel: "jewel", Shield: "shield", Buckler: "buckler",
+  Sceptre: "sceptre",
 };
 // The auto-advisor only has a real resale/desirable profile for BOWS among weapons.
 // The old catch-all mapped EVERY martial weapon (and even the caster Sceptre) to "bow",
@@ -2862,7 +2875,7 @@ const CRAFT_CLASS_SLOT = {
 // pick target mods manually" path (the manual mode works for any base).
 const craftAdviseSlot = (cls) => CRAFT_CLASS_SLOT[cls] || (cls === "Bow" ? "bow" : null);
 // advisor slot → a gear-finder slot id (for gearSlotCfg category + gearStatId). ring→ring1 (variants share category).
-const ADVISE_TO_GEAR_SLOT = { ring: "ring1", amulet: "amulet", belt: "belt", chest: "chest", boots: "boots", gloves: "gloves", helmet: "helmet", quiver: "quiver", jewel: "jewel", shield: "shield", buckler: "buckler", bow: "bow", focus: "focus" };
+const ADVISE_TO_GEAR_SLOT = { ring: "ring1", amulet: "amulet", belt: "belt", chest: "chest", boots: "boots", gloves: "gloves", helmet: "helmet", quiver: "quiver", jewel: "jewel", shield: "shield", buckler: "buckler", bow: "bow", focus: "focus", sceptre: "sceptre" };
 
 // Human label for a group: its top-tier stat text with roll ranges shown as #.
 function craftGroupLabel(group) {
