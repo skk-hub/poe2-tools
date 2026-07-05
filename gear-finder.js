@@ -501,7 +501,7 @@ window.__viewInit["gear-finder"] = function () {
     // scored is a thin slice (real upgrades can fall outside it), so tighten Min/Max div to concentrate it.
     const scored = d.scored || cands.length;
     const coverage = (d.total && d.total > scored) ? ` of ~${Number(d.total).toLocaleString()} matching your budget (tighten Min/Max div to scan a narrower slice more fully)` : "";
-    setStatus(`Scored ${scored}${coverage} instant-buyout candidates in PoB${rankNote}${state.preserveOther && d.otherDropped ? ` — Preserve ${secLabel} dropped ${d.otherDropped}` : ""}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.lowBudget ? " — scanned as deep as the rate-limit budget allowed (stopped just short of a trip)" : d.partial ? " — stopped early on the rate limit" : ""}.${baseNote}`);
+    setStatus(`Scored ${scored}${coverage} instant-buyout candidates in PoB${rankNote}${state.preserveOther && d.otherDropped ? ` — Preserve ${secLabel} dropped ${d.otherDropped}` : ""}${d.spiritSkipped ? ` — ${d.spiritSkipped} skipped (would break your auras on spirit)` : ""}${d.partial ? " — stopped early on the rate limit" : ""}.${baseNote}`);
   }
 
   // Render the realrank pool: sort by the slot's gain metric, show the top 10. The Preserve-EHP
