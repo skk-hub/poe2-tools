@@ -2348,6 +2348,12 @@ function parsePobBuild(xml, setId) {
     : (activeAttr && setBodies[activeAttr]) ? activeAttr
     : (sets[0] && sets[0].id) || null;
   const slotSrc = (activeSet && setBodies[activeSet]) || xml;
+  // PoE2 weapon swap: on Weapon Set II (useSecondWeaponSet) the ACTIVE weapons live in
+  // the "Weapon N Swap" slots — read those, not the inactive "Weapon N". PoB's calc keys
+  // off the slot name, so pobSlot stays the swap name and the headless what-if hits the
+  // weapon the build actually attacks with. (Else a swap build shows the wrong/no weapon.)
+  const useSecondWeapon = /<Items\b[^>]*\buseSecondWeaponSet="true"/.test(xml);
+  const weaponSlotRe = useSecondWeapon ? /^Weapon [12] Swap$/ : /^Weapon [12]$/;
   // slot name -> itemId
   const slots = {};
   const slotRe = /<Slot\b([^>]*?)\/?>/g;
@@ -2357,8 +2363,8 @@ function parsePobBuild(xml, setId) {
     const itemId = (attrs.match(/\bitemId="(\d+)"/) || [])[1];
     if (!name || !itemId || itemId === "0" || !items[itemId]) continue;
     let slotId = POB_SLOT_MAP[name];
-    if (!slotId && /^Weapon [12]$/.test(name)) slotId = pobWeaponSlot(items[itemId]);
-    if (!slotId || slots[slotId]) continue; // skip flasks/jewels/sockets/swap + dupes
+    if (!slotId && weaponSlotRe.test(name)) slotId = pobWeaponSlot(items[itemId]);
+    if (!slotId || slots[slotId]) continue; // skip flasks/jewels/sockets/inactive-weapon-set + dupes
     const raw = items[itemId];
     const baseSlot = slotId === "ring1" || slotId === "ring2" ? "ring" : slotId;
     slots[slotId] = { pobSlot: name, name: (raw.split("\n")[1] || raw.split("\n")[0] || "").trim(), raw, stats: parseItemStats(raw, baseSlot) };
