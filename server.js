@@ -3714,6 +3714,7 @@ const server = http.createServer(async (req, res) => {
         // those ids belong to — each (sub-)pool MUST be fetched with its OWN id (the set path's scoreInto
         // does the same; a mismatched query id can return nothing for foreign ids).
         const scoreIds = async (ids, qid) => {
+          ids = ids.filter((id) => !seenId.has(id));   // skip ids an earlier pool already fetched → sub-pools/price-slices only spend calls on NEW listings
           for (let i = 0; i < ids.length; i += 10) {   // Trade2 fetch caps at 10 ids/call
             let fetched;
             try { fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids.slice(i, i + 10).join(",") + "?query=" + encodeURIComponent(qid)); }
@@ -3777,7 +3778,7 @@ const server = http.createServer(async (req, res) => {
           // DPS floor — i.e. "bows with at least my DPS that are at least as good as mine on my key stat", priciest
           // first. This is the user's recipe generalised: read my item's top stats, require ≥ them — so a +2 bow
           // that beats mine still surfaces (a hard ≥3 would have dropped it). `w.cur` = current roll (from weights).
-          const topStats = weights.slice(0, 3);
+          const topStats = weights.slice(0, 2);
           const seenStat = new Set();
           for (const w of topStats) {
             if (fetchErr) break;   // a mid-sweep 429 stops deepening; the queue's pacing avoids tripping
@@ -3792,6 +3793,28 @@ const server = http.createServer(async (req, res) => {
           // Gated on minRoi so a normal rank doesn't spend the extra ~4 fetches.
           if (!fetchErr && (Number(input.minRoi) || 0) > 0 && topStats[0] && topStats[0].statId) {
             await weaponSubPool(topStats[0].statId, Math.max(1, Math.round(Number(topStats[0].cur) || 0)), { price: "asc" }, 40);
+          }
+        }
+        // PRICE-BAND PAGINATION (weighted, bounded band): a single wide-band search only returns the
+        // top ~100 by the LINEAR weighted proxy, so a PoB-great bow that sorts mid-pack is dropped —
+        // and a NARROWER band surfaces it (its own top-100). That's the "I lowered Max div and a better
+        // bow appeared that the wider scan missed" bug. Fix: slice the band and search each segment, so
+        // a wide scan ≈ the union of narrow scans. scoreIds skips already-seen ids, so each slice only
+        // spends fetch calls on the NEW (mid-proxy) listings it surfaces.
+        if (weighted && !fetchErr && maxDiv > 0 && maxDiv - minDiv >= 75) {
+          const band = maxDiv - minDiv;
+          const K = Math.min(3, Math.max(2, Math.round(band / 60)));   // ~60-div slices, 2–3 of them
+          const step = band / K;
+          for (let i = 0; i < K && !fetchErr; i++) {
+            const lo = Math.round(minDiv + i * step);
+            const hi = i === K - 1 ? maxDiv : Math.round(minDiv + (i + 1) * step);
+            const sq = buildWeightedGearQuery(slot, weights, league, hi, input.preserve, { minPriceDiv: lo, equip: input.equip });
+            injectRarityGroup(sq, raritySlot, rarityMin);
+            try {
+              const sRes = await gearTradeSearch(sq, league);
+              const sIds = ((sRes.search && sRes.search.result) || []).slice(0, 40);
+              if (sIds.length && sRes.search && sRes.search.id) await scoreIds(sIds, sRes.search.id);
+            } catch { /* a price slice is a bonus; never break the rank */ }
           }
         }
         if (!cands.length && fetchErr) throw fetchErr;   // total failure → outer catch (rate-limit msg etc.)
