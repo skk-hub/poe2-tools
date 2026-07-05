@@ -399,18 +399,18 @@ async function browserChecks() {
       // toggle "Corrupted only" -> the corrupted block appears
       await p.click('.toolroot-mj [data-tog="corrupt"]'); await p.waitForTimeout(120);
       check(/"corrupted"/.test(await out()), "regex forge emits the corrupted block when toggled");
-      // dump mode keeps only what sells gated on this class (Item Rarity >=60,
-      // Monster Effectiveness >=40, Drop >= the tunable keep default 115); Monster
-      // Rarity + Pack Size are NOT kept (junk solo, 2026-06-25 probe).
+      // dump default = "dump anything under ~40ex": only Pack Size (>=40) + the Drop sustain
+      // keep (115) stay out of the pile. Item Rarity / Monster Effectiveness / Monster Rarity
+      // are all under 40ex → OFF by default, so their !blocks must be ABSENT (2026-07-05 rule).
       await p.click('.toolroot-mj [data-wmatch="dump"]'); await p.waitForTimeout(150);
       const dump = await out();
-      check(/"corrupted"/.test(dump) && /revives available: 0/.test(dump) && /!item rarity: \\\+\[6-9\]\[0-9\]%/.test(dump) && /!monster effectiveness: \\\+\[4-9\]\[0-9\]%/.test(dump) && /!monster rarity: \\\+\(4\[5-9\]\|\[5-9\]\[0-9\]\)%/.test(dump) && /!drop chance: \\\+\(11\[5-9\]\|1\[2-9\]\[0-9\]\)%/.test(dump) && /!pack size: \\\+\[4-9\]\[0-9\]%/.test(dump), "regex forge dump keeps Pack>=40 + rarity>=60 + ME>=40 + MonRarity>=45 + Drop>=115");
-      // typeable keep selector adjusts the kept threshold (60 -> 70 %)
+      check(/"corrupted"/.test(dump) && /revives available: 0/.test(dump) && /!pack size: \\\+\[4-9\]\[0-9\]%/.test(dump) && /!drop chance: \\\+\(11\[5-9\]\|1\[2-9\]\[0-9\]\)%/.test(dump) && !/item rarity/.test(dump) && !/monster effectiveness/.test(dump) && !/monster rarity/.test(dump), "regex forge dump default keeps only Pack>=40 + Drop>=115 (sub-40ex signals off)");
+      // rarity-keep now defaults 0 (off, under 40ex) and can be raised from there (0 -> 10 %)
       const inVal = () => p.evaluate(() => (document.querySelector('.toolroot-mj [data-stepin="rarityKeep"]') || {}).value || "");
       const capA = await inVal();
       await p.click('.toolroot-mj [data-step="rarityKeep"][data-dir="1"]'); await p.waitForTimeout(120);
       const capB = await inVal();
-      check(capA === "60" && capB === "70", "regex forge dump rarity-keep selector adjusts the threshold");
+      check(capA === "0" && capB === "10", "regex forge dump rarity-keep selector adjusts the threshold");
       // Drop keep selector: set to 0 -> drop-chance keep drops out of the regex entirely
       await p.evaluate(() => { const i = document.querySelector('.toolroot-mj [data-stepin="dropKeep"]'); i.value = "0"; i.dispatchEvent(new Event("change", { bubbles: true })); });
       await p.waitForTimeout(120);

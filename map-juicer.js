@@ -32,11 +32,16 @@ window.__viewInit["map-juicer"]=function(){
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
   let rarityMin = 0, packMin = 0, effMin = 0, wdropMin = 0;   // all start at 0 (off) — build up from nothing; wdrop is 0 or 100
-  let dumpRarityKeep = 60;   // dump keeps maps with Item Rarity >= this%
-  let effKeep = 40;          // dump keeps maps with Monster Effectiveness >= this% (~10ex @40%); 0 = off
-  let dropKeep = 115;        // dump keeps maps with Waystone Drop Chance >= this% (your sustain rule); 0 = dump any drop roll
-  let monRarKeep = 45;       // dump keeps maps with Monster Rarity >= this% (user's keep rule); stat caps ~55% so 45 is "high"; 0 = off (was 80 = unreachable dead keep)
-  let packKeep = 40;         // dump keeps maps with Pack Size >= this% (now the top solo chase ~30-150ex, 2026-06-28); 0 = off
+  // "Dump anything under ~40ex" (user rule 2026-07-05). NB PoE2 scale: ex is the SMALL unit
+  // (~100 ex ≈ 1 chaos), so 10ex is junk and 40ex is the real cut. Per the buy-side sweeps,
+  // only Pack Size clears ~40ex (~30-150ex); Item Rarity (~10-15ex), Monster Effectiveness
+  // (~10ex) and Monster Rarity (~1ex) are all under the line → default OFF (they no longer
+  // rescue a stone from the dump). Drop Chance stays as the separate SUSTAIN keep.
+  let dumpRarityKeep = 0;    // keep Item Rarity >= this% out of the dump (~10-15ex, under 40ex); 0 = off
+  let effKeep = 0;           // keep Monster Effectiveness >= this% (~10ex @40%, under 40ex); 0 = off
+  let dropKeep = 115;        // keep Waystone Drop Chance >= this% — your SUSTAIN rule, not resale; 0 = dump any drop roll
+  let monRarKeep = 0;        // keep Monster Rarity >= this% (~1ex solo, under 40ex); 0 = off
+  let packKeep = 40;         // keep Pack Size >= this% — the only ~40ex+ signal (~30-150ex; pure-40 ≈ 30ex, bump toward 45-50 for a strict 40ex cut); 0 = off
   // Match a number ≥ pct — EXACT for any threshold, not just multiples of 10
   // (≥45 must not match 40-44; ≥5 must match 5-9). Uses [0-9] not "." so it
   // can't swallow the trailing "%". The label token carries the stat name; we
@@ -107,8 +112,8 @@ window.__viewInit["map-juicer"]=function(){
     const blocks = [
       `"${T.corrupted}"`,
       `"${T.revivesZero}"`,
-      `"!${atLeast(L.itemRarity, dumpRarityKeep, 87)}"`,   // keep high Item Rarity
     ];
+    if (dumpRarityKeep > 0) blocks.push(`"!${atLeast(L.itemRarity, dumpRarityKeep, 87)}"`);   // keep high Item Rarity (0 = dump it too — ~10-15ex, under 40ex)
     if (effKeep > 0) blocks.push(`"!${atLeast(L.monsterEffectiveness, effKeep, 70)}"`);   // keep Monster Effectiveness >= selector
     if (packKeep > 0) blocks.push(`"!${atLeast(L.packSize, packKeep, 51)}"`);   // keep high Pack Size (the 2026-06-28 chase)
     if (monRarKeep > 0) blocks.push(`"!${atLeast(L.monsterRarity, monRarKeep, 55)}"`);   // keep Monster Rarity >= selector (caps ~55%)
@@ -235,7 +240,7 @@ window.__viewInit["map-juicer"]=function(){
   function seg(attr, val, cur, label){ return `<button class="seg-btn${val===cur?" on":""}" type="button" data-${attr}="${val}">${esc(label)}</button>`; }
   // Each tunable: [lo, hi, click-step]. The control is a typeable number input
   // (type the value directly — no clicking to 0) flanked by −/+ for quick nudges.
-  const STEP_CFG = { rarity:[0,80,10], pack:[0,50,10], eff:[0,70,10], rarityKeep:[40,80,10], effKeep:[0,70,10], packKeep:[0,50,5], monRarKeep:[0,60,5], dropKeep:[0,130,5] };
+  const STEP_CFG = { rarity:[0,80,10], pack:[0,50,10], eff:[0,70,10], rarityKeep:[0,80,10], effKeep:[0,70,10], packKeep:[0,50,5], monRarKeep:[0,60,5], dropKeep:[0,130,5] };
   function stepCur(id){ return ({ rarity:rarityMin, pack:packMin, eff:effMin, rarityKeep:dumpRarityKeep, effKeep, packKeep, monRarKeep, dropKeep })[id]; }
   function setStep(id, v){
     const c = STEP_CFG[id]; if (!c) return;
@@ -259,7 +264,7 @@ window.__viewInit["map-juicer"]=function(){
   function waystoneQs(){
     const segs = `<div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}${seg("wmatch","dump",wMatch,"Low-value dump")}</div>`;
     if (wMatch === "dump") {
-      return `${segs}<div class="forge-steps">${stepper("packKeep","Keep if Pack Size ≥")}${stepper("rarityKeep","Keep if Item Rarity ≥")}${stepper("effKeep","Keep if Effectiveness ≥")}${stepper("monRarKeep","Keep if Monster Rarity ≥")}${stepper("dropKeep","Keep if Drop Chance ≥")}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones that are <b>~5ex bulk</b> and keeps the real money OUT of the dump pile. Gated buy-side sweep (2026-06-28): <b>Pack Size is now the top chase</b> — pure Pack-40 ~30ex, near-max ~150ex${packKeep>0?` (keep ≥${packKeep}%)`:` (off)`}. Also kept: <b>Item Rarity ≥${dumpRarityKeep}%</b> (cooled to ~10-15ex)${effKeep>0?`, <b>Monster Effectiveness ≥${effKeep}%</b> (~10ex, marginal)`:``}${monRarKeep>0?`, <b>Monster Rarity ≥${monRarKeep}%</b> (your rule — ~1ex solo, set 0 to drop it)`:``}${dropKeep>0?`, <b>Drop Chance ≥${dropKeep}%</b> (your sustain rule, set 0 to dump any drop)`:``}. <b>Combos aren't a buyable market</b> — value is single top-rolls, so keep on each signal alone. <b>Ignore the in-game price-check.</b></p>`;
+      return `${segs}<div class="forge-steps">${stepper("packKeep","Keep if Pack Size ≥")}${stepper("rarityKeep","Keep if Item Rarity ≥")}${stepper("effKeep","Keep if Effectiveness ≥")}${stepper("monRarKeep","Keep if Monster Rarity ≥")}${stepper("dropKeep","Keep if Drop Chance ≥")}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones to bulk-dump, keeping the real money OUT of the pile. Default line = <b>dump anything under ~40ex</b>: only <b>Pack Size</b> clears that (~30-150ex)${packKeep>0?` — keep ≥${packKeep}% <span class="muted">(pure-40 ≈ 30ex; bump toward 45-50 for a strict 40ex cut)</span>`:` <b>(off)</b>`}. Under 40ex and <b>off by default</b> — Item Rarity (~10-15ex)${dumpRarityKeep>0?` <b>now keep ≥${dumpRarityKeep}%</b>`:``}, Monster Effectiveness (~10ex)${effKeep>0?` <b>keep ≥${effKeep}%</b>`:``}, Monster Rarity (~1ex)${monRarKeep>0?` <b>keep ≥${monRarKeep}%</b>`:``}; raise a stepper above 0 to rescue that signal from the dump.${dropKeep>0?` <b>Drop Chance ≥${dropKeep}%</b> kept as your <b>sustain</b> rule (not resale; set 0 to dump any drop).`:``} <b>Ignore the in-game price-check.</b></p>`;
     }
     return `
       ${segs}
