@@ -117,32 +117,31 @@ window.WAYSTONE_DATA = {
   // whole-map and correlated, so a map's value ≈ its single best stat, not the
   // sum. Re-run the sweep each patch.
   marketWeights: {
-    source: "PoE2 Trade2 — Waystone (Tier 16) price-vs-% BUY-side floor sweep, GATED corrupted+0-revives (cheapest ask)",
-    analyzed: "2026-07-05 (live re-sweep — Item Rarity ≥70% is THE chase (~2200ex cliff); everything else is bulk; combos have ZERO sell market)",
+    source: "PoE2 Trade2 — Waystone (Tier 16) SECURABLE floor sweep, gated corrupted+0-revives, all-currency→ex",
+    analyzed: "2026-07-05 (securable + all-currency fix — real buyable floors; baseline is 2 chaos, not 1ex)",
     league: "Runes of Aldur",
-    baselineEx: 1, // a junk Tier-16 waystone floors at ~1ex
-    note: "2026-07-05 LIVE re-sweep (patch 0.5.4, gated corrupted+0-revives = the real buyable class). ITEM RARITY IS THE ONLY REAL SELL CHASE and it's a CLIFF: ~1ex @50%, ~20ex @60-65%, then ~2200ex @70%+. Everything else is bulk — Pack Size ~25ex @40% (cooled hard from ~150ex in June), Monster Effectiveness ~10ex @40%, Monster Rarity ~1ex, Waystone Drop worthless to BUY. COMBOS HAVE ZERO SELL MARKET: 2-stat gated searches (Rarity≥55+Pack≥30, Rarity≥55+Eff≥40) both returned 0 listings — people RUN good combo maps, they don't sell them. So a multi-decent-roll stone is worth RUNNING but its sell-floor is ~junk, and the dump (which prices on sell-floor) will always mark it 'dump'. That mismatch (run-value vs sell-value) is why scanned combo stones read as low value. The dump keeps SOLO signals only (stash regex can't AND two keeps); the paste evaluator + your own judgment cover combo run-value. Waystone Gold & Experience have no liquid buy market, not priced. Curves are SELL floors — a stone's worth to RUN yourself is higher.",
-    // `curve` = [rolled %, floor ex]. `ceiling` = the stat's max roll — the evaluator
-    // normalizes pasted rolls against it. These are the HIGHEST ROLL SEEN in the gated
-    // live sweep (a lower bound on the true cap; the true theoretical cap can be a few %
-    // higher since cheap listings rarely show a max roll). Monster Rarity's old 103 was
-    // impossible — the stat maxes ~55%.
+    baselineEx: 171, // ANY usable corrupted 0-revive T16 stone floors at ~2 chaos (~171ex)
+    note: "2026-07-05 SECURABLE re-sweep (patch 0.5.4). THE FIX: the sweep now queries status:securable (the real async-buyable Merchant-Tab pool) across ALL currencies, not status:any priced in exalted. status:any counted dead OFFLINE whisper listings — abandoned '1 exalted' bait that never sells was setting the floor, so the whole class read as ~1ex junk and the tool told you to dump 2-chaos stones. Real floors (1 chaos ≈ 86ex, 1 divine ≈ 695ex): BASELINE any usable stone = ~2 chaos (~171ex) — nothing is truly worthless. Item Rarity is still the top chase (~700ex @50%, ~1600ex @60-65%, ~1700ex @70%+ = 20 chaos). Pack ~260ex @30, ~860ex @40 (10 chaos). Monster Effectiveness ~700ex @40 (1 divine). Monster Rarity ~230ex @40. NOTE: the securable pool is THIN, so single-probe floors are volatile (rarity ≥70 read 695/1712/2200 across probes) — treat curves as order-of-magnitude, hit 'Refresh from market' for current. COMBOS: 2-stat gated searches still return 0 securable listings — people RUN good combos, they don't sell them (run-value > sell-value; the paste evaluator + your judgment cover that). Waystone Drop is sustain-only (worth ~baseline to buy). So 'dump' now means 'only floor-value (~2 chaos), bulk-sell it' — NOT worthless.",
+    // `curve` = [rolled %, securable floor ex]. `ceiling` = highest roll SEEN in the (thin)
+    // securable sample — a noisy lower bound on the true cap, not the theoretical max.
+    // Below a curve's first point, value floors at baselineEx (~2 chaos) — every stone is
+    // worth at least bulk. Monster Rarity's old ceiling 103 was impossible (maxes ~55-60%).
     stats: [
-      { key: "itemRarity", label: "Item Rarity", weight: 1.0, ceiling: 84, peakEx: 2200,
-        curve: [[50, 1], [60, 20], [65, 20], [70, 2200]],
-        tip: "BY FAR the top chase (2026-07-05 live). Flat ~20ex through 60-65%, then a CLIFF — ≥70% floors ~2200ex. The whole waystone sell market is basically this one stat. Below 70% it's bulk. (Thin chase market — treat 2200 as the live floor, not a guaranteed sale.)" },
-      { key: "packSize", label: "Pack Size", weight: 0.01, ceiling: 49, peakEx: 25,
-        curve: [[30, 1], [40, 25]],
-        tip: "Cooled hard (2026-07-05: ~25ex @40%, was ~150ex in June). Only a few × the ~5ex bulk floor." },
-      { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.005, ceiling: 70, peakEx: 10,
-        curve: [[20, 1], [40, 10]],
-        tip: "Marginal ~10ex @40% (2026-07-05). Barely above the ~5ex bulk floor." },
-      { key: "waystoneDrop", label: "Waystone Drop Chance", weight: 0, ceiling: 125, peakEx: 1, est: true,
-        curve: [[40, 1], [105, 1]],
-        tip: "Worthless to BUY — even a ~105% roll floors at ~1ex. Not live-swept (est). Sustain only helps YOUR own endless-T16 farming; the market won't pay for it." },
-      { key: "monsterRarity", label: "Monster Rarity", weight: 0, ceiling: 55, peakEx: 1,
-        curve: [[40, 1]],
-        tip: "~1ex even at high rolls (2026-07-05). Real cap ~55% (the old 103 was wrong). Kept in the dump only by your explicit rule." },
+      { key: "itemRarity", label: "Item Rarity", weight: 1.0, ceiling: 83, peakEx: 1712,
+        curve: [[50, 695], [60, 1626], [65, 1626], [70, 1712]],
+        tip: "Top chase (2026-07-05 securable): ~700ex @50%, ~1600ex @60-65%, ~1700ex (20 chaos) @70%+. Thin/volatile market — refresh for current." },
+      { key: "packSize", label: "Pack Size", weight: 0.5, ceiling: 50, peakEx: 856,
+        curve: [[30, 257], [40, 856]],
+        tip: "~260ex @30%, ~860ex (10 chaos) @40% (2026-07-05 securable). Real value again once you price the buyable pool, not stale bait." },
+      { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.41, ceiling: 54, peakEx: 695,
+        curve: [[20, 171], [40, 695]],
+        tip: "~1 divine (~695ex) @40% (2026-07-05 securable). Well above the ~2-chaos baseline." },
+      { key: "waystoneDrop", label: "Waystone Drop Chance", weight: 0.1, ceiling: 125, peakEx: 171, est: true,
+        curve: [[40, 171], [105, 171]],
+        tip: "~baseline to BUY even at high rolls — not a sell chase. Not live-swept (est). Sustain only helps YOUR own endless-T16 farming." },
+      { key: "monsterRarity", label: "Monster Rarity", weight: 0.13, ceiling: 60, peakEx: 230,
+        curve: [[40, 230]],
+        tip: "~230ex @40% (2026-07-05 securable) — a bit above baseline, not a big chase. Real cap ~55-60% (old 103 was wrong)." },
     ],
   },
 

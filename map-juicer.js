@@ -403,9 +403,9 @@ window.__viewInit["map-juicer"]=function(){
     const rows = stats.map(s=>{
       const pk = peakEx(s), pct = Math.round(pk / max * 100);
       return `<li class="mw-item">
-        <div class="mw-line"><span class="mw-name">${esc(s.label)}${s.est?` <span title="estimate — not yet Trade2-swept" style="color:var(--mu);font-size:.8em">(est)</span>`:""}</span><span class="mw-val"><b>${pk}</b> ex</span></div>
+        <div class="mw-line"><span class="mw-name">${esc(s.label)}${s.est?` <span title="estimate — not yet Trade2-swept" style="color:var(--mu);font-size:.8em">(est)</span>`:""}</span><span class="mw-val"><b>${inChaos(pk)}</b>c <span style="color:var(--mu);font-size:.85em">(${pk}ex)</span></span></div>
         <div class="mw-bar"><span style="width:${pct}%"></span></div>
-        ${s.ceiling?`<div class="mw-cap">best roll caps ~${s.ceiling}%</div>`:""}
+        ${s.ceiling?`<div class="mw-cap">top roll seen ~${s.ceiling}%</div>`:""}
       </li>`;
     }).join("");
     slot.innerHTML = `
@@ -504,10 +504,17 @@ window.__viewInit["map-juicer"]=function(){
     const slope = (b[1]-a[1]) / Math.max(1, b[0]-a[0]);
     return Math.max(b[1], b[1] + slope * (pct - b[0]));
   }
+  // Value scale is anchored to baselineEx (~2 chaos = the floor for ANY usable stone).
+  // Tiers are multiples of that floor so they auto-rescale if the baseline moves.
+  function baseEx(){ return (MW() && MW().baselineEx) || 1; }
+  function chaosRate(){ return (MW() && MW().rates && MW().rates.chaosEx) || 86; }
+  function inChaos(ex){ const c = ex / chaosRate(); return c >= 10 ? String(Math.round(c)) : (Math.round(c*10)/10).toString(); }
+  function exChaos(ex){ return `${inChaos(ex)}c (${Math.round(ex)}ex)`; }
+  function valTier(ex){ const b = baseEx(); if (ex >= b*7) return ["good","premium"]; if (ex >= b*2.5) return ["mid","good roll"]; return ["bad","floor"]; }
   function marketScore(text){
     const stats = (MW() && MW().stats) || [];
     let best = null, rows = [];
-    for (const s of stats){ const re = STAT_RE[s.key]; if (!re) continue; const { found, value } = statRoll(text, re); if (!found) continue; const ex = Math.round(curveEx(s.curve, value)); const tagCls = ex >= 60 ? "good" : ex >= 15 ? "mid" : "bad"; const tagTxt = ex >= 60 ? "premium" : ex >= 15 ? "good roll" : "low value"; rows.push({ key: s.key, label: s.label, value, ex, tagCls, tagTxt, ceiling: s.ceiling || 0 }); if (!best || ex > best.ex) best = { label: s.label, value, ex }; }
+    for (const s of stats){ const re = STAT_RE[s.key]; if (!re) continue; const { found, value } = statRoll(text, re); if (!found) continue; const ex = Math.round(curveEx(s.curve, value)); const [tagCls, tagTxt] = valTier(ex); rows.push({ key: s.key, label: s.label, value, ex, tagCls, tagTxt, ceiling: s.ceiling || 0 }); if (!best || ex > best.ex) best = { label: s.label, value, ex }; }
     rows.sort((a,b)=>b.ex - a.ex);
     return { headlineEx: best ? best.ex : 0, best, rows };
   }
@@ -554,25 +561,26 @@ window.__viewInit["map-juicer"]=function(){
       for (const r of ms.rows){ lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""}`); }
       if (c) lines.push(`<span class="tag mid">content</span>This is a <b>${esc(c.label)}</b> tablet — socket it in a Tower covering maps you run for ${esc(c.label)}.`);
     } else if (isWaystone){
-      const ex = ms.headlineEx;
-      const bestTxt = ms.best ? `${ms.best.label} ${ms.best.value}% ≈ ${ms.best.ex}ex` : "no reward stats";
+      const base = baseEx();
+      const ex = Math.max(base, ms.headlineEx);   // every usable stone floors at ~2 chaos
+      const bestTxt = ms.best ? `${ms.best.label} ${ms.best.value}% ≈ ${exChaos(ms.best.ex)}` : "no reward stats";
       if (rarity==="normal"){ cls="warn"; head="White waystone — Alch (or Transmute→Aug→Regal), chase high Rarity / Pack Size"; }
       else if (rarity==="magic"){
-        if (ex >= 20){ cls="good"; head=`Good blue (best: ${bestTxt}) — Regal then Exalt, push that roll higher`; }
-        else if (ex > 0){ cls="warn"; head=`Weak blue (best: ${bestTxt}) — Aug toward Rarity / Pack Size, or reroll`; }
+        if (ex >= base*2.5){ cls="good"; head=`Good blue (best: ${bestTxt}) — Regal then Exalt, push that roll higher`; }
+        else if (ms.best){ cls="warn"; head=`Weak blue (best: ${bestTxt}) — Aug toward Rarity / Pack Size, or reroll`; }
         else { cls="warn"; head="Weak blue — Augment for a reward mod, or Transmute-reroll"; }
       } else if (highStats >= 2){
         cls="good"; head=`✓ Multi-stat chase — ${highStats} high rolls together${dangers.length?", has risk mods (run anyway)":""}. Price-check it: combos this juiced are scarce and sell well above any single stat`;
       } else {
-        if (ex >= 100){ cls="good"; head=`✓ Premium juice (best: ${bestTxt})${dangers.length?" — has risk mods, run anyway":""}`; }
-        else if (ex >= 30){ cls=dangers.length?"warn":"good"; head=`Solid map (best: ${bestTxt}) — run it`; }
+        if (ex >= base*7){ cls="good"; head=`✓ Premium juice (best: ${bestTxt})${dangers.length?" — has risk mods, run anyway":""}`; }
+        else if (ex >= base*2.5){ cls=dangers.length?"warn":"good"; head=`Solid map (best: ${bestTxt}) — run or sell`; }
         else if (decentStats >= 2){ cls=dangers.length?"warn":"good"; head=`Juiced all-rounder (best: ${bestTxt}) — ${decentStats} solid stats that compound in-run, worth running${dangers.length?" despite risk mods":""}`; }
-        else if (dangers.length){ cls="bad"; head="⚠ Risky rare, weak rewards — cheap throwaway only"; }
-        else { cls="warn"; head=`Mediocre rare (best: ${bestTxt}) — okay to run, low market value`; }
+        else if (dangers.length){ cls="warn"; head=`⚠ Risky rare, weak rewards — ~floor value (${exChaos(ex)}), bulk-sell or run cheap`; }
+        else { cls="warn"; head=`Floor stone (${exChaos(ex)}) — nothing premium, bulk-sell it (still worth ~2 chaos, not trash)`; }
       }
-      scoreHtml = `<div class="scoreline">Est. floor value <b>≈ ${Math.round(ex)} ex</b><span>(its best stat priced off the curve)</span></div>`;
-      for (const r of ms.rows){ lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""} <span style="color:var(--mu)">≈ ${r.ex}ex</span>`); }
-      if (decentStats >= 2) lines.push(`<span class="tag ${highStats>=2?"good":"mid"}">combo</span><b>${decentStats} strong stats together</b> — reward mods compound in-run, so it's worth more to run than the ${Math.round(ex)}ex solo floor${highStats>=2?". <b>Price-check before dumping</b> — multi-high maps are the rare chase, scarce on market.":"; the solo-stat floor under-rates combos."}`);
+      scoreHtml = `<div class="scoreline">Est. floor value <b>≈ ${inChaos(ex)} chaos</b><span>(${Math.round(ex)}ex · securable floor of its best stat)</span></div>`;
+      for (const r of ms.rows){ lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""} <span style="color:var(--mu)">≈ ${exChaos(r.ex)}</span>`); }
+      if (decentStats >= 2) lines.push(`<span class="tag ${highStats>=2?"good":"mid"}">combo</span><b>${decentStats} strong stats together</b> — reward mods compound in-run, so it's worth more to run than the ${exChaos(ex)} solo floor${highStats>=2?". <b>Price-check before dumping</b> — multi-high maps are the rare chase, scarce on market.":"; the solo-stat floor under-rates combos."}`);
       if (fits.length && fits[0].fit > 0.15){ const top = fits[0], driver = top.top ? statLabel(top.top.k) : ""; let pair = `<span class="tag mid">pair</span>Best for <b>${esc(top.ct.label)}</b>${driver?` (${esc(driver)}-heavy)`:""} — socket ${esc(top.ct.label)} tablets`; if (fits[1] && fits[1].fit >= top.fit * 0.8) pair += `, or ${esc(fits[1].ct.label)}`; lines.push(pair); }
     } else { cls="warn"; head="Couldn't tell if this is a waystone or tablet — paste the full copied item text"; }
     if (dangers.length) lines.push(`<span class="tag bad">risk</span>${dangers.join(", ")}`);
