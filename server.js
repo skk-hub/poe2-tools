@@ -1086,10 +1086,19 @@ const WAYSTONE_SWEEP = {
   // comparable across stats, so a flat weight misleads). 10 searches incl.
   // baseline; cooldown + queue keep it gentle on the shared limit.
   stats: [
-    { key: "itemRarity", label: "Item Rarity", filter: "map_iir", prop: "Item Rarity", thresholds: [30, 50, 70], tip: "Highest ceiling and the top chase — explodes past ~60%." },
-    { key: "packSize", label: "Pack Size", filter: "map_packsize", prop: "Pack Size", thresholds: [20, 30, 40], tip: "Best value per % at mid rolls; caps ~40%." },
-    { key: "monsterEffectiveness", label: "Monster Effectiveness", filter: "map_magic_monsters", prop: "Monster Effectiveness", thresholds: [20, 40], tip: "Tracks Pack Size; peaks ~40%." },
-    { key: "monsterRarity", label: "Monster Rarity", filter: "map_rare_monsters", prop: "Monster Rarity", thresholds: [40], tip: "Worthless even at high rolls." },
+    // Rarity thresholds bracket the KNEE — the value explodes somewhere 50→70 (a
+    // single low/high pair can't tell you where), so probe 50/60/65/70.
+    { key: "itemRarity", label: "Item Rarity", filter: "map_iir", prop: "Item Rarity", thresholds: [50, 60, 65, 70], tip: "The top chase by far — floor explodes past ~65%." },
+    { key: "packSize", label: "Pack Size", filter: "map_packsize", prop: "Pack Size", thresholds: [30, 40], tip: "Mild — cooled to ~25ex even near cap ~50%." },
+    { key: "monsterEffectiveness", label: "Monster Effectiveness", filter: "map_magic_monsters", prop: "Monster Effectiveness", thresholds: [40], tip: "Marginal ~10ex @40%." },
+    { key: "monsterRarity", label: "Monster Rarity", filter: "map_rare_monsters", prop: "Monster Rarity", thresholds: [40], tip: "Worthless even at high rolls; real cap ~55%." },
+  ],
+  // COMBO probes — the same gated buyable class, but requiring TWO good stats at
+  // once. Answers "are combos a sellable market, or only worth running yourself?"
+  // (buildDump can't AND two keeps, so this tells us whether that even matters.)
+  combos: [
+    { key: "rarityPack", label: "Rarity ≥55 + Pack ≥30", filters: { map_iir: { min: 55 }, map_packsize: { min: 30 } } },
+    { key: "rarityEff", label: "Rarity ≥55 + Effectiveness ≥40", filters: { map_iir: { min: 55 }, map_magic_monsters: { min: 40 } } },
   ],
 };
 
@@ -1180,6 +1189,14 @@ async function runWaystoneSweep(league) {
   const maxPeak = Math.max(1, ...stats.map((st) => st.peakEx));
   for (const st of stats) st.weight = Math.round((st.peakEx / maxPeak) * 100) / 100;
   stats.sort((a, b) => b.peakEx - a.peakEx);
+  // Combo probes: cheapest listing that has BOTH stats at once (same gated class).
+  // `total` = how many are even for sale — a near-zero total means combos are a
+  // RUN-yourself value, not a sellable one (don't blame the floor for that).
+  const combos = [];
+  for (const c of WAYSTONE_SWEEP.combos || []) {
+    const r = await waystoneFloorSafe(league, c.filters, null);
+    combos.push({ key: c.key, label: c.label, floor: r.floor != null ? Math.round(r.floor) : null, total: r.total || 0 });
+  }
   return {
     source: "PoE2 Trade2 — Waystone (Tier " + WAYSTONE_SWEEP.tier + ") price-vs-% sweep, gated corrupted+0-revives (live refresh)",
     analyzed: new Date().toISOString().slice(0, 10),
@@ -1187,6 +1204,7 @@ async function runWaystoneSweep(league) {
     baselineEx: Math.round(base),
     note: "Value depends on the rolled %, not just which stat. Read each stat's curve. Gated to corrupted + 0-revives (fully juiced) — the real buyable class, so single-stat floors aren't contaminated by combo maps.",
     stats,
+    combos,
     updated: new Date().toISOString(),
   };
 }

@@ -24,7 +24,7 @@
  * Breach +Rare-Monster 10-30div paired.
  */
 window.WAYSTONE_DATA = {
-  patch: "0.5.2 (Return of the Ancients)",
+  patch: "0.5.4 (Return of the Ancients)",
   league: "Runes of Aldur",
   regexLimit: 250,
 

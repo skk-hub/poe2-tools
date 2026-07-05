@@ -33,6 +33,7 @@ window.__viewInit["map-juicer"]=function(){
   const L = D.tokens.line;
   let rarityMin = 0, packMin = 0, effMin = 0, wdropMin = 0;   // all start at 0 (off) — build up from nothing; wdrop is 0 or 100
   let dumpRarityKeep = 60;   // dump keeps maps with Item Rarity >= this%
+  let effKeep = 40;          // dump keeps maps with Monster Effectiveness >= this% (~10ex @40%); 0 = off
   let dropKeep = 115;        // dump keeps maps with Waystone Drop Chance >= this% (your sustain rule); 0 = dump any drop roll
   let monRarKeep = 80;       // dump keeps maps with Monster Rarity >= this% (user's keep rule); 0 = don't keep on monster rarity
   let packKeep = 40;         // dump keeps maps with Pack Size >= this% (now the top solo chase ~30-150ex, 2026-06-28); 0 = off
@@ -107,8 +108,8 @@ window.__viewInit["map-juicer"]=function(){
       `"${T.corrupted}"`,
       `"${T.revivesZero}"`,
       `"!${atLeast(L.itemRarity, dumpRarityKeep, 87)}"`,   // keep high Item Rarity
-      `"!${atLeast(L.monsterEffectiveness, 40, 70)}"`,     // keep Monster Effectiveness >=40%
     ];
+    if (effKeep > 0) blocks.push(`"!${atLeast(L.monsterEffectiveness, effKeep, 70)}"`);   // keep Monster Effectiveness >= selector
     if (packKeep > 0) blocks.push(`"!${atLeast(L.packSize, packKeep, 51)}"`);   // keep high Pack Size (the 2026-06-28 chase)
     if (monRarKeep > 0) blocks.push(`"!${atLeast(L.monsterRarity, monRarKeep)}"`);   // keep Monster Rarity >= selector
     if (dropKeep > 0) blocks.push(`"!${atLeast(L.waystoneDrop, dropKeep)}"`);   // keep Drop >= selector (0 = dump any drop)
@@ -234,13 +235,13 @@ window.__viewInit["map-juicer"]=function(){
   function seg(attr, val, cur, label){ return `<button class="seg-btn${val===cur?" on":""}" type="button" data-${attr}="${val}">${esc(label)}</button>`; }
   // Each tunable: [lo, hi, click-step]. The control is a typeable number input
   // (type the value directly — no clicking to 0) flanked by −/+ for quick nudges.
-  const STEP_CFG = { rarity:[0,70,10], pack:[0,40,10], eff:[0,70,10], rarityKeep:[40,70,10], packKeep:[0,50,5], monRarKeep:[0,120,10], dropKeep:[0,150,5] };
-  function stepCur(id){ return ({ rarity:rarityMin, pack:packMin, eff:effMin, rarityKeep:dumpRarityKeep, packKeep, monRarKeep, dropKeep })[id]; }
+  const STEP_CFG = { rarity:[0,70,10], pack:[0,40,10], eff:[0,70,10], rarityKeep:[40,70,10], effKeep:[0,70,10], packKeep:[0,50,5], monRarKeep:[0,120,10], dropKeep:[0,150,5] };
+  function stepCur(id){ return ({ rarity:rarityMin, pack:packMin, eff:effMin, rarityKeep:dumpRarityKeep, effKeep, packKeep, monRarKeep, dropKeep })[id]; }
   function setStep(id, v){
     const c = STEP_CFG[id]; if (!c) return;
     v = clamp(Math.round(Number(v) || 0), c[0], c[1]);
     if (id==="rarity") rarityMin=v; else if (id==="pack") packMin=v; else if (id==="eff") effMin=v;
-    else if (id==="rarityKeep") dumpRarityKeep=v; else if (id==="packKeep") packKeep=v; else if (id==="monRarKeep") monRarKeep=v; else if (id==="dropKeep") dropKeep=v;
+    else if (id==="rarityKeep") dumpRarityKeep=v; else if (id==="effKeep") effKeep=v; else if (id==="packKeep") packKeep=v; else if (id==="monRarKeep") monRarKeep=v; else if (id==="dropKeep") dropKeep=v;
   }
   function stepper(id, label){
     const [lo, hi, step] = STEP_CFG[id], val = stepCur(id);
@@ -258,7 +259,7 @@ window.__viewInit["map-juicer"]=function(){
   function waystoneQs(){
     const segs = `<div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}${seg("wmatch","dump",wMatch,"Low-value dump")}</div>`;
     if (wMatch === "dump") {
-      return `${segs}<div class="forge-steps">${stepper("packKeep","Keep if Pack Size ≥")}${stepper("rarityKeep","Keep if Item Rarity ≥")}${stepper("monRarKeep","Keep if Monster Rarity ≥")}${stepper("dropKeep","Keep if Drop Chance ≥")}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones that are <b>~5ex bulk</b> and keeps the real money OUT of the dump pile. Gated buy-side sweep (2026-06-28): <b>Pack Size is now the top chase</b> — pure Pack-40 ~30ex, near-max ~150ex${packKeep>0?` (keep ≥${packKeep}%)`:` (off)`}. Also kept: <b>Item Rarity ≥${dumpRarityKeep}%</b> (cooled to ~10-15ex), <b>Monster Effectiveness ≥40%</b> (~10ex, marginal)${monRarKeep>0?`, <b>Monster Rarity ≥${monRarKeep}%</b> (your rule — ~1ex solo, set 0 to drop it)`:``}${dropKeep>0?`, <b>Drop Chance ≥${dropKeep}%</b> (your sustain rule, set 0 to dump any drop)`:``}. <b>Combos aren't a buyable market</b> — value is single top-rolls, so keep on each signal alone. <b>Ignore the in-game price-check.</b></p>`;
+      return `${segs}<div class="forge-steps">${stepper("packKeep","Keep if Pack Size ≥")}${stepper("rarityKeep","Keep if Item Rarity ≥")}${stepper("effKeep","Keep if Effectiveness ≥")}${stepper("monRarKeep","Keep if Monster Rarity ≥")}${stepper("dropKeep","Keep if Drop Chance ≥")}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones that are <b>~5ex bulk</b> and keeps the real money OUT of the dump pile. Gated buy-side sweep (2026-06-28): <b>Pack Size is now the top chase</b> — pure Pack-40 ~30ex, near-max ~150ex${packKeep>0?` (keep ≥${packKeep}%)`:` (off)`}. Also kept: <b>Item Rarity ≥${dumpRarityKeep}%</b> (cooled to ~10-15ex)${effKeep>0?`, <b>Monster Effectiveness ≥${effKeep}%</b> (~10ex, marginal)`:``}${monRarKeep>0?`, <b>Monster Rarity ≥${monRarKeep}%</b> (your rule — ~1ex solo, set 0 to drop it)`:``}${dropKeep>0?`, <b>Drop Chance ≥${dropKeep}%</b> (your sustain rule, set 0 to dump any drop)`:``}. <b>Combos aren't a buyable market</b> — value is single top-rolls, so keep on each signal alone. <b>Ignore the in-game price-check.</b></p>`;
     }
     return `
       ${segs}
