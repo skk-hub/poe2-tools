@@ -494,7 +494,6 @@ window.__viewInit["map-juicer"]=function(){
     for (const line of String(text).split(/\n/)){ if (!re.test(line)) continue; found = true; const m = line.match(/(\d+(?:\.\d+)?)\s*%/); if (m) value = Math.max(value, parseFloat(m[1])); }
     return { found, value };
   }
-  const DANGER = [ ["less Recovery Rate", /less recovery rate/i], ["reduced Flask Charges", /reduced flask/i], ["-max Player Resistances", /maximum (player )?.*resistanc/i], ["less Cooldown Recovery", /less cooldown/i] ];
   function detectContent(t){ for (const c of D.contentTypes){ if (c.id!=="general" && new RegExp(c.tabletToken,"i").test(t)) return c; } return null; }
   function curveEx(curve, pct){
     if (!curve || !curve.length || pct <= 0) return 0;
@@ -534,7 +533,6 @@ window.__viewInit["map-juicer"]=function(){
     const rarity = rarityM ? rarityM[1].toLowerCase() : "";
     const isTablet = /\btablet\b/i.test(text);
     const isWaystone = /waystone/i.test(text);
-    const dangers = DANGER.filter(r=>r[1].test(text)).map(r=>r[0]);
     const ms = marketScore(text);
     let cls="warn", head="", lines=[], scoreHtml="";
     const rolls = {}; ms.rows.forEach(r => { rolls[r.key] = r.value; });
@@ -572,18 +570,17 @@ window.__viewInit["map-juicer"]=function(){
         else if (ms.best){ cls="warn"; head=`Weak blue (best: ${bestTxt}) — Aug toward Rarity / Pack Size, or reroll`; }
         else { cls="warn"; head="Weak blue — Augment for a reward mod, or Transmute-reroll"; }
       } else if (highStats >= 2){
-        cls="good"; head=`✓ Multi-stat chase — ${highStats} high rolls together${dangers.length?", has risk mods (run anyway)":""}. Price-check it: combos this juiced are scarce and sell well above any single stat`;
+        cls="good"; head=`✓ Multi-stat chase — ${highStats} high rolls together. Price-check it: combos this juiced are scarce and sell well above any single stat`;
       } else {
-        if (ex >= base*7){ cls="good"; head=`✓ Premium juice (best: ${bestTxt})${dangers.length?" — has risk mods, run anyway":""}`; }
-        else if (ex >= base*2.5){ cls=dangers.length?"warn":"good"; head=`Solid map (best: ${bestTxt}) — run or sell`; }
-        else { cls="warn"; const spread = decentStats>=2?` — ${decentStats} mid stats compound a bit in-run`:""; head=`Floor stone (${exChaos(ex)})${spread} — nothing premium; bulk-sell or run cheap${dangers.length?", has risk mods":""}`; }
+        if (ex >= base*7){ cls="good"; head=`✓ Premium juice (best: ${bestTxt})`; }
+        else if (ex >= base*2.5){ cls="good"; head=`Solid map (best: ${bestTxt}) — run or sell`; }
+        else { cls="warn"; const spread = decentStats>=2?` — ${decentStats} mid stats compound a bit in-run`:""; head=`Floor stone (${exChaos(ex)})${spread} — nothing premium; bulk-sell or run cheap`; }
       }
       scoreHtml = `<div class="scoreline">Est. floor value <b>≈ ${inChaos(ex)} chaos</b><span>(${Math.round(ex)}ex · securable floor of its best stat)</span></div>`;
       for (const r of ms.rows){ lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""} <span style="color:var(--mu)">≈ ${exChaos(r.ex)}</span>`); }
       if (highStats >= 2) lines.push(`<span class="tag good">combo</span><b>${highStats} high rolls together</b> — reward mods compound in-run and multi-high maps are a scarce chase. <b>Price-check before dumping</b> — worth well above the ${exChaos(ex)} solo floor.`);
       if (fits.length && fits[0].fit > 0.15){ const top = fits[0], driver = top.top ? statLabel(top.top.k) : ""; let pair = `<span class="tag mid">pair</span>Best for <b>${esc(top.ct.label)}</b>${driver?` (${esc(driver)}-heavy)`:""} — socket ${esc(top.ct.label)} tablets`; if (fits[1] && fits[1].fit >= top.fit * 0.8) pair += `, or ${esc(fits[1].ct.label)}`; lines.push(pair); }
     } else { cls="warn"; head="Couldn't tell if this is a waystone or tablet — paste the full copied item text"; }
-    if (dangers.length) lines.push(`<span class="tag bad">risk</span>${dangers.join(", ")}`);
     els.evalOut.innerHTML = `<div class="verdict ${cls}"><div class="head">${esc(head)}</div>${scoreHtml}${lines.length?`<ul>${lines.map(l=>`<li>${l}</li>`).join("")}</ul>`:""}</div>`;
   }
 
