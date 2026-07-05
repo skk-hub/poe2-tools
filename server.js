@@ -2854,8 +2854,13 @@ const CRAFT_CLASS_SLOT = {
   Ring: "ring", Amulet: "amulet", Belt: "belt", "Body Armour": "chest", Boots: "boots",
   Gloves: "gloves", Helmet: "helmet", Focus: "focus", Quiver: "quiver", Jewel: "jewel", Shield: "shield", Buckler: "buckler",
 };
-const MARTIAL_CLASSES = new Set(["Bow", "Crossbow", "Claw", "Dagger", "Flail", "Spear", "Sceptre", "Warstaff", "One Hand Axe", "One Hand Mace", "One Hand Sword", "Two Hand Axe", "Two Hand Mace", "Two Hand Sword"]);
-const craftAdviseSlot = (cls) => CRAFT_CLASS_SLOT[cls] || (MARTIAL_CLASSES.has(cls) ? "bow" : null);
+// The auto-advisor only has a real resale/desirable profile for BOWS among weapons.
+// The old catch-all mapped EVERY martial weapon (and even the caster Sceptre) to "bow",
+// so a non-bow weapon was checked against bow mods it can't roll → zero candidates → the
+// misleading "already carries the desirable mods" message. Map only actual Bows to the
+// bow profile; every other weapon falls through to null → the honest "no profile yet,
+// pick target mods manually" path (the manual mode works for any base).
+const craftAdviseSlot = (cls) => CRAFT_CLASS_SLOT[cls] || (cls === "Bow" ? "bow" : null);
 // advisor slot → a gear-finder slot id (for gearSlotCfg category + gearStatId). ring→ring1 (variants share category).
 const ADVISE_TO_GEAR_SLOT = { ring: "ring1", amulet: "amulet", belt: "belt", chest: "chest", boots: "boots", gloves: "gloves", helmet: "helmet", quiver: "quiver", jewel: "jewel", shield: "shield", buckler: "buckler", bow: "bow", focus: "focus" };
 
