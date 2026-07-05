@@ -543,7 +543,9 @@ window.__viewInit["map-juicer"]=function(){
     // multiplicative loot), and a map with 2+ HIGH rolls is the rare chase that sells
     // above any single stat. Gated scan found such combos have ~0 listings (scarce),
     // so we DON'T fabricate an ex number — we surface it and flag a price-check.
-    const normRolls = ms.rows.filter(r => r.ceiling).map(r => Math.min(1, r.value / r.ceiling));
+    // Exclude Waystone Drop from the combo signal — it's sustain-only (worth ~baseline),
+    // so a high Drop roll shouldn't make a floor stone look like a valuable multi-stat map.
+    const normRolls = ms.rows.filter(r => r.ceiling && r.key !== "waystoneDrop").map(r => Math.min(1, r.value / r.ceiling));
     const decentStats = normRolls.filter(n => n >= 0.5).length;
     const highStats = normRolls.filter(n => n >= 0.7).length;
     if (isTablet){
@@ -574,13 +576,11 @@ window.__viewInit["map-juicer"]=function(){
       } else {
         if (ex >= base*7){ cls="good"; head=`✓ Premium juice (best: ${bestTxt})${dangers.length?" — has risk mods, run anyway":""}`; }
         else if (ex >= base*2.5){ cls=dangers.length?"warn":"good"; head=`Solid map (best: ${bestTxt}) — run or sell`; }
-        else if (decentStats >= 2){ cls=dangers.length?"warn":"good"; head=`Juiced all-rounder (best: ${bestTxt}) — ${decentStats} solid stats that compound in-run, worth running${dangers.length?" despite risk mods":""}`; }
-        else if (dangers.length){ cls="warn"; head=`⚠ Risky rare, weak rewards — ~floor value (${exChaos(ex)}), bulk-sell or run cheap`; }
-        else { cls="warn"; head=`Floor stone (${exChaos(ex)}) — nothing premium, bulk-sell it (still worth ~2 chaos, not trash)`; }
+        else { cls="warn"; const spread = decentStats>=2?` — ${decentStats} mid stats compound a bit in-run`:""; head=`Floor stone (${exChaos(ex)})${spread} — nothing premium; bulk-sell or run cheap${dangers.length?", has risk mods":""}`; }
       }
       scoreHtml = `<div class="scoreline">Est. floor value <b>≈ ${inChaos(ex)} chaos</b><span>(${Math.round(ex)}ex · securable floor of its best stat)</span></div>`;
       for (const r of ms.rows){ lines.push(`<span class="tag ${r.tagCls}">${esc(r.tagTxt)}</span>${esc(r.label)} ${r.value?`<b>${r.value}%</b>`:""} <span style="color:var(--mu)">≈ ${exChaos(r.ex)}</span>`); }
-      if (decentStats >= 2) lines.push(`<span class="tag ${highStats>=2?"good":"mid"}">combo</span><b>${decentStats} strong stats together</b> — reward mods compound in-run, so it's worth more to run than the ${exChaos(ex)} solo floor${highStats>=2?". <b>Price-check before dumping</b> — multi-high maps are the rare chase, scarce on market.":"; the solo-stat floor under-rates combos."}`);
+      if (highStats >= 2) lines.push(`<span class="tag good">combo</span><b>${highStats} high rolls together</b> — reward mods compound in-run and multi-high maps are a scarce chase. <b>Price-check before dumping</b> — worth well above the ${exChaos(ex)} solo floor.`);
       if (fits.length && fits[0].fit > 0.15){ const top = fits[0], driver = top.top ? statLabel(top.top.k) : ""; let pair = `<span class="tag mid">pair</span>Best for <b>${esc(top.ct.label)}</b>${driver?` (${esc(driver)}-heavy)`:""} — socket ${esc(top.ct.label)} tablets`; if (fits[1] && fits[1].fit >= top.fit * 0.8) pair += `, or ${esc(fits[1].ct.label)}`; lines.push(pair); }
     } else { cls="warn"; head="Couldn't tell if this is a waystone or tablet — paste the full copied item text"; }
     if (dangers.length) lines.push(`<span class="tag bad">risk</span>${dangers.join(", ")}`);

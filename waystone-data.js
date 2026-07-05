@@ -126,22 +126,27 @@ window.WAYSTONE_DATA = {
     // securable sample — a noisy lower bound on the true cap, not the theoretical max.
     // Below a curve's first point, value floors at baselineEx (~2 chaos) — every stone is
     // worth at least bulk. Monster Rarity's old ceiling 103 was impossible (maxes ~55-60%).
+    // Curves anchored at BOTH ends by real data: the low end by user ground-truth
+    // (stones rolling Rarity ~27-45 / Eff ~26-29 / MonRar ~36 = ~2 chaos floor), the high
+    // end by securable probes (Rarity 60+ ~1600ex, Pack 40 ~860ex). Below a curve's first
+    // point value floors at baselineEx (~2 chaos). Middle is interpolated — thin pool, so
+    // treat as order-of-magnitude and Refresh for current.
     stats: [
       { key: "itemRarity", label: "Item Rarity", weight: 1.0, ceiling: 83, peakEx: 1712,
-        curve: [[50, 695], [60, 1626], [65, 1626], [70, 1712]],
-        tip: "Top chase (2026-07-05 securable): ~700ex @50%, ~1600ex @60-65%, ~1700ex (20 chaos) @70%+. Thin/volatile market — refresh for current." },
+        curve: [[52, 171], [60, 1626], [65, 1650], [70, 1712]],
+        tip: "The one clear chase. ~baseline until ~52%, then ramps hard: ~1600ex (19 chaos) @60-65%, ~1700ex (20 chaos) @70%+ (2026-07-05 securable). Thin/volatile — Refresh for current." },
       { key: "packSize", label: "Pack Size", weight: 0.5, ceiling: 50, peakEx: 856,
         curve: [[30, 257], [40, 856]],
-        tip: "~260ex @30%, ~860ex (10 chaos) @40% (2026-07-05 securable). Real value again once you price the buyable pool, not stale bait." },
+        tip: "~260ex @30%, ~860ex (10 chaos) @40% (2026-07-05 securable). A real chase again once priced off the buyable pool, not stale bait." },
       { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.41, ceiling: 54, peakEx: 695,
-        curve: [[20, 171], [40, 695]],
-        tip: "~1 divine (~695ex) @40% (2026-07-05 securable). Well above the ~2-chaos baseline." },
+        curve: [[35, 171], [40, 695]],
+        tip: "~baseline through mid rolls, ~1 divine (~695ex) near cap @40% (2026-07-05 securable, thin — may be optimistic)." },
       { key: "waystoneDrop", label: "Waystone Drop Chance", weight: 0.1, ceiling: 125, peakEx: 171, est: true,
         curve: [[40, 171], [105, 171]],
         tip: "~baseline to BUY even at high rolls — not a sell chase. Not live-swept (est). Sustain only helps YOUR own endless-T16 farming." },
       { key: "monsterRarity", label: "Monster Rarity", weight: 0.13, ceiling: 60, peakEx: 230,
-        curve: [[40, 230]],
-        tip: "~230ex @40% (2026-07-05 securable) — a bit above baseline, not a big chase. Real cap ~55-60% (old 103 was wrong)." },
+        curve: [[38, 171], [40, 230]],
+        tip: "Barely above baseline (~230ex @40%, 2026-07-05 securable) — not a chase. Real cap ~55-60% (old 103 was wrong)." },
     ],
   },
 
