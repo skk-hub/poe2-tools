@@ -1124,7 +1124,7 @@ function waystonePropVal(item, key) {
   return Number(String(((p.values || [])[0] || [])[0] || "").replace(/[+%]/g, "")) || 0;
 }
 
-async function waystoneFloor(league, mapFilters, prop) {
+async function waystoneFloor(league, mapFilters, prop, rates) {
   const body = JSON.stringify({
     query: {
       status: { option: "any" },
@@ -1136,7 +1136,10 @@ async function waystoneFloor(league, mapFilters, prop) {
         // artifact). Gating isolates the class the user actually farms → trustworthy floors.
         map_filters: { filters: Object.assign({ map_tier: { min: WAYSTONE_SWEEP.tier, max: WAYSTONE_SWEEP.tier }, map_revives: { max: 0 } }, mapFilters) },
         misc_filters: { filters: { corrupted: { option: "true" } } },
-        trade_filters: { filters: { price: { option: "exalted" } } },
+        // NO price-currency gate: waystones trade mostly in CHAOS (1c ≈ 94ex in 0.5.4),
+        // so the old exalted-only filter saw a thin ~1ex bulk-dump floor and missed the
+        // real chaos market — pricing a 2-chaos (~188ex) stone as junk. Sort price asc
+        // returns the genuinely cheapest across currencies; we normalize each to ex.
       },
     },
     sort: { price: "asc" },
@@ -1148,11 +1151,15 @@ async function waystoneFloor(league, mapFilters, prop) {
   if (!ids.length) return { total: 0, floor: null, maxRoll: 0 };
   const fetchUrl = "https://www.pathofexile.com/api/trade2/fetch/" + ids.join(",") + "?query=" + encodeURIComponent(search.id);
   const fetched = await fetchTrade(fetchUrl);
+  const divineEx = (rates && rates.divineEx) || 0, chaosEx = (rates && rates.chaosEx) || 0;
+  const toEx = (cur, amt) => cur === "exalted" ? amt : cur === "divine" ? amt * divineEx : cur === "chaos" ? amt * chaosEx : 0;
   const rows = (fetched.result || [])
-    .filter((e) => e && e.item && e.listing && e.listing.price && e.listing.price.currency === "exalted")
-    .map((e) => ({ p: Number(e.listing.price.amount), roll: prop ? waystonePropVal(e.item, prop) : 0 }))
-    .filter((r) => r.p > 0);
-  return { total, floor: robustWaystoneFloor(rows.map((r) => r.p)), maxRoll: Math.max(0, ...rows.map((r) => r.roll)) };
+    .filter((e) => e && e.item && e.listing && e.listing.price && e.listing.price.amount > 0)
+    .map((e) => ({ ex: toEx(String(e.listing.price.currency || "").toLowerCase(), Number(e.listing.price.amount)), cur: e.listing.price.currency, amt: Number(e.listing.price.amount), roll: prop ? waystonePropVal(e.item, prop) : 0 }))
+    .filter((r) => r.ex > 0);   // drops unknown currencies (e.g. alch) we can't convert
+  const floor = robustWaystoneFloor(rows.map((r) => r.ex));
+  const cheapest = rows.slice().sort((a, b) => a.ex - b.ex)[0] || null;
+  return { total, floor, maxRoll: Math.max(0, ...rows.map((r) => r.roll)), floorCur: cheapest && cheapest.cur, floorAmt: cheapest && cheapest.amt };
 }
 
 // One sweep is ~30 Trade2 calls; a single slow request used to abort (timeout) and
@@ -1160,9 +1167,9 @@ async function waystoneFloor(league, mapFilters, prop) {
 // best-effort: a transient failure (abort/timeout/network) just skips that point, the
 // curve fills from the rest. Only a real rate-limit propagates (so the UI can show
 // the cooldown); a sweep that collected NOTHING throws so the cache is kept.
-async function waystoneFloorSafe(league, mapFilters, prop) {
+async function waystoneFloorSafe(league, mapFilters, prop, rates) {
   try {
-    return await waystoneFloor(league, mapFilters, prop);
+    return await waystoneFloor(league, mapFilters, prop, rates);
   } catch (err) {
     if (/rate limited/i.test(String(err && err.message))) throw err;
     return { total: 0, floor: null, maxRoll: 0, skipped: true };
@@ -1170,20 +1177,25 @@ async function waystoneFloorSafe(league, mapFilters, prop) {
 }
 
 async function runWaystoneSweep(league) {
-  const baseline = await waystoneFloorSafe(league, {});
+  // Rate table to normalize chaos/divine listings to exalted (waystones trade in chaos).
+  const eco = await economyCurrent(league).catch(() => null);
+  const rates = { divineEx: (eco && eco.exPerDiv) || 0, chaosEx: (eco && eco.chaosEx) || 0 };
+  const baseline = await waystoneFloorSafe(league, {}, null, rates);
   const base = baseline.floor || 1;
+  const diag = [{ label: "baseline (any corrupted 0-revive)", floorEx: baseline.floor != null ? Math.round(baseline.floor) : null, cur: baseline.floorCur, amt: baseline.floorAmt }];
   const stats = [];
   let points = 0;
   for (const s of WAYSTONE_SWEEP.stats) {
     const curve = [];
-    let ceiling = 0;
+    let ceiling = 0, lastCur = null, lastAmt = null;
     for (const t of s.thresholds) {
-      const r = await waystoneFloorSafe(league, { [s.filter]: { min: t } }, s.prop);
-      if (r.floor != null) { curve.push([t, Math.round(r.floor)]); points++; }
+      const r = await waystoneFloorSafe(league, { [s.filter]: { min: t } }, s.prop, rates);
+      if (r.floor != null) { curve.push([t, Math.round(r.floor)]); points++; lastCur = r.floorCur; lastAmt = r.floorAmt; }
       ceiling = Math.max(ceiling, r.maxRoll || 0);
     }
     const peakEx = curve.length ? curve[curve.length - 1][1] : 0;
     stats.push({ key: s.key, label: s.label, tip: s.tip, curve, ceiling, peakEx });
+    diag.push({ label: s.label + " (top threshold)", floorEx: peakEx, cur: lastCur, amt: lastAmt });
   }
   if (!points) throw new Error("sweep returned no data — market may be slow, try again");
   const maxPeak = Math.max(1, ...stats.map((st) => st.peakEx));
@@ -1194,15 +1206,17 @@ async function runWaystoneSweep(league) {
   // RUN-yourself value, not a sellable one (don't blame the floor for that).
   const combos = [];
   for (const c of WAYSTONE_SWEEP.combos || []) {
-    const r = await waystoneFloorSafe(league, c.filters, null);
-    combos.push({ key: c.key, label: c.label, floor: r.floor != null ? Math.round(r.floor) : null, total: r.total || 0 });
+    const r = await waystoneFloorSafe(league, c.filters, null, rates);
+    combos.push({ key: c.key, label: c.label, floor: r.floor != null ? Math.round(r.floor) : null, total: r.total || 0, cur: r.floorCur, amt: r.floorAmt });
   }
   return {
-    source: "PoE2 Trade2 — Waystone (Tier " + WAYSTONE_SWEEP.tier + ") price-vs-% sweep, gated corrupted+0-revives (live refresh)",
+    source: "PoE2 Trade2 — Waystone (Tier " + WAYSTONE_SWEEP.tier + ") price-vs-% sweep, gated corrupted+0-revives, all-currency→ex (live refresh)",
     analyzed: new Date().toISOString().slice(0, 10),
     league,
     baselineEx: Math.round(base),
-    note: "Value depends on the rolled %, not just which stat. Read each stat's curve. Gated to corrupted + 0-revives (fully juiced) — the real buyable class, so single-stat floors aren't contaminated by combo maps.",
+    rates,
+    diag,
+    note: "Value depends on the rolled %, not just which stat. Read each stat's curve. Floors are the cheapest ask across ALL currencies (chaos/divine/exalted), normalized to exalted (1 chaos ≈ " + Math.round(rates.chaosEx || 0) + "ex). Gated to corrupted + 0-revives (fully juiced).",
     stats,
     combos,
     updated: new Date().toISOString(),
