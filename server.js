@@ -1127,7 +1127,11 @@ function waystonePropVal(item, key) {
 async function waystoneFloor(league, mapFilters, prop, rates) {
   const body = JSON.stringify({
     query: {
-      status: { option: "any" },
+      // "securable" = the real async-buyable Merchant-Tab pool (whisper-free, seller can
+      // be offline). "any" included STALE offline whisper listings — dead 1-ex bait that
+      // never sells was undercutting the floor, so it read ~1ex while stones actually
+      // move for ~2 chaos. See memory poe2-instant-buyout-securable.
+      status: { option: "securable" },
       filters: {
         type_filters: { filters: { category: { option: "map.waystone" } } },
         // Gate to the REAL buyable class (corrupted + 0 revives = fully juiced), the same gate
