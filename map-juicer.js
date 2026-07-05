@@ -35,7 +35,7 @@ window.__viewInit["map-juicer"]=function(){
   let dumpRarityKeep = 60;   // dump keeps maps with Item Rarity >= this%
   let effKeep = 40;          // dump keeps maps with Monster Effectiveness >= this% (~10ex @40%); 0 = off
   let dropKeep = 115;        // dump keeps maps with Waystone Drop Chance >= this% (your sustain rule); 0 = dump any drop roll
-  let monRarKeep = 80;       // dump keeps maps with Monster Rarity >= this% (user's keep rule); 0 = don't keep on monster rarity
+  let monRarKeep = 45;       // dump keeps maps with Monster Rarity >= this% (user's keep rule); stat caps ~55% so 45 is "high"; 0 = off (was 80 = unreachable dead keep)
   let packKeep = 40;         // dump keeps maps with Pack Size >= this% (now the top solo chase ~30-150ex, 2026-06-28); 0 = off
   // Match a number ≥ pct — EXACT for any threshold, not just multiples of 10
   // (≥45 must not match 40-44; ≥5 must match 5-9). Uses [0-9] not "." so it
@@ -111,7 +111,7 @@ window.__viewInit["map-juicer"]=function(){
     ];
     if (effKeep > 0) blocks.push(`"!${atLeast(L.monsterEffectiveness, effKeep, 70)}"`);   // keep Monster Effectiveness >= selector
     if (packKeep > 0) blocks.push(`"!${atLeast(L.packSize, packKeep, 51)}"`);   // keep high Pack Size (the 2026-06-28 chase)
-    if (monRarKeep > 0) blocks.push(`"!${atLeast(L.monsterRarity, monRarKeep)}"`);   // keep Monster Rarity >= selector
+    if (monRarKeep > 0) blocks.push(`"!${atLeast(L.monsterRarity, monRarKeep, 55)}"`);   // keep Monster Rarity >= selector (caps ~55%)
     if (dropKeep > 0) blocks.push(`"!${atLeast(L.waystoneDrop, dropKeep)}"`);   // keep Drop >= selector (0 = dump any drop)
     return blocks.join(" ");
   }
@@ -235,7 +235,7 @@ window.__viewInit["map-juicer"]=function(){
   function seg(attr, val, cur, label){ return `<button class="seg-btn${val===cur?" on":""}" type="button" data-${attr}="${val}">${esc(label)}</button>`; }
   // Each tunable: [lo, hi, click-step]. The control is a typeable number input
   // (type the value directly — no clicking to 0) flanked by −/+ for quick nudges.
-  const STEP_CFG = { rarity:[0,70,10], pack:[0,40,10], eff:[0,70,10], rarityKeep:[40,70,10], effKeep:[0,70,10], packKeep:[0,50,5], monRarKeep:[0,120,10], dropKeep:[0,150,5] };
+  const STEP_CFG = { rarity:[0,80,10], pack:[0,50,10], eff:[0,70,10], rarityKeep:[40,80,10], effKeep:[0,70,10], packKeep:[0,50,5], monRarKeep:[0,60,5], dropKeep:[0,130,5] };
   function stepCur(id){ return ({ rarity:rarityMin, pack:packMin, eff:effMin, rarityKeep:dumpRarityKeep, effKeep, packKeep, monRarKeep, dropKeep })[id]; }
   function setStep(id, v){
     const c = STEP_CFG[id]; if (!c) return;

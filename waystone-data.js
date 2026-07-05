@@ -118,31 +118,31 @@ window.WAYSTONE_DATA = {
   // sum. Re-run the sweep each patch.
   marketWeights: {
     source: "PoE2 Trade2 — Waystone (Tier 16) price-vs-% BUY-side floor sweep, GATED corrupted+0-revives (cheapest ask)",
-    analyzed: "2026-06-28 (gated re-sweep — Pack is now the chase, Rarity/Effectiveness cooled; combos not a buyable market)",
+    analyzed: "2026-07-05 (live re-sweep — Item Rarity ≥70% is THE chase (~2200ex cliff); everything else is bulk; combos have ZERO sell market)",
     league: "Runes of Aldur",
     baselineEx: 1, // a junk Tier-16 waystone floors at ~1ex
-    note: "2026-06-28 GATED re-sweep (corrupted+0-revives = the real buyable class). BIG SHIFT vs mid-June: PACK SIZE is now the top solo chase (pure Pack-40 ~30ex, near-max ~47% ~150ex), Item Rarity COOLED (~180ex chase → ~10-15ex, ≥70% gone), Monster Effectiveness ~10ex, Monster Rarity ~1ex. COMBOS ARE NOT A BUYABLE MARKET: gated searches requiring 3-4 good stats together return ZERO listings — people run combo maps, they don't sell them; the liquid cheap maps are PURE single-stat. So whole-map value ≈ its single best stat, and the dump keeps on single-OR signals. Historical buy-side recheck (2026-06-24): Waystone Drop Chance is worthless to BUY (~1ex even at 105%), Monster Rarity is a mild ~5ex at ≥60%. The other waystone reward mods — Waystone Gold & Waystone Experience — have no liquid Tier-16 buy market (0 listings at modest rolls), so they're not priced here. COMBO CAVEAT (key): waystone value is largely COMBINATION-driven and these per-stat solo curves can't express it — a single high stat is ~5ex, but high Monster Rarity + Drop Chance ≥100% + Pack together is a real chase (only ~3 on market, sampled 25/100/400ex). The dump filter (map-juicer buildDump) keeps, solo-OR: Pack Size ≥ tunable (default 40 — the 2026-06-28 chase; 0=off), Item Rarity ≥ tunable (default 60), Monster Effectiveness ≥40 (fixed), Monster Rarity ≥ tunable (default 80 — the user's explicit rule despite ~1ex solo; 0=off), and Drop Chance ≥ tunable (default 115, 0=off — the user's sustain rule). Stash regex can't AND two keeps, so combos aren't expressible in the dump — it's solo-OR; the paste evaluator is where combo value belongs. GATED PROBE 2026-06-25 (corrupted+0-revives T16, sort price asc — the dump's exact class): Monster Effectiveness ≥40% floors ~10–50ex (real value, now kept), but Pack Size ≥35% still sits at ~1ex buy-side — so the packSize/monsterEffectiveness solo curves below (peakEx 37–40, from an UNGATED sweep) OVERSTATE Pack: gated-on-class, Pack alone is junk. Trust the gated dump rules over those curves until the curves are re-swept gated.",
-    // ranked by peak value; `curve` = [rolled %, floor ex]. `ceiling` = the stat's
-    // Tier-16 max ROLL (live-probed — see header) — the evaluator normalizes pasted
-    // rolls against it (contentFit / combo detection), so it must be the roll cap,
-    // NOT the highest % seen in a market sweep (that older meaning made a real 80%
-    // Rarity roll read as "at cap" when the sweep only saw 58%).
+    note: "2026-07-05 LIVE re-sweep (patch 0.5.4, gated corrupted+0-revives = the real buyable class). ITEM RARITY IS THE ONLY REAL SELL CHASE and it's a CLIFF: ~1ex @50%, ~20ex @60-65%, then ~2200ex @70%+. Everything else is bulk — Pack Size ~25ex @40% (cooled hard from ~150ex in June), Monster Effectiveness ~10ex @40%, Monster Rarity ~1ex, Waystone Drop worthless to BUY. COMBOS HAVE ZERO SELL MARKET: 2-stat gated searches (Rarity≥55+Pack≥30, Rarity≥55+Eff≥40) both returned 0 listings — people RUN good combo maps, they don't sell them. So a multi-decent-roll stone is worth RUNNING but its sell-floor is ~junk, and the dump (which prices on sell-floor) will always mark it 'dump'. That mismatch (run-value vs sell-value) is why scanned combo stones read as low value. The dump keeps SOLO signals only (stash regex can't AND two keeps); the paste evaluator + your own judgment cover combo run-value. Waystone Gold & Experience have no liquid buy market, not priced. Curves are SELL floors — a stone's worth to RUN yourself is higher.",
+    // `curve` = [rolled %, floor ex]. `ceiling` = the stat's max roll — the evaluator
+    // normalizes pasted rolls against it. These are the HIGHEST ROLL SEEN in the gated
+    // live sweep (a lower bound on the true cap; the true theoretical cap can be a few %
+    // higher since cheap listings rarely show a max roll). Monster Rarity's old 103 was
+    // impossible — the stat maxes ~55%.
     stats: [
-      { key: "packSize", label: "Pack Size", weight: 1.0, ceiling: 51, peakEx: 150,
-        curve: [[20, 1], [30, 1], [40, 30], [47, 150]],
-        tip: "NOW the top solo chase (2026-06-28 gated probe, corrupted+0-revives): a pure Pack-40 map floors ~30ex, a near-max ~47% ~150ex. It's the hardest stat to roll high, so high pack is scarce. Below 40% it's still ~1ex bulk — only the top rolls pay." },
-      { key: "itemRarity", label: "Item Rarity", weight: 0.1, ceiling: 87, peakEx: 15,
-        curve: [[30, 1], [50, 10], [58, 15]],
-        tip: "Cooled off a LOT (2026-06-28: ~10ex @50%, ~15ex near its gated cap ~58%) — was the 180ex chase in mid-June, now a fraction. ≥70% doesn't exist in the corrupted+0-revives class." },
-      { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.07, ceiling: 70, peakEx: 10,
+      { key: "itemRarity", label: "Item Rarity", weight: 1.0, ceiling: 84, peakEx: 2200,
+        curve: [[50, 1], [60, 20], [65, 20], [70, 2200]],
+        tip: "BY FAR the top chase (2026-07-05 live). Flat ~20ex through 60-65%, then a CLIFF — ≥70% floors ~2200ex. The whole waystone sell market is basically this one stat. Below 70% it's bulk. (Thin chase market — treat 2200 as the live floor, not a guaranteed sale.)" },
+      { key: "packSize", label: "Pack Size", weight: 0.01, ceiling: 49, peakEx: 25,
+        curve: [[30, 1], [40, 25]],
+        tip: "Cooled hard (2026-07-05: ~25ex @40%, was ~150ex in June). Only a few × the ~5ex bulk floor." },
+      { key: "monsterEffectiveness", label: "Monster Effectiveness", weight: 0.005, ceiling: 70, peakEx: 10,
         curve: [[20, 1], [40, 10]],
-        tip: "Down to ~10ex @40% (2026-06-28 gated), from ~37ex. Marginal — only ~2x the ~5ex bulk floor." },
-      { key: "waystoneDrop", label: "Waystone Drop Chance", weight: 0, ceiling: 125, peakEx: 1,
+        tip: "Marginal ~10ex @40% (2026-07-05). Barely above the ~5ex bulk floor." },
+      { key: "waystoneDrop", label: "Waystone Drop Chance", weight: 0, ceiling: 125, peakEx: 1, est: true,
         curve: [[40, 1], [105, 1]],
-        tip: "Worthless to BUY — even a ~105% roll floors at ~1ex. Sustain only helps YOUR own endless-T16 farming; the market won't pay for it." },
-      { key: "monsterRarity", label: "Monster Rarity", weight: 0.01, ceiling: 103, peakEx: 1,
+        tip: "Worthless to BUY — even a ~105% roll floors at ~1ex. Not live-swept (est). Sustain only helps YOUR own endless-T16 farming; the market won't pay for it." },
+      { key: "monsterRarity", label: "Monster Rarity", weight: 0, ceiling: 55, peakEx: 1,
         curve: [[40, 1]],
-        tip: "~1ex solo even at decent rolls (2026-06-28 gated) — and high rolls barely appear in the liquid corrupted class. Kept in the dump only by your explicit rule." },
+        tip: "~1ex even at high rolls (2026-07-05). Real cap ~55% (the old 103 was wrong). Kept in the dump only by your explicit rule." },
     ],
   },
 

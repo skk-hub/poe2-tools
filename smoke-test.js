@@ -404,7 +404,7 @@ async function browserChecks() {
       // Rarity + Pack Size are NOT kept (junk solo, 2026-06-25 probe).
       await p.click('.toolroot-mj [data-wmatch="dump"]'); await p.waitForTimeout(150);
       const dump = await out();
-      check(/"corrupted"/.test(dump) && /revives available: 0/.test(dump) && /!item rarity: \\\+\[6-9\]\[0-9\]%/.test(dump) && /!monster effectiveness: \\\+\[4-9\]\[0-9\]%/.test(dump) && /!monster rarity: \\\+\(\[8-9\]\[0-9\]\|\[0-9\]\[0-9\]\[0-9\]\)%/.test(dump) && /!drop chance: \\\+\(11\[5-9\]\|1\[2-9\]\[0-9\]\)%/.test(dump) && /!pack size: \\\+\[4-9\]\[0-9\]%/.test(dump), "regex forge dump keeps Pack>=40 + rarity>=60 + ME>=40 + MonRarity>=80 + Drop>=115");
+      check(/"corrupted"/.test(dump) && /revives available: 0/.test(dump) && /!item rarity: \\\+\[6-9\]\[0-9\]%/.test(dump) && /!monster effectiveness: \\\+\[4-9\]\[0-9\]%/.test(dump) && /!monster rarity: \\\+\(4\[5-9\]\|\[5-9\]\[0-9\]\)%/.test(dump) && /!drop chance: \\\+\(11\[5-9\]\|1\[2-9\]\[0-9\]\)%/.test(dump) && /!pack size: \\\+\[4-9\]\[0-9\]%/.test(dump), "regex forge dump keeps Pack>=40 + rarity>=60 + ME>=40 + MonRarity>=45 + Drop>=115");
       // typeable keep selector adjusts the kept threshold (60 -> 70 %)
       const inVal = () => p.evaluate(() => (document.querySelector('.toolroot-mj [data-stepin="rarityKeep"]') || {}).value || "");
       const capA = await inVal();
