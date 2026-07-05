@@ -2925,9 +2925,22 @@ function craftRecipeSteps(method, ctx) {
   if (ctx.startRarity === "magic") steps.push("Regal Orb → upgrade to Rare (adds one random mod).");
   const o = method.expectedOrbs || {};
   const exOrb = o["Perfect Exalted"] ? "Perfect Exalted Orb" : o["Greater Exalted"] ? "Greater Exalted Orb" : "Exalted Orb";
+  // An Exaltation omen is only needed to STEER the exalt when the opposite side still has an open
+  // slot. If the other side ends up full (from kept mods + fills going there), you fill it first and
+  // a plain Exalt is FORCED onto the target side — so drop the omen (it's wasted). This is why a
+  // full-prefix item finishing a suffix wants a bare Exalted Orb, not Omen of Dextral Exaltation.
+  const capP = 3, capS = 3;   // ponytail: every PoE2 rare is 3P/3S; no per-base cap needed
+  const pFills = ctx.fills.filter((f) => f.type === "prefix").length;
+  const sFills = ctx.fills.filter((f) => f.type === "suffix").length;
   for (const f of ctx.fills) {
-    const omen = f.type === "prefix" ? "Omen of Sinistral Exaltation" : "Omen of Dextral Exaltation";
-    steps.push(`${omen} + ${exOrb} → exalt the ${f.type} side toward ${f.label}.`);
+    const otherFull = f.type === "suffix" ? (ctx.keptPrefix || 0) + pFills >= capP : (ctx.keptSuffix || 0) + sFills >= capS;
+    if (otherFull) {
+      const otherName = f.type === "suffix" ? "prefixes" : "suffixes";
+      steps.push(`${exOrb} → ${otherName} are full, so a plain Exalt is forced onto the ${f.type} side, toward ${f.label} (no Exaltation omen needed).`);
+    } else {
+      const omen = f.type === "prefix" ? "Omen of Sinistral Exaltation" : "Omen of Dextral Exaltation";
+      steps.push(`${omen} + ${exOrb} → exalt the ${f.type} side toward ${f.label}.`);
+    }
   }
   const pct = Math.round(method.successPerAttempt * 100);
   // Annul route: the reroll-a-jammed-side loop is the whole point — spell it out.
@@ -4121,9 +4134,12 @@ const server = http.createServer(async (req, res) => {
         // (usually the Annul reroll) is surfaced separately so the user can trade cost for one-shot odds.
         const best = feas.find((m) => !m.impractical) || feas[0];
         const reliable = feas.filter((m) => m !== best && m.successPerAttempt > best.successPerAttempt + 0.10).sort((a, b) => b.successPerAttempt - a.successPerAttempt)[0] || null;
-        const ctx = { base: baseName, startRarity, keptLabels: kept.map((k) => k.text), fills: c.fills };
+        const ctx = { base: baseName, startRarity, keptLabels: kept.map((k) => k.text), fills: c.fills, keptPrefix: kept.filter((k) => k.type === "prefix").length, keptSuffix: kept.filter((k) => k.type === "suffix").length };
         const rf = buildResaleFilters(gearSlot, kept, c.fills, idx);
-        const packMethod = (m) => ({ label: m.label, steps: craftRecipeSteps(m, ctx), expectedOrbs: m.expectedOrbs, divineCost: m.divineCost != null ? m.divineCost : null, successPerAttempt: m.successPerAttempt, impractical: !!m.impractical });
+        // Drop the "(Exaltation omens)" tag from the label when the costed method used none (other
+        // side full → plain Exalts) — else the label contradicts the omen-free steps below it.
+        const labelOf = (m) => (m.expectedOrbs && m.expectedOrbs["Exaltation omen"]) ? m.label : m.label.replace(/\s*\((?:directed )?Exaltation omens\)/i, "").replace(/directed Exalts?/i, "Exalts");
+        const packMethod = (m) => ({ label: labelOf(m), steps: craftRecipeSteps(m, ctx), expectedOrbs: m.expectedOrbs, divineCost: m.divineCost != null ? m.divineCost : null, successPerAttempt: m.successPerAttempt, impractical: !!m.impractical });
         out.push({
           label: c.fills.map((f) => f.label).join(" + "),
           fillCount: c.fills.length,

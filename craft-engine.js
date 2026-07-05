@@ -117,7 +117,7 @@ function targetMet(item, t) {
 // prefix, Dextral = suffix Exaltation omens). minIlvl (Greater/Perfect tiered Exalts) biases
 // the added mod to high tiers. Returns how many directed exalts were spent.
 function directedFill(item, mods, T, rnd, maxEx, minIlvl) {
-  let ex = 0;
+  let ex = 0, omens = 0;
   while (ex < maxEx) {
     let side = null;
     for (const t of T) {
@@ -126,10 +126,16 @@ function directedFill(item, mods, T, rnd, maxEx, minIlvl) {
       if (t.type === "suffix" && item.suffixes.length < CAP.rare.suffix) { side = "suffix"; break; }
     }
     if (!side) break;                       // every unmet target's side is full → stuck
+    // An Exaltation omen only STEERS the exalt when the OTHER side still has an open slot (a
+    // plain Exalt could stray there). If the other side is already full, a plain Exalted Orb is
+    // forced onto the target side — no omen needed. (This is why a full-prefix item finishing a
+    // suffix wants a bare Exalt, not Omen of Dextral Exaltation.)
+    const otherFull = side === "prefix" ? item.suffixes.length >= CAP.rare.suffix : item.prefixes.length >= CAP.rare.prefix;
+    if (!otherFull) omens++;
     if (!addMod(item, mods, rnd, side, minIlvl)) break;
     ex++;
   }
-  return ex;
+  return { ex, omens };
 }
 
 // A target is a group plus an optional set of acceptable tier keys. Accepts a bare
@@ -345,19 +351,20 @@ function simulateAnnulExalt(mods, T, trials, cap, rnd) {
 // unmet target's side. cost = start orbs + (Exalt + Exaltation omen) per directed exalt.
 function simulateDirected(mods, T, essences, trials, rnd) {
   const g = pickEssenceTarget(mods, T, essences);
-  let hits = 0, exSum = 0;
+  let hits = 0, exSum = 0, omenSum = 0;
   for (let i = 0; i < trials; i++) {
     const item = newItem();
     if (g) { item.rarity = "rare"; (g.type === "prefix" ? item.prefixes : item.suffixes).push({ key: g.modKey, group: g.group, type: g.type, ilvl: 1 }); }
     else { item.rarity = "magic"; addMod(item, mods, rnd); item.rarity = "rare"; addMod(item, mods, rnd); }   // transmute → regal
-    exSum += directedFill(item, mods, T, rnd, 6);
+    const r = directedFill(item, mods, T, rnd, 6);
+    exSum += r.ex; omenSum += r.omens;
     if (matches(item, T)) hits++;
   }
-  const p = hits / trials, avgEx = exSum / trials;
+  const p = hits / trials, avgEx = exSum / trials, avgOmen = omenSum / trials;
   const orbs = {};
   if (p > 0) {
     if (g) orbs.Essence = 1 / p; else { orbs.Transmutation = 1 / p; orbs.Regal = 1 / p; }
-    orbs.Exalted = avgEx / p; orbs["Exaltation omen"] = avgEx / p;
+    orbs.Exalted = avgEx / p; if (avgOmen > 0) orbs["Exaltation omen"] = avgOmen / p;
   }
   return {
     key: "directed", label: g ? `${g.name} + directed Exalts (Exaltation omens)` : "Regal → directed Exalts (Exaltation omens)",
@@ -385,19 +392,20 @@ function simulateTiered(mods, T, essences, trials, rnd) {
   else if (floor >= 35) tier = { key: "Greater Exalted", min: 35 };
   else return null;
   const g = pickEssenceTarget(mods, T, essences);
-  let hits = 0, exSum = 0;
+  let hits = 0, exSum = 0, omenSum = 0;
   for (let i = 0; i < trials; i++) {
     const item = newItem();
     if (g) { item.rarity = "rare"; (g.type === "prefix" ? item.prefixes : item.suffixes).push({ key: g.modKey, group: g.group, type: g.type, ilvl: 1 }); }
     else { item.rarity = "magic"; addMod(item, mods, rnd); item.rarity = "rare"; addMod(item, mods, rnd); }
-    exSum += directedFill(item, mods, T, rnd, 6, tier.min);   // directed + tiered = aim high-tier mods at the right side
+    const r = directedFill(item, mods, T, rnd, 6, tier.min);   // directed + tiered = aim high-tier mods at the right side
+    exSum += r.ex; omenSum += r.omens;
     if (matches(item, T)) hits++;
   }
-  const p = hits / trials, avgEx = exSum / trials;
+  const p = hits / trials, avgEx = exSum / trials, avgOmen = omenSum / trials;
   const orbs = {};
   if (p > 0) {
     if (g) orbs.Essence = 1 / p; else { orbs.Transmutation = 1 / p; orbs.Regal = 1 / p; }
-    orbs[tier.key] = avgEx / p; orbs["Exaltation omen"] = avgEx / p;   // each directed tiered exalt = 1 tiered Exalt + 1 Exaltation omen
+    orbs[tier.key] = avgEx / p; if (avgOmen > 0) orbs["Exaltation omen"] = avgOmen / p;   // each STEERED tiered exalt = 1 tiered Exalt + 1 Exaltation omen (none when the other side is full)
   }
   return {
     key: "tiered", label: (g ? `${g.name} + ` : "Regal → ") + `directed ${tier.key} (high tiers)`,
@@ -424,14 +432,15 @@ const cloneItem = (it) => ({ rarity: it.rarity, prefixes: it.prefixes.slice(), s
 // modeled) before the directed fill; "rare" fills directly. tier = minIlvl for Greater(35)/
 // Perfect(50) Exalt fills (0 = plain Exalted). Cost mirrors simulateDirected.
 function simulateFinish(seed, mods, T, trials, rnd, startRarity, tier, key, label) {
-  let hits = 0, exSum = 0;
+  let hits = 0, exSum = 0, omenSum = 0;
   for (let i = 0; i < trials; i++) {
     const item = cloneItem(seed);
     if (startRarity === "magic") addMod(item, mods, rnd);          // Regal: one undirected add
-    exSum += directedFill(item, mods, T, rnd, 6, tier || 0);       // directed Exalts toward unmet fills
+    const r = directedFill(item, mods, T, rnd, 6, tier || 0);      // directed Exalts toward unmet fills
+    exSum += r.ex; omenSum += r.omens;
     if (matches(item, T)) hits++;
   }
-  const p = hits / trials, avgEx = exSum / trials;
+  const p = hits / trials, avgEx = exSum / trials, avgOmen = omenSum / trials;
   // expectedOrbs = AMORTIZED cost = expected orbs to end up WITH the finished item, retrying on
   // fresh (cheap) magic/rare bases when an attempt bricks (÷p). That's the number that compares to
   // the resale/buy price. successPerAttempt is kept as the ONE-SHOT chance (per-item brick risk).
@@ -439,7 +448,9 @@ function simulateFinish(seed, mods, T, trials, rnd, startRarity, tier, key, labe
   if (p > 0) {
     if (startRarity === "magic") orbs.Regal = 1 / p;
     const exKey = tier >= 50 ? "Perfect Exalted" : tier >= 35 ? "Greater Exalted" : "Exalted";
-    if (avgEx > 0) { orbs[exKey] = avgEx / p; orbs["Exaltation omen"] = avgEx / p; }
+    // Omen only when the exalt actually needed steering (other side open); a full opposite side
+    // makes a plain Exalt forced onto the target, so no Exaltation omen is charged.
+    if (avgEx > 0) { orbs[exKey] = avgEx / p; if (avgOmen > 0) orbs["Exaltation omen"] = avgOmen / p; }
   }
   return { key, label, successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0 };
 }
@@ -450,7 +461,7 @@ function simulateFinish(seed, mods, T, trials, rnd, startRarity, tier, key, labe
 // includes the kept groups too (losing one = failure). Much higher one-shot success than pure
 // Exalt (you get repeated tries on the same item), at the cost of annuls + omens + the brick risk.
 function simulateFinishAnnul(seed, mods, Tall, trials, rnd, startRarity, cap) {
-  let hits = 0, exSum = 0, anSum = 0;
+  let hits = 0, exSum = 0, anSum = 0, omenSum = 0;
   for (let i = 0; i < trials; i++) {
     const item = cloneItem(seed);
     if (startRarity === "magic") addMod(item, mods, rnd);              // Regal
@@ -458,17 +469,20 @@ function simulateFinishAnnul(seed, mods, Tall, trials, rnd, startRarity, cap) {
     while (!ok && n < cap) {
       const side = unmetSide(item, Tall); if (!side) break;
       const full = side === "prefix" ? item.prefixes.length >= CAP.rare.prefix : item.suffixes.length >= CAP.rare.suffix;
-      if (!full) { if (addMod(item, mods, rnd, side)) exSum++; }        // directed Exalt toward the unmet target
+      if (!full) {
+        const otherFull = side === "prefix" ? item.suffixes.length >= CAP.rare.suffix : item.prefixes.length >= CAP.rare.prefix;
+        if (addMod(item, mods, rnd, side)) { exSum++; if (!otherFull) omenSum++; }   // directed Exalt (omen only when the other side is open)
+      }
       else { removeRandomOnSide(item, side, rnd); anSum++; }            // directed Annul to unjam the side (may hit a kept mod)
       n++; ok = matches(item, Tall);
     }
     if (ok) hits++;
   }
-  const p = hits / trials, avgEx = exSum / trials, avgAn = anSum / trials;
+  const p = hits / trials, avgEx = exSum / trials, avgAn = anSum / trials, avgOmen = omenSum / trials;
   const orbs = {};                                                     // amortized (÷p), like simulateFinish
   if (p > 0) {
     if (startRarity === "magic") orbs.Regal = 1 / p;
-    if (avgEx > 0) { orbs.Exalted = avgEx / p; orbs["Exaltation omen"] = avgEx / p; }
+    if (avgEx > 0) { orbs.Exalted = avgEx / p; if (avgOmen > 0) orbs["Exaltation omen"] = avgOmen / p; }
     if (avgAn > 0) { orbs.Annulment = avgAn / p; orbs["Annulment omen"] = avgAn / p; }
   }
   return { key: "finish_annul", label: "Regal + Annul/Exalt with omens (reroll a jammed side)", successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0 };
