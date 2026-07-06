@@ -390,9 +390,14 @@ async function browserChecks() {
       // step Min Item Rarity up four times (0 -> 10 -> 20 -> 30 -> 40) -> range becomes [4-9]
       for (let i = 0; i < 4; i++) { await p.click('.toolroot-mj [data-step="rarity"][data-dir="1"]'); await p.waitForTimeout(80); }
       check(/item rarity: \\\+\(\[4-9\]\[0-9\]\|/.test(await out()), "regex forge stepper rebuilds the regex (Rarity 40%)");
-      // toggle Waystone Drop ≥100% -> its 100+ token joins the OR floor
-      await p.click('.toolroot-mj [data-tog="wdrop"]'); await p.waitForTimeout(120);
-      check(/drop chance: \\\+\[0-9\]\[0-9\]\[0-9\]%/.test(await out()), "regex forge adds waystone-drop ≥100% when toggled");
+      // set Min Waystone Drop to 100 (now a stepper, not a toggle) -> its 100+ token joins the AND floor
+      await p.evaluate(() => { const i = document.querySelector('.toolroot-mj [data-stepin="wdrop"]'); i.value = "100"; i.dispatchEvent(new Event("change", { bubbles: true })); });
+      await p.waitForTimeout(120);
+      check(/drop chance: \\\+\[0-9\]\[0-9\]\[0-9\]%/.test(await out()), "regex forge adds waystone-drop ≥100% via the stepper");
+      // Monster Rarity floor (new stepper) -> its block joins the AND floor
+      await p.evaluate(() => { const i = document.querySelector('.toolroot-mj [data-stepin="monRar"]'); i.value = "45"; i.dispatchEvent(new Event("change", { bubbles: true })); });
+      await p.waitForTimeout(120);
+      check(/monster rarity: \\\+\(4\[5-9\]\|\[5-9\]\[0-9\]\)%/.test(await out()), "regex forge floor adds Monster Rarity ≥45 (new stepper)");
       // toggle "fully juiced" -> the 0-revives block appears in the live output
       await p.click('.toolroot-mj [data-tog="revives"]'); await p.waitForTimeout(120);
       check(/"revives available: 0"/.test(await out()), "regex forge emits the 0-revives block when toggled");

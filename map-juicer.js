@@ -31,7 +31,7 @@ window.__viewInit["map-juicer"]=function(){
 
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
-  let rarityMin = 0, packMin = 0, effMin = 0, wdropMin = 0;   // all start at 0 (off) — build up from nothing; wdrop is 0 or 100
+  let rarityMin = 0, packMin = 0, effMin = 0, monRarMin = 0, wdropMin = 0;   // floor mins — all start at 0 (off), build up from nothing
   // "Dump anything under ~40ex" (user rule 2026-07-05). NB PoE2 scale: ex is the SMALL unit
   // (~100 ex ≈ 1 chaos), so 10ex is junk and 40ex is the real cut. Per the buy-side sweeps,
   // only Pack Size clears ~40ex (~30-150ex); Item Rarity (~10-15ex), Monster Effectiveness
@@ -75,7 +75,7 @@ window.__viewInit["map-juicer"]=function(){
 
   // ── Regex Forge — answer a few questions, the regex rebuilds on every change ──
   let target = "waystones";    // "waystones" | "tablets"
-  let wMatch = "floor";        // "floor" (rarity/pack ≥) | "blue" (any reward mod)
+  let wMatch = "floor";        // "floor" (all-stat ≥ mins) | "dump" (low-value dump)
   let wRevives = false;        // require fully-juiced (0 revives)
   let wExclude = false;        // exclude risk suffixes — off by default; tick it when you want it
   let wCorrupt = false;        // require Corrupted
@@ -124,18 +124,14 @@ window.__viewInit["map-juicer"]=function(){
   function buildWaystone(){
     if (wMatch === "dump") return buildDump();
     const blocks = [];
-    if (wMatch === "blue") {
-      blocks.push(`"(${L.itemRarity}|${L.packSize}|${L.monsterRarity}|${L.monsterEffectiveness}|${L.waystoneDrop})"`);
-    } else {
-      // Each set floor is its OWN quoted block = AND in stash regex: a waystone must
-      // clear EVERY minimum you set (not just one). One block per stat, not a single
-      // `|`-joined block — that OR'd them, so a high Drop roll alone passed and the
-      // pack/rarity floor got "ignored".
-      if (rarityMin > 0) blocks.push(`"${atLeast(L.itemRarity, rarityMin)}"`);
-      if (packMin > 0)   blocks.push(`"${atLeast(L.packSize, packMin)}"`);
-      if (effMin > 0)    blocks.push(`"${atLeast(L.monsterEffectiveness, effMin, 70)}"`);
-      if (wdropMin > 0)  blocks.push(`"${atLeast(L.waystoneDrop, wdropMin)}"`);
-    }
+    // Each set floor is its OWN quoted block = AND in stash regex: a waystone must clear EVERY
+    // minimum you set (not just one). One block per stat, not a single `|`-joined block — that
+    // OR'd them, so a high Drop roll alone passed and the pack/rarity floor got "ignored".
+    if (rarityMin > 0) blocks.push(`"${atLeast(L.itemRarity, rarityMin)}"`);
+    if (packMin > 0)   blocks.push(`"${atLeast(L.packSize, packMin)}"`);
+    if (effMin > 0)    blocks.push(`"${atLeast(L.monsterEffectiveness, effMin, 70)}"`);
+    if (monRarMin > 0) blocks.push(`"${atLeast(L.monsterRarity, monRarMin, 60)}"`);
+    if (wdropMin > 0)  blocks.push(`"${atLeast(L.waystoneDrop, wdropMin)}"`);
     if (wRevives) blocks.push(noRevivesRegex());
     else if (wNotRevives) blocks.push(`"!${T.revivesZero}"`);
     if (wCorrupt) blocks.push(`"${T.corrupted}"`);
@@ -175,14 +171,12 @@ window.__viewInit["map-juicer"]=function(){
     }
     if (wMatch === "dump") return "Waystones dump · keep Rarity ≥" + dumpRarityKeep + "%";
     const tags = [];
-    if (wMatch === "blue") tags.push("any reward mod");
-    else {
-      if (rarityMin > 0) tags.push("Rarity ≥" + rarityMin);
-      if (packMin > 0)   tags.push("Pack ≥" + packMin);
-      if (effMin > 0)    tags.push("Eff ≥" + effMin);
-      if (wdropMin > 0)  tags.push("Drop ≥100");
-      if (!tags.length)  tags.push("floor");
-    }
+    if (rarityMin > 0) tags.push("Rarity ≥" + rarityMin);
+    if (packMin > 0)   tags.push("Pack ≥" + packMin);
+    if (effMin > 0)    tags.push("Eff ≥" + effMin);
+    if (monRarMin > 0) tags.push("MonRar ≥" + monRarMin);
+    if (wdropMin > 0)  tags.push("Drop ≥" + wdropMin);
+    if (!tags.length)  tags.push("floor");
     if (wRevives) tags.push("juiced"); else if (wNotRevives) tags.push("not-juiced");
     if (wCorrupt) tags.push("corrupt"); else if (wNotCorrupt) tags.push("not-corrupt");
     if (wExclude) tags.push("no-risk");
@@ -240,12 +234,12 @@ window.__viewInit["map-juicer"]=function(){
   function seg(attr, val, cur, label){ return `<button class="seg-btn${val===cur?" on":""}" type="button" data-${attr}="${val}">${esc(label)}</button>`; }
   // Each tunable: [lo, hi, click-step]. The control is a typeable number input
   // (type the value directly — no clicking to 0) flanked by −/+ for quick nudges.
-  const STEP_CFG = { rarity:[0,80,10], pack:[0,50,10], eff:[0,70,10], rarityKeep:[0,80,10], effKeep:[0,70,10], packKeep:[0,50,5], monRarKeep:[0,60,5], dropKeep:[0,130,5] };
-  function stepCur(id){ return ({ rarity:rarityMin, pack:packMin, eff:effMin, rarityKeep:dumpRarityKeep, effKeep, packKeep, monRarKeep, dropKeep })[id]; }
+  const STEP_CFG = { rarity:[0,80,10], pack:[0,50,10], eff:[0,70,10], monRar:[0,60,5], wdrop:[0,130,5], rarityKeep:[0,80,10], effKeep:[0,70,10], packKeep:[0,50,5], monRarKeep:[0,60,5], dropKeep:[0,130,5] };
+  function stepCur(id){ return ({ rarity:rarityMin, pack:packMin, eff:effMin, monRar:monRarMin, wdrop:wdropMin, rarityKeep:dumpRarityKeep, effKeep, packKeep, monRarKeep, dropKeep })[id]; }
   function setStep(id, v){
     const c = STEP_CFG[id]; if (!c) return;
     v = clamp(Math.round(Number(v) || 0), c[0], c[1]);
-    if (id==="rarity") rarityMin=v; else if (id==="pack") packMin=v; else if (id==="eff") effMin=v;
+    if (id==="rarity") rarityMin=v; else if (id==="pack") packMin=v; else if (id==="eff") effMin=v; else if (id==="monRar") monRarMin=v; else if (id==="wdrop") wdropMin=v;
     else if (id==="rarityKeep") dumpRarityKeep=v; else if (id==="effKeep") effKeep=v; else if (id==="packKeep") packKeep=v; else if (id==="monRarKeep") monRarKeep=v; else if (id==="dropKeep") dropKeep=v;
   }
   function stepper(id, label){
@@ -262,16 +256,14 @@ window.__viewInit["map-juicer"]=function(){
     return `<label class="forge-tog"><input type="checkbox" data-tog="${id}"${on?" checked":""}><span>${esc(label)}</span></label>`;
   }
   function waystoneQs(){
-    const segs = `<div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Rarity / Pack floor")}${seg("wmatch","blue",wMatch,"Any reward mod")}${seg("wmatch","dump",wMatch,"Low-value dump")}</div>`;
+    const segs = `<div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Stat floors")}${seg("wmatch","dump",wMatch,"Low-value dump")}</div>`;
     if (wMatch === "dump") {
       return `${segs}<div class="forge-steps">${stepper("packKeep","Keep if Pack Size ≥")}${stepper("rarityKeep","Keep if Item Rarity ≥")}${stepper("effKeep","Keep if Effectiveness ≥")}${stepper("monRarKeep","Keep if Monster Rarity ≥")}${stepper("dropKeep","Keep if Drop Chance ≥")}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones to bulk-dump, keeping the real money OUT of the pile. Default line = <b>dump anything under ~40ex</b>: only <b>Pack Size</b> clears that (~30-150ex)${packKeep>0?` — keep ≥${packKeep}% <span class="muted">(pure-40 ≈ 30ex; bump toward 45-50 for a strict 40ex cut)</span>`:` <b>(off)</b>`}. Under 40ex and <b>off by default</b> — Item Rarity (~10-15ex)${dumpRarityKeep>0?` <b>now keep ≥${dumpRarityKeep}%</b>`:``}, Monster Effectiveness (~10ex)${effKeep>0?` <b>keep ≥${effKeep}%</b>`:``}, Monster Rarity (~1ex)${monRarKeep>0?` <b>keep ≥${monRarKeep}%</b>`:``}; raise a stepper above 0 to rescue that signal from the dump.${dropKeep>0?` <b>Drop Chance ≥${dropKeep}%</b> kept as your <b>sustain</b> rule (not resale; set 0 to dump any drop).`:``} <b>Ignore the in-game price-check.</b></p>`;
     }
     return `
       ${segs}
-      ${wMatch==="floor"
-        ? `<div class="forge-steps">${stepper("rarity","Min Item Rarity")}${stepper("pack","Min Pack Size")}${stepper("eff","Min Effectiveness")}</div><p class="forge-hint">Every minimum you set is <b>required</b> (AND) — a stone must clear all of them. Type a value or use −/+; set a stat to 0 to drop it.</p>`
-        : `<p class="forge-hint">Matches any waystone carrying a reward mod — the blue stones worth upgrading.</p>`}
-      ${wMatch==="floor" ? toggle("wdrop","Require Waystone Drop ≥100% (midrange isn't worth it)",wdropMin>=100) : ""}
+      <div class="forge-steps">${stepper("rarity","Min Item Rarity")}${stepper("pack","Min Pack Size")}${stepper("eff","Min Effectiveness")}${stepper("monRar","Min Monster Rarity")}${stepper("wdrop","Min Waystone Drop")}</div>
+      <p class="forge-hint">Every minimum you set is <b>required</b> (AND) — a stone must clear all of them. Type a value or use −/+; set a stat to 0 to drop it.</p>
       <div class="forge-togrow">${toggle("revives","Fully juiced only (0 revives = 6-mod map)",wRevives)}${toggle("notrevives","Not juiced",wNotRevives)}</div>
       <div class="forge-togrow">${toggle("corrupt","Corrupted only",wCorrupt)}${toggle("notcorrupt","Not corrupted",wNotCorrupt)}</div>
       ${toggle("exclude","Exclude risk suffixes (less recovery, −max res, …)",wExclude)}`;
@@ -365,7 +357,6 @@ window.__viewInit["map-juicer"]=function(){
       else if (k === "corrupt") { wCorrupt = c.checked; if (c.checked) wNotCorrupt = false; }
       else if (k === "notcorrupt") { wNotCorrupt = c.checked; if (c.checked) wCorrupt = false; }
       else if (k === "exclude") wExclude = c.checked;
-      else if (k === "wdrop") wdropMin = c.checked ? 100 : 0;
       renderSheet();
     }));
     root.querySelectorAll("[data-chip]").forEach(b => b.addEventListener("click", () => {
