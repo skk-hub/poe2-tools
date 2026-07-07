@@ -4052,14 +4052,35 @@ const server = http.createServer(async (req, res) => {
       // filters lines to priced rewards by name, so keeping the icon column is harmless.
       const wantBoxes = url.searchParams.has("boxes");
       const leftFrac = Math.min(1, Math.max(0.05, Number(url.searchParams.get("left")) || 0.34));
+      // boxes-mode preprocessing knobs (tuned live from the overlay, then baked as its
+      // defaults). Gold-on-parchment reward text OCRs badly raw; grayscale + contrast
+      // stretch + upscaling helps a lot, an optional brightness threshold isolates the
+      // bright text from the textured page. Coords come back in PROCESSED-image space,
+      // so the caller divides box coords by (scale/100) to map back to screen px.
+      const q = url.searchParams;
+      const ppScale   = Math.min(400, Math.max(100, Number(q.get("scale")) || 100));
+      const ppThr     = Math.min(99, Math.max(0, Number(q.get("thr")) || 0)); // 0 = no threshold
+      const ppNeg     = q.get("neg") === "1";
+      const ppGray    = q.get("gray") !== "0";     // default on in boxes mode
+      const ppStretch = q.get("stretch") !== "0";  // default on in boxes mode
+      const ppPsm     = /^\d{1,2}$/.test(q.get("psm") || "") ? q.get("psm") : "6";
       try {
         await fs.promises.writeFile(tmpIn, buf);
         if (process.env.OCR_DEBUG) {
           await fs.promises.copyFile(tmpIn, path.join(os.tmpdir(), "poe-ocr-debug-in." + ext)).catch(() => {});
         }
-        const cropArg = wantBoxes
-          ? `-crop ${Math.round(leftFrac * 100)}%x100%+0+0 +repage`
-          : `-gravity West -chop 40%x0`;
+        let cropArg;
+        if (wantBoxes) {
+          const ops = [`-crop ${Math.round(leftFrac * 100)}%x100%+0+0 +repage`];
+          if (ppGray) ops.push("-colorspace Gray");
+          if (ppStretch) ops.push("-contrast-stretch 2%x2%");
+          if (ppThr > 0) ops.push(`-threshold ${ppThr}%`);
+          if (ppNeg) ops.push("-negate");
+          if (ppScale !== 100) ops.push(`-resize ${ppScale}%`);
+          cropArg = ops.join(" ");
+        } else {
+          cropArg = `-gravity West -chop 40%x0`;
+        }
         await new Promise((resolve, reject) =>
           exec(`magick "${tmpIn}" ${cropArg} "${tmpProc}"`,
             (err, _, stderr) => err ? reject(new Error(stderr || err.message)) : resolve())
@@ -4069,13 +4090,13 @@ const server = http.createServer(async (req, res) => {
         }
         if (wantBoxes) {
           const tsv = await new Promise((resolve, reject) =>
-            exec(`tesseract "${tmpProc}" "${tmpBase}" --psm 6 tsv -c preserve_interword_spaces=1`,
+            exec(`tesseract "${tmpProc}" "${tmpBase}" --psm ${ppPsm} tsv -c preserve_interword_spaces=1`,
               (err, _, stderr) => {
                 if (err) return reject(new Error(stderr || err.message));
                 fs.readFile(tmpBase + ".tsv", "utf8", (e, d) => e ? reject(e) : resolve(d || ""));
               })
           );
-          send(res, 200, JSON.stringify({ lines: parseOcrTsvLines(tsv) }), "application/json; charset=utf-8");
+          send(res, 200, JSON.stringify({ lines: parseOcrTsvLines(tsv), scale: ppScale / 100 }), "application/json; charset=utf-8");
           return;
         }
         const text = await new Promise((resolve, reject) =>
