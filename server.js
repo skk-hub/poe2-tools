@@ -195,6 +195,30 @@ function readRawBody(req, maxBytes = 10 * 1024 * 1024) {
   });
 }
 
+// Parse Tesseract TSV (word-level, level 5) into per-line boxes for /api/ocr?boxes=1.
+// Groups words by block|par|line, unions their bboxes, joins the text. Coords are in
+// the (cropped-from-origin) image's pixel space. Exported for ocr-boxes-test.js.
+// Columns: level page block par line word left top width height conf text
+function parseOcrTsvLines(tsv) {
+  const groups = new Map();
+  for (const row of String(tsv).split(/\r?\n/).slice(1)) {
+    const c = row.split("\t");
+    if (c.length < 12 || c[0] !== "5") continue;      // words only
+    const text = c[11];
+    if (!text || !text.trim()) continue;
+    const key = c[2] + "|" + c[3] + "|" + c[4];
+    const x = +c[6], y = +c[7], w = +c[8], h = +c[9];
+    let g = groups.get(key);
+    if (!g) { g = { x, y, x2: x + w, y2: y + h, words: [] }; groups.set(key, g); }
+    g.x = Math.min(g.x, x); g.y = Math.min(g.y, y);
+    g.x2 = Math.max(g.x2, x + w); g.y2 = Math.max(g.y2, y + h);
+    g.words.push(text);
+  }
+  return [...groups.values()].map((g) => ({
+    text: g.words.join(" "), x: g.x, y: g.y, w: g.x2 - g.x, h: g.y2 - g.y,
+  }));
+}
+
 // The league name goes straight into upstream GGG/poe.ninja URLs, so never trust
 // the raw query value. A reverse proxy was seen appending its own origin onto it
 // ("Runes of Aldur" + "http://docker:8098"), producing an invalid league and an
@@ -4019,18 +4043,40 @@ const server = http.createServer(async (req, res) => {
       const tmpIn   = path.join(os.tmpdir(), "poe-ocr-" + tid + "." + ext);
       const tmpProc = path.join(os.tmpdir(), "poe-ocr-" + tid + "-proc.png");
       const tmpBase = path.join(os.tmpdir(), "poe-ocr-" + tid + "-out");
-      const cleanup = () => { for (const f of [tmpIn, tmpProc, tmpBase + ".txt"]) fs.unlink(f, () => {}); };
+      const cleanup = () => { for (const f of [tmpIn, tmpProc, tmpBase + ".txt", tmpBase + ".tsv"]) fs.unlink(f, () => {}); };
+      // boxes mode (poe2-overlay): return per-line bounding boxes so the overlay can
+      // draw a price beside each reward row. Crops to the left `left` fraction of the
+      // image (the book column) INSTEAD of chopping — a full-screen capture is mostly
+      // game map, and cropping from x=0 keeps the returned coords in screen space (no
+      // offset). `left` default 0.34 covers the book (icons + reward text); the caller
+      // filters lines to priced rewards by name, so keeping the icon column is harmless.
+      const wantBoxes = url.searchParams.has("boxes");
+      const leftFrac = Math.min(1, Math.max(0.05, Number(url.searchParams.get("left")) || 0.34));
       try {
         await fs.promises.writeFile(tmpIn, buf);
         if (process.env.OCR_DEBUG) {
           await fs.promises.copyFile(tmpIn, path.join(os.tmpdir(), "poe-ocr-debug-in." + ext)).catch(() => {});
         }
+        const cropArg = wantBoxes
+          ? `-crop ${Math.round(leftFrac * 100)}%x100%+0+0 +repage`
+          : `-gravity West -chop 40%x0`;
         await new Promise((resolve, reject) =>
-          exec(`magick "${tmpIn}" -gravity West -chop 40%x0 "${tmpProc}"`,
+          exec(`magick "${tmpIn}" ${cropArg} "${tmpProc}"`,
             (err, _, stderr) => err ? reject(new Error(stderr || err.message)) : resolve())
         );
         if (process.env.OCR_DEBUG) {
           await fs.promises.copyFile(tmpProc, path.join(os.tmpdir(), "poe-ocr-debug-proc.png")).catch(() => {});
+        }
+        if (wantBoxes) {
+          const tsv = await new Promise((resolve, reject) =>
+            exec(`tesseract "${tmpProc}" "${tmpBase}" --psm 6 tsv -c preserve_interword_spaces=1`,
+              (err, _, stderr) => {
+                if (err) return reject(new Error(stderr || err.message));
+                fs.readFile(tmpBase + ".tsv", "utf8", (e, d) => e ? reject(e) : resolve(d || ""));
+              })
+          );
+          send(res, 200, JSON.stringify({ lines: parseOcrTsvLines(tsv) }), "application/json; charset=utf-8");
+          return;
         }
         const text = await new Promise((resolve, reject) =>
           exec(`tesseract "${tmpProc}" "${tmpBase}" --psm 6 -c preserve_interword_spaces=1`,
@@ -4276,6 +4322,7 @@ module.exports = {
   parseProxyOverview,
   getProxyData,
   proxyPrice,
+  parseOcrTsvLines,
   __setExchangeRawImpl(fn) { exchangeRawImpl = fn; },
   __setProxyFetchImpl(fn) { proxyFetchImpl = fn; },
 };
