@@ -2833,7 +2833,7 @@ function craftModList(baseName, itemLevel) {
     if (m.ilvl > ilvl) continue;
     const w = craftEffWeight(m, tagset, archKey);
     if (w <= 0) continue;
-    list.push({ key, type: m.type === "Prefix" ? "prefix" : "suffix", group: m.group, weight: w, ilvl: m.ilvl });
+    list.push({ key, type: m.type === "Prefix" ? "prefix" : "suffix", group: m.group, weight: w, ilvl: m.ilvl, tags: m.tags || [] });
   }
   return list;
 }
@@ -2991,6 +2991,16 @@ function buildResaleFilters(gearSlot, kept, fills, idx) {
 }
 
 // Essences that can guarantee a mod on this base's class, at this item level — the
+// Estimated reveal-pool size for a desecrated target: mods of that faction on the target's side.
+// After you commit to a faction (its bones / a faction-guarantee omen), the reveal draws from that
+// faction's eligible mods. poe2db gives no per-base weights, so this faction+side count is an
+// ESTIMATE (the engine flags the method estimate:true). 30 is a neutral fallback.
+function desecratedPoolN(faction, type) {
+  if (!DESECRATED || !Array.isArray(DESECRATED.mods)) return 30;
+  const n = DESECRATED.mods.filter((m) => m.faction === faction && m.type === type).length;
+  return n || 30;
+}
+
 // craft-engine's essence input. Only essences whose forced mod exists in the normal
 // pool (some Perfect/essence-exclusive mods aren't in ModItem) and is reachable at ilvl.
 function craftEssenceOptions(baseName, itemLevel) {
@@ -3018,6 +3028,8 @@ const CRAFT_ORB_PROXY = {
   "Greater Exalted": "Greater Exalted Orb", "Perfect Exalted": "Perfect Exalted Orb",
   "Omen of Whittling": "Omen of Whittling", "Exaltation omen": "Omen of Sinistral Exaltation",
   "Erasure omen": "Omen of Sinistral Erasure", "Annulment omen": "Omen of Sinistral Annulment",
+  "Homogenising omen": "Omen of Homogenising Exaltation", "Fracturing Orb": "Fracturing Orb",
+  "Catalysing omen": "Omen of Catalysing Exaltation", "Omen of Light": "Omen of Light",
 };
 function priceCraftMethods(result, proxy) {
   if (!result || result.impossible || !proxy) return;
@@ -4145,15 +4157,25 @@ const server = http.createServer(async (req, res) => {
       const input = await readJson(req);
       const mods = craftModList(String(input.base || ""), Number(input.ilvl) || 100);
       if (!mods) { send(res, 404, JSON.stringify({ error: "unknown base" }), J); return; }
-      // targets: array of group strings or {group, keys:[tier keys]} (keys omitted = any tier)
+      // targets: group strings, {group, keys:[tier keys]}, or a desecrated mod
+      // {desecrated:true, name, faction, type} (reveal-3-pick-1 via Well of Souls).
       const targets = (Array.isArray(input.targets) ? input.targets : [])
-        .map((t) => (typeof t === "string" ? { group: t } : { group: String(t.group || ""), keys: Array.isArray(t.keys) ? t.keys.map(String) : undefined }))
+        .map((t) => {
+          if (typeof t === "string") return { group: t };
+          if (t && t.desecrated) {
+            const faction = String(t.faction || ""), type = t.type === "suffix" ? "suffix" : "prefix";
+            return { group: "desecrated:" + String(t.name || "") + ":" + faction, desecrated: true, type, poolN: desecratedPoolN(faction, type) };
+          }
+          return { group: String(t.group || ""), keys: Array.isArray(t.keys) ? t.keys.map(String) : undefined };
+        })
         .filter((t) => t.group);
       if (!targets.length) { send(res, 400, JSON.stringify({ error: "pick at least one target mod" }), J); return; }
       if (targets.length > 6) { send(res, 400, JSON.stringify({ error: "at most 6 targets (3 prefixes + 3 suffixes)" }), J); return; }
       const seed = (Math.random() * 4294967296) >>> 0;
       const essences = craftEssenceOptions(String(input.base || ""), Number(input.ilvl) || 100);
-      const result = craftEngine.rankMethods(mods, targets, { seed, essences });
+      const baseCls = (CRAFT_DATA && CRAFT_DATA.bases[String(input.base || "")] || {}).class;
+      const jewellery = baseCls === "Ring" || baseCls === "Amulet";   // catalysts apply to jewellery
+      const result = craftEngine.rankMethods(mods, targets, { seed, essences, jewellery });
       try { priceCraftMethods(result, await getProxyData(sanitizeLeague(input.league))); } catch { /* pricing is a bonus; fall back to orb-count ranking */ }
       send(res, 200, JSON.stringify(result), J);
       return;
@@ -4188,10 +4210,11 @@ const server = http.createServer(async (req, res) => {
       const proxy = await getProxyData(league).catch(() => null);
       const seed = (Math.random() * 4294967296) >>> 0;
       const keptForEngine = kept.map((k) => ({ group: k.group, type: k.type }));
+      const essences = craftEssenceOptions(baseName, ilvl);   // lets rankFinish offer an essence-guarantee route
       const category = (() => { try { const s = gearSlotCfg(gearSlot); return s ? s.category : null; } catch { return null; } })();
       const out = [];
       for (const c of candidates) {
-        const r = craftEngine.rankFinish(poolMods, keptForEngine, c.targets, { startRarity, seed });
+        const r = craftEngine.rankFinish(poolMods, keptForEngine, c.targets, { startRarity, seed, essences });
         if (r.impossible || !r.methods.length) continue;
         try { priceCraftMethods(r, proxy); } catch { /* orb-count ranking is fine */ }
         const feas = r.methods.filter((m) => m.feasible);

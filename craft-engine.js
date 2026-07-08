@@ -73,6 +73,44 @@ function addMod(item, mods, rnd, typeFilter, minIlvl) {
   return true;
 }
 
+// Tag-biased add (for Omen of Homogenising Exaltation and catalyst-directed Exalts). Same as
+// addMod but: restrictTags (Set) limits candidates to mods sharing ≥1 tag with it (homogenising
+// = "add a mod of the same type as an existing mod"); boostTags (Set) multiplies matching mods'
+// weight by boostMult (catalyst quality biasing a mod type). Both optional; needs mods to carry
+// .tags (craftModList supplies them; synthetic/tag-less pools simply get no bias).
+function addModBiased(item, mods, rnd, typeFilter, minIlvl, restrictTags, boostTags, boostMult) {
+  const cap = CAP[item.rarity];
+  const prefFull = item.prefixes.length >= cap.prefix, sufFull = item.suffixes.length >= cap.suffix;
+  if (prefFull && sufFull) return false;
+  const present = [];
+  for (const m of item.prefixes) present.push(m.group);
+  for (const m of item.suffixes) present.push(m.group);
+  const cands = []; let total = 0;
+  for (const m of mods) {
+    if (typeFilter && m.type !== typeFilter) continue;
+    if (minIlvl && m.ilvl < minIlvl) continue;
+    if (m.type === "prefix" ? prefFull : sufFull) continue;
+    if (present.indexOf(m.group) >= 0) continue;
+    const tags = m.tags || [];
+    if (restrictTags) { let ok = false; for (const tg of tags) if (restrictTags.has(tg)) { ok = true; break; } if (!ok) continue; }
+    let w = m.weight;
+    if (boostTags) for (const tg of tags) if (boostTags.has(tg)) { w *= boostMult; break; }
+    cands.push({ m, w }); total += w;
+  }
+  if (!cands.length) return false;
+  let r = rnd() * total, pick = cands[cands.length - 1].m;
+  for (const c of cands) { r -= c.w; if (r < 0) { pick = c.m; break; } }
+  (pick.type === "prefix" ? item.prefixes : item.suffixes).push(pick);
+  return true;
+}
+// Union of tags across all mods currently on the item (the "types present" for homogenising).
+function itemTags(item) {
+  const s = new Set();
+  for (const m of item.prefixes) for (const t of (m.tags || [])) s.add(t);
+  for (const m of item.suffixes) for (const t of (m.tags || [])) s.add(t);
+  return s;
+}
+
 function removeRandom(item, rnd) {
   const np = item.prefixes.length, tot = np + item.suffixes.length;
   if (!tot) return false;
@@ -101,6 +139,17 @@ function removeRandomOnSide(item, side, rnd) {
   const arr = side === "prefix" ? item.prefixes : item.suffixes;
   if (!arr.length) return false;
   arr.splice(Math.floor(rnd() * arr.length), 1); return true;
+}
+// Remove a random mod that is NOT fractured (a fractured mod is locked in place and can't be
+// removed by Chaos/Annul). Used by the Fracturing Orb method below.
+function removeRandomUnfractured(item, rnd) {
+  const pool = [];
+  for (let i = 0; i < item.prefixes.length; i++) if (!item.prefixes[i].fractured) pool.push(item.prefixes, i);
+  for (let i = 0; i < item.suffixes.length; i++) if (!item.suffixes[i].fractured) pool.push(item.suffixes, i);
+  if (!pool.length) return false;
+  const j = Math.floor(rnd() * (pool.length / 2)) * 2;   // pairs of (arr, idx)
+  pool[j].splice(pool[j + 1], 1);
+  return true;
 }
 // The side of the first unmet target (for directing an omen), or null if all met.
 function unmetSide(item, T) {
@@ -346,6 +395,46 @@ function simulateAnnulExalt(mods, T, trials, cap, rnd) {
   };
 }
 
+// Fracturing Orb (PoE2 0.5, poe2db): fractures a RANDOM modifier on a Rare item with at
+// least 4 modifiers, locking it so Chaos/Annul can't remove it. Faithful play: Alch cheaply
+// until a target mod appears, spend ONE Fracturing Orb (random — it may lock a target or
+// junk), and only proceed when it locked a target; then Chaos-reroll the unfractured slots to
+// hit the rest, protected by the lock. The random fracture landing on junk is the real cost,
+// so it's reflected in the success rate rather than assumed away.
+function simulateFracture(mods, targetGroups, trials, cap, rnd) {
+  const T = normalizeTargets(targetGroups);
+  let successes = 0, alchSum = 0, chaosSum = 0, fracSum = 0;
+  for (let i = 0; i < trials; i++) {
+    let item = null, alchs = 0, present = false;
+    do {                                            // cheap Alch until at least one target shows
+      item = newItem(); item.rarity = "rare";
+      for (let k = 0; k < 4; k++) addMod(item, mods, rnd);
+      alchs++;
+      present = T.some((t) => targetMet(item, t));
+    } while (!present && alchs < 20);
+    alchSum += alchs;
+    if (!present) continue;                         // no target after 20 alchs → give up this trial
+    const all = item.prefixes.concat(item.suffixes);
+    if (all.length < 4) continue;                   // Fracturing needs a 4+ mod rare
+    const f = all[Math.floor(rnd() * all.length)];  // fracture a RANDOM mod (can't be chosen)
+    f.fractured = true; fracSum++;
+    const lockedTarget = T.some((t) => f.group === t.group && (!t.keys || t.keys.has(f.key)));
+    let n = 0, ok = matches(item, T);
+    if (lockedTarget) {                             // only worth continuing if the lock caught a target
+      while (!ok && n < cap) { removeRandomUnfractured(item, rnd); addMod(item, mods, rnd); n++; ok = matches(item, T); }
+    }
+    chaosSum += n;
+    if (ok && lockedTarget) successes++;
+  }
+  const p = successes / trials;
+  return {
+    key: "fracture", label: "Alchemy → Fracturing Orb (lock a hit) → Chaos the rest",
+    successPerAttempt: p,
+    expectedOrbs: p > 0 ? { Alchemy: (alchSum / trials) / p, "Fracturing Orb": (fracSum / trials) / p, Chaos: (chaosSum / trials) / p } : {},
+    feasible: p > 0, cap,
+  };
+}
+
 // Directed Exalts (Sinistral/Dextral Exaltation omens): guarantee the hardest target with
 // an essence when one's available (else start from a Regal), then aim each Exalt at an
 // unmet target's side. cost = start orbs + (Exalt + Exaltation omen) per directed exalt.
@@ -410,6 +499,162 @@ function simulateTiered(mods, T, essences, trials, rnd) {
   return {
     key: "tiered", label: (g ? `${g.name} + ` : "Regal → ") + `directed ${tier.key} (high tiers)`,
     essenceName: g ? g.name : undefined, successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0,
+  };
+}
+
+// Tags a target group can carry (union over its accepted tiers in the pool).
+function targetTags(mods, t) {
+  const s = new Set();
+  for (const m of mods) { if (m.group !== t.group) continue; if (t.keys && !t.keys.has(m.key)) continue; for (const tg of (m.tags || [])) s.add(tg); }
+  return s;
+}
+function poolTagsForGroup(mods, group) { for (const m of mods) if (m.group === group) return m.tags || []; return []; }
+
+// Homogenising fill: each Exalt is an Omen of Homogenising Exaltation — the added mod must share
+// a tag ("type") with a mod already on the item. Directed to the unmet target's side.
+function homogenisedFill(item, mods, T, rnd, maxEx) {
+  let ex = 0, omens = 0;
+  while (ex < maxEx) {
+    let side = null;
+    for (const t of T) {
+      if (targetMet(item, t)) continue;
+      if (t.type === "prefix" && item.prefixes.length < CAP.rare.prefix) { side = "prefix"; break; }
+      if (t.type === "suffix" && item.suffixes.length < CAP.rare.suffix) { side = "suffix"; break; }
+    }
+    if (!side) break;
+    const tags = itemTags(item);
+    const ok = tags.size ? addModBiased(item, mods, rnd, side, 0, tags, null, 1) : addMod(item, mods, rnd, side);
+    if (!ok) break;
+    ex++; omens++;
+  }
+  return { ex, omens };
+}
+
+// Omen of Homogenising Exaltation (PoE2 0.5, poe2db): the Exalt adds a mod of the same TYPE (tag)
+// as one already on the item. Only worthwhile when the targets are tag-clustered (share a tag) —
+// once one is on, homogenising exalts hit the others far more often. Anchor the hardest target
+// (essence if available, else Regal), then homogenised-exalt the rest.
+function simulateHomogenising(mods, T, essences, trials, rnd) {
+  const tagSets = T.map((t) => targetTags(mods, t));
+  let clustered = false;
+  for (let a = 0; a < tagSets.length && !clustered; a++)
+    for (let b = a + 1; b < tagSets.length && !clustered; b++)
+      for (const tg of tagSets[a]) if (tagSets[b].has(tg)) { clustered = true; break; }
+  if (!clustered) return null;                              // no shared type → homogenising can't help
+  const g = pickEssenceTarget(mods, T, essences);
+  let hits = 0, exSum = 0, omenSum = 0;
+  for (let i = 0; i < trials; i++) {
+    const item = newItem();
+    if (g) { item.rarity = "rare"; (g.type === "prefix" ? item.prefixes : item.suffixes).push({ key: g.modKey, group: g.group, type: g.type, ilvl: 1, tags: poolTagsForGroup(mods, g.group) }); }
+    else { item.rarity = "magic"; addMod(item, mods, rnd); item.rarity = "rare"; addMod(item, mods, rnd); }
+    const r = homogenisedFill(item, mods, T, rnd, 6);
+    exSum += r.ex; omenSum += r.omens;
+    if (matches(item, T)) hits++;
+  }
+  const p = hits / trials, avgEx = exSum / trials, avgOmen = omenSum / trials;
+  const orbs = {};
+  if (p > 0) {
+    if (g) orbs.Essence = 1 / p; else { orbs.Transmutation = 1 / p; orbs.Regal = 1 / p; }
+    if (avgEx > 0) { orbs.Exalted = avgEx / p; if (avgOmen > 0) orbs["Homogenising omen"] = avgOmen / p; }
+  }
+  return {
+    key: "homogenising", essenceName: g ? g.name : undefined,
+    label: (g ? `${g.name} + ` : "Regal → ") + "Homogenising Exalts (same-type mods)",
+    successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0,
+  };
+}
+
+// Catalyst-directed Exalts (PoE2 0.5): a catalyst adds quality to a ring/amulet that biases a mod
+// TYPE (tag), and Omen of Catalysing Exaltation makes the Exalt spend that quality to favour it.
+// Modeled as a weight boost on the catalysed tag during a directed fill (jewellery only). Unlike
+// homogenising it needs no same-type anchor, so it helps the FIRST mod of a type too.
+// ponytail: CAT_MULT is a heuristic for ~20% catalyst quality; tune if GGG's real weighting surfaces.
+const CAT_MULT = 3;
+function simulateCatalyst(mods, T, essences, trials, rnd, jewellery) {
+  if (!jewellery) return null;
+  let hardest = null, lo = Infinity;                       // catalyse the rarest target's tag = biggest payoff
+  for (const t of T) {
+    const tags = targetTags(mods, t); if (!tags.size) continue;
+    const w = mods.filter((m) => m.group === t.group && (!t.keys || t.keys.has(m.key))).reduce((s, m) => s + m.weight, 0);
+    if (w < lo) { lo = w; hardest = tags; }
+  }
+  if (!hardest) return null;
+  const g = pickEssenceTarget(mods, T, essences);
+  let hits = 0, exSum = 0;
+  for (let i = 0; i < trials; i++) {
+    const item = newItem();
+    if (g) { item.rarity = "rare"; (g.type === "prefix" ? item.prefixes : item.suffixes).push({ key: g.modKey, group: g.group, type: g.type, ilvl: 1, tags: poolTagsForGroup(mods, g.group) }); }
+    else { item.rarity = "magic"; addMod(item, mods, rnd); item.rarity = "rare"; addMod(item, mods, rnd); }
+    let ex = 0;
+    while (ex < 6) {
+      let side = null;
+      for (const t of T) {
+        if (targetMet(item, t)) continue;
+        if (t.type === "prefix" && item.prefixes.length < CAP.rare.prefix) { side = "prefix"; break; }
+        if (t.type === "suffix" && item.suffixes.length < CAP.rare.suffix) { side = "suffix"; break; }
+      }
+      if (!side) break;
+      if (!addModBiased(item, mods, rnd, side, 0, null, hardest, CAT_MULT)) break;
+      ex++;
+    }
+    exSum += ex; if (matches(item, T)) hits++;
+  }
+  const p = hits / trials, avgEx = exSum / trials;
+  const orbs = {};
+  if (p > 0) {
+    if (g) orbs.Essence = 1 / p; else { orbs.Transmutation = 1 / p; orbs.Regal = 1 / p; }
+    if (avgEx > 0) { orbs.Exalted = avgEx / p; orbs.Catalyst = avgEx / p; orbs["Catalysing omen"] = avgEx / p; }
+  }
+  return {
+    key: "catalyst", essenceName: g ? g.name : undefined,
+    label: (g ? `${g.name} + ` : "Regal → ") + "Catalyst-directed Exalts (bias a mod type)",
+    successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0,
+  };
+}
+
+// Desecration (PoE2 0.5, poe2db: Abyssal Bones + Well of Souls). A desecrated TARGET carries
+// { desecrated:true, group, type, poolN } — poolN = estimated reveal-pool size (faction mods
+// eligible on the base). Each bone reveals 3 and you pick 1, so P(target shown) ≈ min(1, 3/poolN);
+// a miss is removed with Orb of Annulment + Omen of Light and re-desecrated. Normal targets are
+// filled with directed Exalts alongside. Odds are an ESTIMATE — poe2db gives no per-base reveal
+// weights (the data note says so); this models the structure, not exact weights.
+function simulateDesecration(mods, T, trials, rnd) {
+  const des = T.filter((t) => t.desecrated);
+  if (!des.length) return null;
+  const norm = T.filter((t) => !t.desecrated);
+  const cap = 40;
+  let hits = 0, boneSum = 0, lightSum = 0, exSum = 0, omenSum = 0;
+  for (let i = 0; i < trials; i++) {
+    const item = newItem(); item.rarity = "rare";
+    let ok = true, bones = 0, lights = 0;
+    for (const dt of des) {
+      let got = false, n = 0;
+      const pRe = Math.min(1, 3 / Math.max(3, dt.poolN || 30));
+      while (n < cap) {
+        const full = dt.type === "prefix" ? item.prefixes.length >= CAP.rare.prefix : item.suffixes.length >= CAP.rare.suffix;
+        if (full) break;
+        bones++;
+        if (rnd() < pRe) { (dt.type === "prefix" ? item.prefixes : item.suffixes).push({ group: dt.group, type: dt.type, key: dt.key || dt.group, ilvl: 1, desecrated: true }); got = true; break; }
+        lights++;              // miss → Orb of Annulment + Omen of Light removes it, re-desecrate
+        n++;
+      }
+      if (!got) { ok = false; break; }
+    }
+    if (ok) { const r = directedFill(item, mods, norm, rnd, 6); exSum += r.ex; omenSum += r.omens; }
+    boneSum += bones; lightSum += lights;
+    if (ok && matches(item, T)) hits++;
+  }
+  const p = hits / trials;
+  const orbs = {};
+  if (p > 0) {
+    orbs["Abyssal Bone"] = (boneSum / trials) / p;
+    if (lightSum > 0) { orbs.Annulment = (lightSum / trials) / p; orbs["Omen of Light"] = (lightSum / trials) / p; }
+    if (exSum > 0) { orbs.Exalted = (exSum / trials) / p; if (omenSum > 0) orbs["Exaltation omen"] = (omenSum / trials) / p; }
+  }
+  return {
+    key: "desecration", estimate: true,
+    label: "Desecrate (Well of Souls: reveal 3, pick 1) — remove misses with Annul + Omen of Light",
+    successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0,
   };
 }
 
@@ -488,6 +733,43 @@ function simulateFinishAnnul(seed, mods, Tall, trials, rnd, startRarity, cap) {
   return { key: "finish_annul", label: "Regal + Annul/Exalt with omens (reroll a jammed side)", successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0 };
 }
 
+// Essence finish (PoE2 0.5, poe2db): guarantee a still-missing fill target with an essence
+// instead of fishing for it with Exalts. On a RARE start a **Perfect** essence removes a random
+// modifier and adds the guaranteed one (the removal can destroy a kept mod → reflected as a
+// failure); on a MAGIC start a normal essence upgrades to Rare and adds it (no removal). Then
+// directed-Exalt the rest. Tall = kept groups + fills (losing a kept mod = failure).
+function simulateFinishEssence(seed, mods, T, Tall, essences, trials, rnd, startRarity) {
+  const perfect = startRarity === "rare";
+  const pool = (essences || []).filter((e) => perfect === /^Perfect\b/i.test(e.name));
+  const g = pickEssenceTarget(mods, T, pool);         // hardest-to-hit fill an essence can force
+  if (!g) return null;
+  let hits = 0, exSum = 0, omenSum = 0;
+  for (let i = 0; i < trials; i++) {
+    const item = cloneItem(seed);
+    if (perfect) {
+      removeRandom(item, rnd);                         // Perfect essence removes a random mod first
+      const side = g.type;
+      const full = side === "prefix" ? item.prefixes.length >= CAP.rare.prefix : item.suffixes.length >= CAP.rare.suffix;
+      if (full) removeRandomOnSide(item, side, rnd);   // ensure room on the guaranteed mod's side
+    } else { item.rarity = "rare"; }                   // normal essence: Magic → Rare, no removal
+    (g.type === "prefix" ? item.prefixes : item.suffixes).push({ key: g.modKey, group: g.group, type: g.type, ilvl: 1 });
+    const r = directedFill(item, mods, T, rnd, 6);
+    exSum += r.ex; omenSum += r.omens;
+    if (matches(item, Tall)) hits++;                   // must still carry every kept mod + fill
+  }
+  const p = hits / trials, avgEx = exSum / trials, avgOmen = omenSum / trials;
+  const orbs = {};
+  if (p > 0) {
+    orbs.Essence = 1 / p;
+    if (avgEx > 0) { orbs.Exalted = avgEx / p; if (avgOmen > 0) orbs["Exaltation omen"] = avgOmen / p; }
+  }
+  return {
+    key: "finish_essence", essenceName: g.name,
+    label: `${g.name} (guarantees ${g.stat}) + directed Exalts`,
+    successPerAttempt: p, expectedOrbs: orbs, feasible: p > 0,
+  };
+}
+
 // Rank ways to FINISH currentMods into (currentMods + fill targets). fillGroups = the NEW target
 // groups to add. opts: {startRarity:"magic"|"rare", trials, seed, finishCap}. Returns the same shape
 // as rankMethods (impossible / methods[] with impractical + totalOrbs), so the UI renders it identically.
@@ -524,6 +806,11 @@ function rankFinish(mods, currentMods, fillGroups, opts) {
   const Tall = normalizeTargets([...(currentMods || []).map((m) => m.group), ...fillGroups]);
   for (const t of Tall) t.type = typeOf[t.group];
   methods.push(simulateFinishAnnul(seeded, mods, Tall, trials, rnd, startRarity, opts.finishCap || 30));
+  // Essence guarantee for a still-missing fill (Perfect essence on rare / normal on magic).
+  if (opts.essences && opts.essences.length) {
+    const fe = simulateFinishEssence(seeded, mods, T, Tall, opts.essences, trials, rnd, startRarity);
+    if (fe) methods.push(fe);
+  }
   // Drop the Regal label/cost for a rare start (nothing to upgrade).
   if (startRarity === "rare") for (const m of methods) { m.label = m.label.replace("Regal + directed", "Directed").replace("Regal + Annul/Exalt", "Annul/Exalt"); delete m.expectedOrbs.Regal; }
 
@@ -539,6 +826,26 @@ function rankMethods(mods, targetGroups, opts) {
   const trials = opts.trials || 5000;    // ±~0.7% at p=0.5 — fine for a whole-% display; 4 spam loops × cap keep it bounded
   const cap = opts.chaosCap || 120;
   const seed = (opts.seed >>> 0) || 12345;
+  // Desecration branch: if any target is a desecrated mod, normal orbs can't add it, so only the
+  // desecration method applies. Handled separately (and BEFORE the pool-reachability check, which
+  // would otherwise flag the synthetic desecrated group as "missing"). No desecrated target → this
+  // is skipped and the normal path below runs unchanged.
+  if ((targetGroups || []).some((t) => t && typeof t === "object" && t.desecrated)) {
+    const rnd = rng(seed);
+    const byGroup = {}; for (const m of mods) if (!byGroup[m.group]) byGroup[m.group] = m;
+    const Td = (targetGroups || []).map((t) => typeof t === "string"
+      ? { group: t, keys: null }
+      : { group: t.group, keys: (t.keys && t.keys.length) ? new Set(t.keys) : null, type: t.type, desecrated: !!t.desecrated, poolN: t.poolN, key: t.key });
+    for (const t of Td) if (!t.desecrated && byGroup[t.group]) t.type = byGroup[t.group].type;
+    const pfx = Td.filter((t) => t.type === "prefix").length, sfx = Td.filter((t) => t.type === "suffix").length;
+    if (pfx > CAP.rare.prefix || sfx > CAP.rare.suffix) return { impossible: true, overCap: true, prefixTargets: pfx, suffixTargets: sfx, methods: [] };
+    const methods = [];
+    const dz = simulateDesecration(mods, Td, trials, rnd);
+    if (dz) methods.push(dz);
+    const totalOrbsD = (r) => Object.values(r.expectedOrbs).reduce((s, n) => s + n, 0);
+    methods.forEach((r) => { r.totalOrbs = r.feasible ? totalOrbsD(r) : Infinity; r.impractical = r.feasible && r.successPerAttempt < PRACTICAL_MIN; });
+    return { impossible: !methods.length, prefixTargets: pfx, suffixTargets: sfx, trials, methods };
+  }
   // reachability: every target group must exist in the pool, any selected tier must be
   // available at this item level, and targets must fit within 3 prefix / 3 suffix.
   const T = normalizeTargets(targetGroups);
@@ -561,11 +868,16 @@ function rankMethods(mods, targetGroups, opts) {
   methods.push(simulateWhittling(mods, T, trials, cap, rnd));          // Omen of Whittling
   methods.push(simulateErasureChaos(mods, T, trials, cap, rnd));       // Sinistral/Dextral Erasure
   methods.push(simulateAnnulExalt(mods, T, trials, cap, rnd));         // Sinistral/Dextral Annulment
+  methods.push(simulateFracture(mods, targetGroups, trials, cap, rnd)); // Fracturing Orb (lock a hit, reroll rest)
   methods.push(simulateDirected(mods, T, opts.essences, trials, rnd)); // Exaltation omens
   const ess = simulateEssence(mods, T, opts.essences, trials, rnd);    // essence, undirected (no omens)
   if (ess) methods.push(ess);
   const tiered = simulateTiered(mods, T, opts.essences, trials, rnd);  // Greater/Perfect Exalt fill (high-tier targets only)
   if (tiered) methods.push(tiered);
+  const homog = simulateHomogenising(mods, T, opts.essences, trials, rnd); // Homogenising Exaltation (tag-clustered targets)
+  if (homog) methods.push(homog);
+  const cat = simulateCatalyst(mods, T, opts.essences, trials, rnd, opts.jewellery); // Catalyst-directed Exalts (jewellery)
+  if (cat) methods.push(cat);
   // rank by total expected orb count (cheapest first); price-weighting is Phase 3.
   const totalOrbs = (r) => Object.values(r.expectedOrbs).reduce((s, n) => s + n, 0);
   // "Impractical": a route that completes on <2% of fresh bases means you'd reroll the WHOLE
@@ -580,4 +892,4 @@ function rankMethods(mods, targetGroups, opts) {
   return { impossible: false, prefixTargets: pfx, suffixTargets: sfx, trials, methods };
 }
 
-module.exports = { rng, weightedPick, addMod, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, rankFinish, rankMethods, CAP, newItem };
+module.exports = { rng, weightedPick, addMod, addModBiased, itemTags, simulateHomogenising, simulateCatalyst, simulateDesecration, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateFracture, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, simulateFinishEssence, rankFinish, rankMethods, CAP, newItem };
