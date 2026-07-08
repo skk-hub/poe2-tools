@@ -43,6 +43,7 @@ window.__viewInit["craft"] = function () {
   }
   const scopeNote = $("cfScopeNote"), simBar = $("cfSimBar"), simOut = $("cfSimOut"), targetsEl = $("cfTargets"), simBtn = $("cfSimBtn");
   const targets = new Map();     // group -> Set(tier keys)
+  const desecTargets = new Map();// desecrated targets: id -> { faction, type, label }
   const groupMeta = new Map();   // group -> { label, type, keys:[tier keys in T1..Tn order] }
   let lastBase = "", lastIlvl = 0;
 
@@ -50,7 +51,7 @@ window.__viewInit["craft"] = function () {
     status.textContent = ""; status.className = "status";
     if (scopeNote) scopeNote.hidden = false;
     // targets belong to a specific base+ilvl pool; reset when either changes
-    if (d.base !== lastBase || d.ilvl !== lastIlvl) { targets.clear(); simOut.innerHTML = ""; lastBase = d.base; lastIlvl = d.ilvl; }
+    if (d.base !== lastBase || d.ilvl !== lastIlvl) { targets.clear(); clearDesecTargets(); simOut.innerHTML = ""; lastBase = d.base; lastIlvl = d.ilvl; }
     groupMeta.clear();
     for (const g of d.prefixes) groupMeta.set(g.group, { label: g.label, type: "prefix", keys: g.tiers.map((t) => t.key) });
     for (const g of d.suffixes) groupMeta.set(g.group, { label: g.label, type: "suffix", keys: g.tiers.map((t) => t.key) });
@@ -93,16 +94,27 @@ window.__viewInit["craft"] = function () {
     return [...set].map((k) => meta.keys.indexOf(k) + 1).sort((a, b) => a - b).map((n) => "T" + n).join(", ");
   }
   function renderTargetBar() {
-    simBar.hidden = targets.size === 0;
-    targetsEl.innerHTML = [...targets.entries()].map(([g, set]) => {
+    simBar.hidden = targets.size === 0 && desecTargets.size === 0;
+    const normalChips = [...targets.entries()].map(([g, set]) => {
       const meta = groupMeta.get(g);
       return `<span class="cf-tchip" data-group="${esc(g)}">${esc(meta ? meta.label : g)} <em>${esc(tierDesc(g, set))}</em><button type="button" aria-label="remove">×</button></span>`;
-    }).join("");
+    });
+    const desecChips = [...desecTargets.entries()].map(([id, d]) =>
+      `<span class="cf-tchip cf-dchip" data-desec="${esc(id)}" title="Desecrated — ${esc(d.faction)} (Well of Souls)">${esc(d.label)} <em>desecrated</em><button type="button" aria-label="remove">×</button></span>`);
+    targetsEl.innerHTML = normalChips.concat(desecChips).join("");
     targetsEl.querySelectorAll(".cf-tchip button").forEach((b) => b.addEventListener("click", () => {
-      const g = b.parentElement.getAttribute("data-group");
-      targets.delete(g); simOut.innerHTML = "";
-      out.querySelectorAll(`.cf-tsel[data-group="${cssEsc(g)}"]`).forEach((c) => { c.checked = false; });
-      syncMaster(g); renderTargetBar();
+      const chip = b.parentElement, did = chip.getAttribute("data-desec");
+      simOut.innerHTML = "";
+      if (did) {
+        desecTargets.delete(did);
+        const box = desecOut && desecOut.querySelector(`.cf-dsel[data-id="${cssEsc(did)}"]`); if (box) box.checked = false;
+      } else {
+        const g = chip.getAttribute("data-group");
+        targets.delete(g);
+        out.querySelectorAll(`.cf-tsel[data-group="${cssEsc(g)}"]`).forEach((c) => { c.checked = false; });
+        syncMaster(g);
+      }
+      renderTargetBar();
     }));
   }
   let poolGen = 0;   // request generation — two in-flight pool loads can land out of order
@@ -112,7 +124,7 @@ window.__viewInit["craft"] = function () {
       poolGen++;   // invalidate any in-flight pool response
       out.innerHTML = ""; summary.innerHTML = "";
       // the pool is gone — stale target chips / sim results from the previous base go too
-      targets.clear(); groupMeta.clear(); simOut.innerHTML = ""; renderTargetBar();
+      targets.clear(); clearDesecTargets(); groupMeta.clear(); simOut.innerHTML = ""; renderTargetBar();
       lastBase = ""; lastIlvl = 0;
       status.textContent = base ? "Pick a base from the list." : "Type, pick, or paste an item."; status.className = "status"; return;
     }
@@ -328,7 +340,7 @@ window.__viewInit["craft"] = function () {
         : m.feasible && priced && m.divineCost != null
         ? `${fmtOrbs(m.expectedOrbs)} · ${chanceBit}` + (m.priceMissing ? ` · +unpriced: ${m.priceMissing.map(esc).join(", ")}` : "")
         : `each attempt ${chanceBit}`;
-      return `<div class="${cls}"><div class="cf-method-top"><span class="cf-method-name">${star ? "★ " : ""}${esc(m.label)}</span>` +
+      return `<div class="${cls}"><div class="cf-method-top"><span class="cf-method-name">${star ? "★ " : ""}${esc(m.label)}${m.estimate ? ` <span class="cf-est" title="odds are estimated — poe2db has no per-base desecration reveal weights">est.</span>` : ""}</span>` +
         `<span class="cf-method-cost">${cost}</span></div><div class="cf-method-sub">${sub}</div></div>`;
     }).join("");
     const head = priced
@@ -343,7 +355,7 @@ window.__viewInit["craft"] = function () {
   }
   async function simulate() {
     const base = baseIn.value.trim();
-    if (!byName[base] || !targets.size) return;
+    if (!byName[base] || (!targets.size && !desecTargets.size)) return;
     const ilvl = Math.max(1, Math.min(100, parseInt(ilvlIn.value, 10) || 100));
     simBtn.disabled = true; simOut.innerHTML = `<div class="cf-simload">Simulating…</div>`;
     // send {group, keys} — omit keys when all tiers selected (= any tier)
@@ -351,6 +363,8 @@ window.__viewInit["craft"] = function () {
       const meta = groupMeta.get(g);
       return meta && set.size === meta.keys.length ? { group: g } : { group: g, keys: [...set] };
     });
+    // desecrated targets ride along as {desecrated, name, faction, type} (Well of Souls route)
+    for (const [, d] of desecTargets) payload.push({ desecrated: true, name: d.label, faction: d.faction, type: d.type });
     try {
       const r = await fetch("/api/craft/simulate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base, ilvl, targets: payload }) });
       renderMethods(await r.json());
@@ -372,9 +386,25 @@ window.__viewInit["craft"] = function () {
     for (const m of hit) (byF[m.faction] = byF[m.faction] || []).push(m);
     desecOut.innerHTML = Object.entries(byF).map(([f, ms]) =>
       `<div class="cf-dfac"><div class="cf-dfac-head">${esc(FACTION_LABEL[f] || f)} <span class="cf-count">${ms.length}</span></div>` +
-      ms.map((m) => `<div class="cf-dmod"><span class="cf-dtype cf-${m.type}">${m.type === "prefix" ? "P" : "S"}</span>` +
-        `<span class="cf-dstats">${m.stats.map(esc).join("<br>")}</span>` +
-        `<span class="cf-dmeta">iL${m.ilvl}</span></div>`).join("") + `</div>`).join("");
+      ms.map((m) => {
+        const id = m.faction + "|" + m.type + "|" + m.stats.join("~"), label = m.stats.join(" / ");
+        return `<label class="cf-dmod"><input type="checkbox" class="cf-dsel"${desecTargets.has(id) ? " checked" : ""} title="target this desecrated mod"` +
+          ` data-id="${esc(id)}" data-faction="${esc(m.faction)}" data-type="${esc(m.type)}" data-label="${esc(label)}">` +
+          `<span class="cf-dtype cf-${m.type}">${m.type === "prefix" ? "P" : "S"}</span>` +
+          `<span class="cf-dstats">${m.stats.map(esc).join("<br>")}</span>` +
+          `<span class="cf-dmeta">iL${m.ilvl}</span></label>`;
+      }).join("") + `</div>`).join("");
+    desecOut.querySelectorAll(".cf-dsel").forEach((c) => c.addEventListener("change", onDesecToggle));
+  }
+  function onDesecToggle(e) {
+    const t = e.target, id = t.dataset.id;
+    if (t.checked) desecTargets.set(id, { faction: t.dataset.faction, type: t.dataset.type, label: t.dataset.label });
+    else desecTargets.delete(id);
+    renderTargetBar();
+  }
+  function clearDesecTargets() {
+    desecTargets.clear();
+    if (desecOut) desecOut.querySelectorAll(".cf-dsel:checked").forEach((c) => { c.checked = false; });
   }
   function loadDesec() {
     if (desecMods) return;

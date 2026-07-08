@@ -147,3 +147,10 @@
 .toolroot-craft .cf-tip-mod.desecrated{color:#d0a0e0} .toolroot-craft .cf-tip-mod.desecrated b{color:#e6c6f2}
 .toolroot-craft .cf-tip-corrupt{color:#d20000;font-weight:600}
 .toolroot-craft .cf-tip-flav{color:#af6025;font-style:italic;font-size:12px}
+
+/* selectable desecrated mods (added as targets, Well of Souls) */
+.toolroot-craft .cf-dmod{cursor:pointer}
+.toolroot-craft .cf-dsel{flex:none;accent-color:var(--gold);cursor:pointer;width:14px;height:14px;margin-top:2px}
+.toolroot-craft .cf-dmod:has(.cf-dsel:checked){background:var(--gold-soft)}
+.toolroot-craft .cf-dchip em{color:#8888ff}
+.toolroot-craft .cf-est{font:600 9px var(--font-mono);color:var(--text-faint);border:1px solid var(--border);border-radius:4px;padding:0 4px;text-transform:uppercase;vertical-align:middle}
