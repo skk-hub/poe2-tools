@@ -126,7 +126,13 @@ window.__viewInit["gear-finder"] = function () {
     if (d.error) { setStatus(d.error, true); return; }
     state.xml = d.xml; state.slots = d.slots || {};
     els.saveBuild.hidden = false; els.saveBox.hidden = true; syncSaveRow();   // a build is loaded → offer to save it
-    if (els.rakiataRow) els.rakiataRow.hidden = !d.hasRakiata;   // "ignore Rakiata's Flow" only matters if the build runs it
+    if (els.rakiataRow) {
+      els.rakiataRow.hidden = !d.hasRakiata;   // "ignore Rakiata's Flow" only matters if the build runs it
+      // Default it ON for a Rakiata build: PoB over-credits Rakiata's res-inversion vs its default
+      // high-res enemy, inflating DPS ~2.6× and over-recommending elemental gear — so the honest,
+      // deflated number is the right BASELINE for scoring. Untick to see the raw PoB-with-Rakiata view.
+      if (d.hasRakiata) els.ignoreRakiata.checked = true;
+    }
     const b = { ...((d.headless && d.headless.stats) || d.build || {}) };
     // Spirit reservation: the headless RECALC under-reserves auras on some builds (a skill group it
     // doesn't re-enable), so it over-reports free Spirit (e.g. 33 when the real build has 3). PoB
