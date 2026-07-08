@@ -32,16 +32,12 @@ window.__viewInit["map-juicer"]=function(){
   // ── %-aware regex generators (smoke-tested) ───────────────────────────────
   const L = D.tokens.line;
   let rarityMin = 0, packMin = 0, effMin = 0, monRarMin = 0, wdropMin = 0;   // floor mins — all start at 0 (off), build up from nothing
-  // "Dump anything under ~40ex" (user rule 2026-07-05). NB PoE2 scale: ex is the SMALL unit
-  // (~100 ex ≈ 1 chaos), so 10ex is junk and 40ex is the real cut. Per the buy-side sweeps,
-  // only Pack Size clears ~40ex (~30-150ex); Item Rarity (~10-15ex), Monster Effectiveness
-  // (~10ex) and Monster Rarity (~1ex) are all under the line → default OFF (they no longer
-  // rescue a stone from the dump). Drop Chance stays as the separate SUSTAIN keep.
-  let dumpRarityKeep = 0;    // keep Item Rarity >= this% out of the dump (~10-15ex, under 40ex); 0 = off
-  let effKeep = 0;           // keep Monster Effectiveness >= this% (~10ex @40%, under 40ex); 0 = off
-  let dropKeep = 115;        // keep Waystone Drop Chance >= this% — your SUSTAIN rule, not resale; 0 = dump any drop roll
-  let monRarKeep = 0;        // keep Monster Rarity >= this% (~1ex solo, under 40ex); 0 = off
-  let packKeep = 40;         // keep Pack Size >= this% — the only ~40ex+ signal (~30-150ex; pure-40 ≈ 30ex, bump toward 45-50 for a strict 40ex cut); 0 = off
+  // Dump = corrupted + 0-revive stones whose BEST reward stat is worth less than the
+  // cutoff, priced against the LIVE market curve (not hand-set thresholds). Each stat's
+  // keep-% is derived at render time from curveEx: the lowest roll that clears the cutoff.
+  // A stat that can't reach the cutoff even maxed gets no keep block (can't rescue).
+  let dropKeep = 115;        // keep Waystone Drop Chance >= this% — SUSTAIN rule (personal, not resale); its curve is flat at baseline, so it's kept separately, NOT via the value cutoff. 0 = dump any drop roll
+  let dumpCutoffC = null;    // dump if best reward stat < this many chaos; lazy-inits to ~2.5× baseline (the "good roll" tier). Converted to ex via chaosRate() for the curve lookup
   // Match a number ≥ pct — EXACT for any threshold, not just multiples of 10
   // (≥45 must not match 40-44; ≥5 must match 5-9). Uses [0-9] not "." so it
   // can't swallow the trailing "%". The label token carries the stat name; we
@@ -93,31 +89,33 @@ window.__viewInit["map-juicer"]=function(){
     return out;
   }
 
-  // "Low-value dump" filter. Empirically (2026-06-24 buy-side sweep, gated on the
-  // user's actual class = corrupted + 0 revives): the WHOLE juiced corrupted class is
-  // ~5ex bulk. Only two things break past it — (a) Item Rarity >=~60% (~50-180ex,
-  // scarce; >=70% doesn't even exist on the market) and (b) high-roll COMBOS, which
-  // all carry Waystone Drop Chance >=100% (a monrar70+drop100+pack25 map sampled at
-  // 25/100/400ex). Monster Rarity can also exceed 100%. Single stats below those —
-  // any Pack/Effectiveness/Drop/Monster-Rarity short of the combo — sell for ~5ex no
-  // matter how high they look in the in-game price-check. So: keep those signals
-  // (the real money + the user's drop>=100 sustain), dump everything else.
-  // Keep only the signals that actually carry buy-side value gated on this class
-  // (2026-06-25 probe, corrupted+0-revives T16): Item Rarity ≥keep and Monster
-  // Effectiveness ≥40 floor ~10–50ex. Monster Rarity (~5ex solo) and Pack Size
-  // (~1ex) are NOT kept — junk alone. Drop Chance is the user's sustain keep, tunable
-  // (default 115; 0 = dump any drop roll). True combos can't be expressed in stash
-  // regex (no AND-of-keeps), so this is solo-OR; use the paste evaluator for combos.
+  // "Low-value dump" filter, priced off the LIVE market curve. Dump = corrupted +
+  // 0-revive stones whose reward stats are ALL worth less than the cutoff. Each stat's
+  // keep-% is derived from curveEx (the lowest roll clearing the cutoff), so a live
+  // Mod-Value sweep actually moves the dump. Solo-OR: a stone is kept if ANY single
+  // stat clears the cutoff (stash regex can't AND-of-keeps for true combos — use the
+  // paste evaluator for those). Drop Chance is priced flat, so it's a separate sustain keep.
+  const DUMP_KEYS = { itemRarity: L.itemRarity, packSize: L.packSize, monsterEffectiveness: L.monsterEffectiveness, monsterRarity: L.monsterRarity };
+  function cutoffDefaultC(){ return Math.max(1, Math.round((baseEx() * 2.5) / chaosRate())); }   // ~2.5× baseline = the "good roll" tier (valTier)
+  function dumpCutoffEx(){ if (dumpCutoffC == null) dumpCutoffC = cutoffDefaultC(); return dumpCutoffC * chaosRate(); }
+  // Lowest integer roll % where this stat's live curve clears the cutoff. null = can't
+  // reach it even at its ceiling → the stat can never rescue a stone, so no keep block.
+  function dumpThreshold(stat, cutoffEx){
+    const ceil = Math.round(stat.ceiling || 100);
+    if (curveEx(stat.curve, ceil) < cutoffEx) return null;
+    for (let p = 1; p <= ceil; p++){ if (curveEx(stat.curve, p) >= cutoffEx) return p; }
+    return null;
+  }
   function buildDump(){
-    const blocks = [
-      `"${T.corrupted}"`,
-      `"${T.revivesZero}"`,
-    ];
-    if (dumpRarityKeep > 0) blocks.push(`"!${atLeast(L.itemRarity, dumpRarityKeep, 87)}"`);   // keep high Item Rarity (0 = dump it too — ~10-15ex, under 40ex)
-    if (effKeep > 0) blocks.push(`"!${atLeast(L.monsterEffectiveness, effKeep, 70)}"`);   // keep Monster Effectiveness >= selector
-    if (packKeep > 0) blocks.push(`"!${atLeast(L.packSize, packKeep, 51)}"`);   // keep high Pack Size (the 2026-06-28 chase)
-    if (monRarKeep > 0) blocks.push(`"!${atLeast(L.monsterRarity, monRarKeep, 55)}"`);   // keep Monster Rarity >= selector (caps ~55%)
-    if (dropKeep > 0) blocks.push(`"!${atLeast(L.waystoneDrop, dropKeep)}"`);   // keep Drop >= selector (0 = dump any drop)
+    const blocks = [ `"${T.corrupted}"`, `"${T.revivesZero}"` ];
+    const cutoffEx = dumpCutoffEx();
+    // Keep (exclude from dump) any stone with a stat that clears the cutoff on the live curve.
+    for (const s of ((MW() && MW().stats) || [])){
+      const tok = DUMP_KEYS[s.key]; if (!tok) continue;
+      const th = dumpThreshold(s, cutoffEx); if (th == null) continue;
+      blocks.push(`"!${atLeast(tok, th, s.ceiling)}"`);
+    }
+    if (dropKeep > 0) blocks.push(`"!${atLeast(L.waystoneDrop, dropKeep)}"`);   // sustain keep, not resale
     return blocks.join(" ");
   }
 
@@ -169,7 +167,7 @@ window.__viewInit["map-juicer"]=function(){
       const nMods = gatherDesirables().filter(m => tMods.has(m.token)).length;
       return "Tablets · " + (names.length ? names.join("/") : "any") + (nMods ? " +" + nMods + " mod" + (nMods > 1 ? "s" : "") : "");
     }
-    if (wMatch === "dump") return "Waystones dump · keep Rarity ≥" + dumpRarityKeep + "%";
+    if (wMatch === "dump") return "Waystones dump · keep ≥" + (dumpCutoffC || cutoffDefaultC()) + "c";
     const tags = [];
     if (rarityMin > 0) tags.push("Rarity ≥" + rarityMin);
     if (packMin > 0)   tags.push("Pack ≥" + packMin);
@@ -234,13 +232,13 @@ window.__viewInit["map-juicer"]=function(){
   function seg(attr, val, cur, label){ return `<button class="seg-btn${val===cur?" on":""}" type="button" data-${attr}="${val}">${esc(label)}</button>`; }
   // Each tunable: [lo, hi, click-step]. The control is a typeable number input
   // (type the value directly — no clicking to 0) flanked by −/+ for quick nudges.
-  const STEP_CFG = { rarity:[0,80,10], pack:[0,50,10], eff:[0,70,10], monRar:[0,60,5], wdrop:[0,130,5], rarityKeep:[0,80,10], effKeep:[0,70,10], packKeep:[0,50,5], monRarKeep:[0,60,5], dropKeep:[0,130,5] };
-  function stepCur(id){ return ({ rarity:rarityMin, pack:packMin, eff:effMin, monRar:monRarMin, wdrop:wdropMin, rarityKeep:dumpRarityKeep, effKeep, packKeep, monRarKeep, dropKeep })[id]; }
+  const STEP_CFG = { rarity:[0,80,10], pack:[0,50,10], eff:[0,70,10], monRar:[0,60,5], wdrop:[0,130,5], dropKeep:[0,130,5] };
+  function stepCur(id){ return ({ rarity:rarityMin, pack:packMin, eff:effMin, monRar:monRarMin, wdrop:wdropMin, dropKeep })[id]; }
   function setStep(id, v){
     const c = STEP_CFG[id]; if (!c) return;
     v = clamp(Math.round(Number(v) || 0), c[0], c[1]);
     if (id==="rarity") rarityMin=v; else if (id==="pack") packMin=v; else if (id==="eff") effMin=v; else if (id==="monRar") monRarMin=v; else if (id==="wdrop") wdropMin=v;
-    else if (id==="rarityKeep") dumpRarityKeep=v; else if (id==="effKeep") effKeep=v; else if (id==="packKeep") packKeep=v; else if (id==="monRarKeep") monRarKeep=v; else if (id==="dropKeep") dropKeep=v;
+    else if (id==="dropKeep") dropKeep=v;
   }
   function stepper(id, label){
     const [lo, hi, step] = STEP_CFG[id], val = stepCur(id);
@@ -258,7 +256,21 @@ window.__viewInit["map-juicer"]=function(){
   function waystoneQs(){
     const segs = `<div class="forge-seg" role="group" aria-label="Match mode">${seg("wmatch","floor",wMatch,"Stat floors")}${seg("wmatch","dump",wMatch,"Low-value dump")}</div>`;
     if (wMatch === "dump") {
-      return `${segs}<div class="forge-steps">${stepper("packKeep","Keep if Pack Size ≥")}${stepper("rarityKeep","Keep if Item Rarity ≥")}${stepper("effKeep","Keep if Effectiveness ≥")}${stepper("monRarKeep","Keep if Monster Rarity ≥")}${stepper("dropKeep","Keep if Drop Chance ≥")}</div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones to bulk-dump, keeping the real money OUT of the pile. Default line = <b>dump anything under ~40ex</b>: only <b>Pack Size</b> clears that (~30-150ex)${packKeep>0?` — keep ≥${packKeep}% <span class="muted">(pure-40 ≈ 30ex; bump toward 45-50 for a strict 40ex cut)</span>`:` <b>(off)</b>`}. Under 40ex and <b>off by default</b> — Item Rarity (~10-15ex)${dumpRarityKeep>0?` <b>now keep ≥${dumpRarityKeep}%</b>`:``}, Monster Effectiveness (~10ex)${effKeep>0?` <b>keep ≥${effKeep}%</b>`:``}, Monster Rarity (~1ex)${monRarKeep>0?` <b>keep ≥${monRarKeep}%</b>`:``}; raise a stepper above 0 to rescue that signal from the dump.${dropKeep>0?` <b>Drop Chance ≥${dropKeep}%</b> kept as your <b>sustain</b> rule (not resale; set 0 to dump any drop).`:``} <b>Ignore the in-game price-check.</b></p>`;
+      const cutoffEx = dumpCutoffEx();   // also lazy-inits dumpCutoffC
+      const derived = ((MW() && MW().stats) || []).filter(s => DUMP_KEYS[s.key]).map(s => {
+        const th = dumpThreshold(s, cutoffEx);
+        return `${esc(s.label)} ${th == null ? "—" : "≥" + th + "%"}`;
+      }).join(" · ");
+      return `${segs}<div class="forge-steps">
+        <div class="forge-step"><span class="forge-step-lbl">Dump if best stat worth under</span>
+          <span class="forge-step-ctl">
+            <button class="step" type="button" data-cut="-1"${dumpCutoffC<=1?" disabled":""} aria-label="decrease cutoff">−</button>
+            <input class="forge-step-in" type="number" data-cutin value="${dumpCutoffC}" min="1" max="200" step="1" inputmode="numeric" aria-label="Dump cutoff in chaos">
+            <span class="forge-step-unit">c</span>
+            <button class="step" type="button" data-cut="1" aria-label="increase cutoff">+</button>
+          </span></div>
+        ${stepper("dropKeep","Keep if Drop Chance ≥")}
+      </div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones to bulk-dump. Keeps any stone with a reward stat worth <b>≥ ${dumpCutoffC}c</b> on the <b>live market curve</b>, dumps the rest. Per-stat keep %, auto-derived from the curve: <b>${derived || "—"}</b> <span class="muted">(“—” = that stat can't reach the cutoff even maxed)</span>.${dropKeep>0?` <b>Drop Chance ≥${dropKeep}%</b> kept as your <b>sustain</b> rule (priced flat; 0 = dump any drop).`:``} Hit <b>Refresh from market</b> to reprice.</p>`;
     }
     return `
       ${segs}
@@ -348,6 +360,16 @@ window.__viewInit["map-juicer"]=function(){
       inp.addEventListener("input", () => { setStep(inp.getAttribute("data-stepin"), inp.value); paintOutput(); });
       inp.addEventListener("change", () => { setStep(inp.getAttribute("data-stepin"), inp.value); renderSheet(); });
     });
+    // Dump cutoff (chaos) — its own control since it's a price, not a % roll.
+    root.querySelectorAll("[data-cut]").forEach(b => b.addEventListener("click", () => {
+      dumpCutoffC = clamp((dumpCutoffC || cutoffDefaultC()) + Number(b.getAttribute("data-cut")), 1, 200);
+      renderSheet();
+    }));
+    const cutin = root.querySelector("[data-cutin]");
+    if (cutin){
+      cutin.addEventListener("input", () => { dumpCutoffC = clamp(Math.round(Number(cutin.value) || 1), 1, 200); paintOutput(); });
+      cutin.addEventListener("change", () => { dumpCutoffC = clamp(Math.round(Number(cutin.value) || 1), 1, 200); renderSheet(); });
+    }
     root.querySelectorAll("[data-tog]").forEach(c => c.addEventListener("change", () => {
       const k = c.getAttribute("data-tog");
       // corrupt/juiced each have an "only" + a "not" toggle — mutually exclusive

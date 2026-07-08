@@ -404,18 +404,21 @@ async function browserChecks() {
       // toggle "Corrupted only" -> the corrupted block appears
       await p.click('.toolroot-mj [data-tog="corrupt"]'); await p.waitForTimeout(120);
       check(/"corrupted"/.test(await out()), "regex forge emits the corrupted block when toggled");
-      // dump default = "dump anything under ~40ex": only Pack Size (>=40) + the Drop sustain
-      // keep (115) stay out of the pile. Item Rarity / Monster Effectiveness / Monster Rarity
-      // are all under 40ex → OFF by default, so their !blocks must be ABSENT (2026-07-05 rule).
+      // dump default: keeps are now DERIVED from the live market curve at a chaos cutoff
+      // (~2.5× baseline). Every value stat that can clear the cutoff gets a !keep block —
+      // Monster Effectiveness especially (it was wrongly OFF before, dumping ~div stones).
       await p.click('.toolroot-mj [data-wmatch="dump"]'); await p.waitForTimeout(150);
       const dump = await out();
-      check(/"corrupted"/.test(dump) && /revives available: 0/.test(dump) && /!pack size: \\\+\[4-9\]\[0-9\]%/.test(dump) && /!drop chance: \\\+\(11\[5-9\]\|1\[2-9\]\[0-9\]\)%/.test(dump) && !/item rarity/.test(dump) && !/monster effectiveness/.test(dump) && !/monster rarity/.test(dump), "regex forge dump default keeps only Pack>=40 + Drop>=115 (sub-40ex signals off)");
-      // rarity-keep now defaults 0 (off, under 40ex) and can be raised from there (0 -> 10 %)
-      const inVal = () => p.evaluate(() => (document.querySelector('.toolroot-mj [data-stepin="rarityKeep"]') || {}).value || "");
-      const capA = await inVal();
-      await p.click('.toolroot-mj [data-step="rarityKeep"][data-dir="1"]'); await p.waitForTimeout(120);
-      const capB = await inVal();
-      check(capA === "0" && capB === "10", "regex forge dump rarity-keep selector adjusts the threshold");
+      check(/"corrupted"/.test(dump) && /revives available: 0/.test(dump) && /!monster effectiveness:/.test(dump) && /!item rarity:/.test(dump) && /!drop chance:/.test(dump), "regex forge dump derives value keeps from the curve (Effectiveness/Rarity/Drop present)");
+      // Cutoff control: crank it far above every stat's peak -> no value stat can clear it,
+      // so all value keeps drop out, leaving only corrupted + revives + the flat Drop sustain keep.
+      await p.evaluate(() => { const i = document.querySelector('.toolroot-mj [data-cutin]'); i.value = "200"; i.dispatchEvent(new Event("change", { bubbles: true })); });
+      await p.waitForTimeout(120);
+      const dumpHi = await out();
+      check(!/item rarity/.test(dumpHi) && !/monster effectiveness/.test(dumpHi) && !/pack size/.test(dumpHi) && /drop chance/.test(dumpHi), "regex forge dump cutoff drops value keeps that can't reach it");
+      // back to a sane cutoff for the remaining checks
+      await p.evaluate(() => { const i = document.querySelector('.toolroot-mj [data-cutin]'); i.value = "5"; i.dispatchEvent(new Event("change", { bubbles: true })); });
+      await p.waitForTimeout(120);
       // Drop keep selector: set to 0 -> drop-chance keep drops out of the regex entirely
       await p.evaluate(() => { const i = document.querySelector('.toolroot-mj [data-stepin="dropKeep"]'); i.value = "0"; i.dispatchEvent(new Event("change", { bubbles: true })); });
       await p.waitForTimeout(120);
