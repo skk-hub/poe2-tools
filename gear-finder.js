@@ -500,7 +500,15 @@ window.__viewInit["gear-finder"] = function () {
     els.preserveRow.hidden = false;
     els.preserveBox.checked = state.preserveOther;
     renderRealCands();
-    const rankNote = d.sortMode === "defence" ? " (ranked by defence — highest-EHP first)" : d.weighted ? " (best for your build)" : " (price spread — set POESESSID for build-ranked results)";
+    // Jewels DELIBERATELY skip the weighted statgroup sort (no defence/preserve anchor → a pure
+    // weighted sum ranks the wrong jewels top; server.js isJewel), so they always use the
+    // price-spread pool even with a live session — don't tell the user to "set POESESSID" (the
+    // list is still PoB ΔDPS-ranked). Only show that hint when a session is genuinely absent.
+    const isJewel = /^jewel\d+$/.test(state.curSlot || "");
+    const rankNote = d.sortMode === "defence" ? " (ranked by defence — highest-EHP first)"
+      : d.weighted ? " (best for your build)"
+      : isJewel ? " (jewels ranked by real ΔDPS from a price-spread sample — weighted sort off by design)"
+      : " (price spread — set POESESSID for build-ranked results)";
     // Base spread of the scored pool — so you can SEE if it's genuinely one base (market reality at
     // this price) or the search is biasing it. Lower the Min div if you want to reach other bases.
     const baseList = Object.entries(d.bases || {}).sort((a, b) => b[1] - a[1]);
