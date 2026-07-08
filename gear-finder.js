@@ -607,7 +607,8 @@ window.__viewInit["gear-finder"] = function () {
       // Floor only on stats the item actually HAS (cur>0) — what it IS, not what it could
       // gain. `equip` requires comparable total defence so candidates keep the item's core
       // value. Weights let a POESESSID session rank by build value; logged-out sorts DESC.
-      const mods = w.weights.filter((x) => (x.cur || 0) > 0).slice(0, 4).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
+      const topW = Math.max(1, ...w.weights.map((x) => x.weight || 0));   // skip trivial-weight floors (< 20% of top) — a ×1 floor at a near-BiS roll zeroes the search
+      const mods = w.weights.filter((x) => (x.cur || 0) > 0 && (x.weight || 0) >= topW * 0.2).slice(0, 4).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
       const r = await api("/api/gear/realrank", { buildXml: state.xml, slot: id, pobSlot: sl.pobSlot, current: { raw: sl.raw }, mods, weights: w.weights.slice(0, 8), metric, equip: w.equip, preserve: w.preserve, minPriceDiv: minDiv, maxPriceDiv: 0, league: state.league, scoreCap: 10 }).catch(() => null);
       if (r && r.limited) { partial = true; break; }
       if (r && r.sessionExpired) markSessionExpired();

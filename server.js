@@ -3446,7 +3446,8 @@ const server = http.createServer(async (req, res) => {
           const w = await computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw);   // loads the build
           const base = await pob.calc(pobSlot, "");
           const baseDps = dpsOfOut(base), baseEhp = ehpOfOut(base);
-          const mods = (w.weights || []).filter((x) => (x.cur || 0) > 0).slice(0, 3).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
+          const topW = Math.max(1, ...((w.weights || []).map((x) => Number(x && x.weight) || 0)));   // skip trivial-weight floors (< 20% of top) — matches realrank/buildWeightedGearQuery
+          const mods = (w.weights || []).filter((x) => (x.cur || 0) > 0 && (Number(x.weight) || 0) >= topW * 0.2).slice(0, 3).map((x) => ({ statId: x.statId, min: Math.max(1, Math.floor((x.cur || 1) * 0.7)) }));
           const rarityMin = Number(input.rarityMin) || 0;   // require rarity items in the pool (count-group, injected per query below)
           // NOTE: we deliberately do NOT add per-slot resistance preserve floors here. They were
           // added (2026-06-29) to stop a swap dropping a breakpoint, but they DEFEAT the optimizer's
