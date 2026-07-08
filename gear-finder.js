@@ -455,8 +455,10 @@ window.__viewInit["gear-finder"] = function () {
     const gen = state.reqGen;
     // Floor at 70% of current rolls on stats the item HAS (cur>0); `equip` keeps the
     // item's core total defence. A near-BIS item rarely beats itself on every stat, so
-    // 70% (not 100%) — PoB ΔDPS sorts the rest.
-    const mods = state.weights.filter((w) => (w.cur || 0) > 0).slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((w.cur || 1) * 0.7)) }));
+    // 70% (not 100%) — PoB ΔDPS sorts the rest. Skip trivial-weight stats (< 20% of the top
+    // weight): flooring a ×1 stat at a near-BiS roll next to a ×20 stat zeroes the search.
+    const topW = Math.max(1, ...state.weights.map((w) => w.weight || 0));
+    const mods = state.weights.filter((w) => (w.cur || 0) > 0 && (w.weight || 0) >= topW * 0.2).slice(0, 4).map((w) => ({ statId: w.statId, min: Math.max(1, Math.floor((w.cur || 1) * 0.7)) }));
     state.ranking = true; els.realOut.innerHTML = "";
     setStatus(deep ? `No upgrade ≥ ${minRoi}/div in the first pass — scanning deeper…` : "Fetching candidates and scoring them in Path of Building…");
     const d = await api("/api/gear/realrank", { buildXml: state.xml, slot: state.curSlot, pobSlot: state.slots[state.curSlot] && state.slots[state.curSlot].pobSlot, current: { raw: state.slots[state.curSlot] && state.slots[state.curSlot].raw }, mods, weights: state.weights.slice(0, 8), metric: state.metric, equip: state.equip, preserve: state.preserve, preserveOther: state.preserveOther, minPriceDiv: Number(els.budgetMin.value) || 0, maxPriceDiv: Number(els.budget.value) || 0, minRoi, rarityMin: rarityMin(), league: state.league, ...(deep ? { scoreCap: 100 } : {}) }).catch((e) => ({ error: e.message || String(e) }));

@@ -2595,8 +2595,15 @@ function buildWeightedGearQuery(slot, weights, league, maxPriceDiv, preserve, op
   //       filter, so without these the copied search lists a flood of strict downgrades.
   //       Capped at the top 3 by weight so gate + preserve + equipment stay under GGG's
   //       "query too complex" limit. Preserve wins ties (its floor is the full roll).
+  // Only floor stats that MEANINGFULLY drive the metric: a trivial-weight stat with a
+  // near-BiS current roll (e.g. a ×1 proj-damage floor at 42% next to a ×20 proj-levels
+  // sort) prunes the whole market and returns 0, even though it barely affects DPS. Gate
+  // floors at ≥20% of the top weight so the sort + PoB scoring (not a marginal floor) picks
+  // the winners. ponytail: static 0.2 cutoff; if a HIGH-weight floor still zeroes the pool,
+  // add an auto-relax-on-empty retry in realrank.
+  const topW = Math.max(1, ...((Array.isArray(weights) ? weights : []).map((w) => Number(w && w.weight) || 0)));
   const orBetter = (Array.isArray(weights) ? weights : [])
-    .filter((w) => w && (w.cur || 0) > 0)
+    .filter((w) => w && (w.cur || 0) > 0 && (Number(w.weight) || 0) >= topW * 0.2)
     .slice(0, 3)
     .map((w) => ({ statId: w.statId, min: Math.floor((w.cur || 1) * 0.7) }));
   const andFilters = [];
