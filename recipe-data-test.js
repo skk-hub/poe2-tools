@@ -116,4 +116,28 @@ const twoTargets = clone();
 twoTargets.target.required_mods.push({ ref: "IncreasedLife", alias: null, minimum_tier: null, count: 1 });
 ok(engine.exactRecipeProbability(twoTargets, mods) === null, "multi-target → no closed form (MC only)");
 
+// ── essence steps simulate (the sourced-tranche recipes) ──
+const bootsFix = D.recipes["boots-movement-speed-life-greater-essence-body"];
+ok(bootsFix, "sourced boots recipe present in the snapshot");
+const bootsBase = CD.bases["Ancient Leggings"];
+const bootsTags = new Set(bootsBase.tags);
+const bootsMods = [];
+for (const [key, m] of Object.entries(CD.mods)) {
+  if (m.ilvl > 82) continue;
+  let w = 0; for (const [t, tw] of m.weights) { if (t === "default" || bootsTags.has(t)) { w = tw; break; } }
+  if (w > 0) bootsMods.push({ key, type: m.type === "Prefix" ? "prefix" : "suffix", group: m.group, weight: w, ilvl: m.ilvl, tags: m.tags || [] });
+}
+// essence options for Boots (mirrors server craftEssenceOptions)
+const bootsEss = [];
+for (const [name, e] of Object.entries(CD.essences)) {
+  const mk = e.mods && e.mods.Boots;
+  if (!mk || !CD.mods[mk] || CD.mods[mk].ilvl > 82) continue;
+  bootsEss.push({ name, modKey: mk, group: CD.mods[mk].group, type: CD.mods[mk].type === "Prefix" ? "prefix" : "suffix", stat: CD.mods[mk].stats[0] || "" });
+}
+const be = engine.simulateRecipe(bootsFix, bootsMods, { seed: 9, trials: 2000, essences: bootsEss });
+ok(be.feasible && be.successPerAttempt === 1, `essence recipe simulates deterministically (p=${be.successPerAttempt})`);
+ok(be.perAttemptOrbs["Greater Essence of the Body"] === 1, "cost counts the essence by display name (priceable)");
+// without essence options the same recipe honestly refuses
+ok(engine.simulateRecipe(bootsFix, bootsMods, { seed: 9, trials: 10 }).unsupported === true, "essence step without essence data → unsupported, not faked");
+
 console.log(`recipe-data-test: ${pass} checks passed`);

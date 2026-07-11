@@ -4296,7 +4296,7 @@ const server = http.createServer(async (req, res) => {
       if (t.maximum_item_level && ilvl > t.maximum_item_level) { send(res, 400, JSON.stringify({ error: `recipe needs item level ≤ ${t.maximum_item_level} (got ${ilvl})` }), J); return; }
       const mods = craftModList(baseName, ilvl);
       const seed = (Math.random() * 4294967296) >>> 0;
-      const m = craftEngine.simulateRecipe(doc, mods, { seed });
+      const m = craftEngine.simulateRecipe(doc, mods, { seed, essences: craftEssenceOptions(baseName, ilvl) });
       // Closed-form evaluator where the recipe's moves are simple (null otherwise — the
       // MC stands alone). When present it's the AUTHORITATIVE probability; the MC keeps
       // owning decision points/outcome counts. Priced like the MC so the two compare.

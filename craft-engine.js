@@ -872,6 +872,26 @@ function recipeApplyCurrency(currency, item, mods, rnd) {
     default: return null;
   }
 }
+// Apply one essence use (0.5 semantics, mirroring simulateEssence/simulateFinishEssence):
+// Lesser upgrades Normal→Magic, plain/Greater upgrade Magic→Rare, Perfect works on a Rare
+// (removes a random mod first). All add the essence's guaranteed mod for the base's class;
+// illegal when the rarity is wrong or the mod's group is already present. e comes from the
+// server's craftEssenceOptions (so the guaranteed mod is known to exist in this pool).
+function recipeApplyEssence(e, item, rnd) {
+  if (!e) return null;
+  const tier = /^Perfect\b/i.test(e.name) ? "perfect" : /^Lesser\b/i.test(e.name) ? "lesser" : "mid";
+  const need = tier === "perfect" ? "rare" : tier === "lesser" ? "normal" : "magic";
+  if (item.rarity !== need) return false;
+  if (refOn(item, e.group)) return false;                       // one mod per group
+  if (tier === "perfect") {
+    removeRandom(item, rnd);
+    const full = e.type === "prefix" ? item.prefixes.length >= CAP.rare.prefix : item.suffixes.length >= CAP.rare.suffix;
+    if (full) removeRandomOnSide(item, e.type, rnd);
+  } else item.rarity = tier === "lesser" ? "magic" : "rare";
+  (e.type === "prefix" ? item.prefixes : item.suffixes).push({ key: e.modKey, group: e.group, type: e.type, ilvl: 1 });
+  return true;
+}
+
 // Starting item per starting_state: seed the required mods (weighted pick among the
 // ref's tiers in the pool), then fill each side to cap minus its minimum_open with
 // filler mods (target/forbidden groups excluded) — the "bought base" worst case.
@@ -1010,17 +1030,25 @@ function exactRecipeProbability(doc, mods) {
   return { method: "closed_form", successPerAttempt: pSuccess, perAttemptOrbs: orbUse, expectedOrbs, feasible: pSuccess > 0 };
 }
 
-// Monte Carlo a recipe-v1 document over a base's eligible mod pool. opts: {trials, seed}.
-// Returns rankMethods-method shape (successPerAttempt/expectedOrbs/feasible + outcome
-// counts) so the existing pricing + UI rendering apply unchanged.
+// Monte Carlo a recipe-v1 document over a base's eligible mod pool. opts: {trials, seed,
+// essences} — essences = the server's craftEssenceOptions list for this base+ilvl, needed
+// only when the recipe has use_essence steps. Returns rankMethods-method shape
+// (successPerAttempt/expectedOrbs/feasible + outcome counts) so the existing pricing +
+// UI rendering apply unchanged.
 function simulateRecipe(doc, mods, opts) {
   opts = opts || {};
   const trials = opts.trials || 5000;
   const rnd = rng((opts.seed >>> 0) || 12345);
   const warnings = [];
+  const essByName = {};
+  for (const e of opts.essences || []) essByName[e.name.toLowerCase()] = e;
 
   // refuse to fake what we can't model — unsupported action or currency
   for (const s of doc.steps) {
+    if (s.action === "use_essence") {
+      if (!essByName[String(s.currency).toLowerCase()]) return { key: "recipe", label: doc.name, unsupported: true, feasible: false, reason: `step "${s.id}": essence "${s.currency}" not applicable to this base/item level` };
+      continue;
+    }
     if (s.action !== "use_currency") return { key: "recipe", label: doc.name, unsupported: true, feasible: false, reason: `step "${s.id}": action "${s.action}" not simulatable yet` };
     if (recipeApplyCurrency(s.currency, newItem(), [], rng(1)) === null) return { key: "recipe", label: doc.name, unsupported: true, feasible: false, reason: `step "${s.id}": currency "${s.currency}" not simulatable yet` };
   }
@@ -1066,7 +1094,9 @@ function simulateRecipe(doc, mods, opts) {
       if (!step) break;   // routed to a terminal below
       if (!(step.id in visited)) visited[step.id] = Object.assign({}, cost);
       const legal = (step.preconditions || []).every((c) => evalRecipeCond(c, item, ctx))
-        && recipeApplyCurrency(step.currency, item, mods, rnd) === true;
+        && (step.action === "use_essence"
+          ? recipeApplyEssence(essByName[String(step.currency).toLowerCase()], item, rnd) === true
+          : recipeApplyCurrency(step.currency, item, mods, rnd) === true);
       if (!legal) {       // no legal transition → only a no_legal_transition stop can name the result
         ctx.noLegal = true;
         const sc = (doc.stop_conditions || []).find((s) => evalRecipeCond(s.expression, item, ctx));
