@@ -997,6 +997,43 @@ function divineMarketPrice(data, wantId, minStock) {
   return (clustered.length ? clustered : r)[0];   // cheapest clustered price (or cheapest if too thin)
 }
 
+// Robust ITEM-SEARCH sale price (the recipe/advisor resale read) — the price a finished
+// craft would actually MOVE at, from fetched Trade2 listings. One absurd listing must not
+// make a bad craft look profitable, so (in order):
+//   - stale listings (indexed > maxAgeDays) are dropped — they're aspirational/AFK prices
+//     that haven't sold, not the market;
+//   - the sale anchor is the cheapest CLUSTERED offer (≥3 within ±15%, incl. itself —
+//     divineMarketPrice's pattern); no cluster → cheapest after the lowball-bait walk
+//     (drop offers <50% of the next, the old resale rule);
+//   - fewer than minSample fresh offers → thin:true (numbers returned, trust is the
+//     caller's call);
+//   - liquidationDiv = anchor × LIQUIDATION_DISCOUNT — to sell fast you undercut the
+//     board; EV math should use THIS, not the ask.
+// listings: [{div, indexedAt}] from the fetch; now = Date.now() (injectable for tests).
+// ponytail: flat 7d/5-sample/0.9 knobs; tune when real resale data shows they're off.
+const LIQUIDATION_DISCOUNT = 0.9;
+function robustResalePrice(listings, opts) {
+  opts = opts || {};
+  const maxAgeMs = (opts.maxAgeDays || 7) * 86400000;
+  const minSample = opts.minSample || 5;
+  const now = opts.now || Date.now();
+  const all = (listings || []).filter((l) => l && l.div > 0);
+  const fresh = all.filter((l) => !l.indexedAt || now - new Date(l.indexedAt).getTime() <= maxAgeMs);
+  const r = fresh.map((l) => l.div).sort((a, b) => a - b);
+  if (!r.length) return { saleDiv: null, liquidationDiv: null, sample: all.length, freshSample: 0, thin: true };
+  const clustered = r.filter((x) => r.reduce((n, y) => n + (y >= x * 0.85 && y <= x * 1.15 ? 1 : 0), 0) >= 3);
+  let anchor;
+  if (clustered.length) anchor = clustered[0];
+  else { let i = 0; while (i < r.length - 1 && r[i] < r[i + 1] * 0.5) i++; anchor = r[i]; }
+  const round = (n) => Math.round(n * 10000) / 10000;
+  return {
+    saleDiv: round(anchor),
+    liquidationDiv: round(anchor * LIQUIDATION_DISCOUNT),
+    sample: all.length, freshSample: r.length,
+    thin: r.length < minSample,
+  };
+}
+
 // Div-side prices (omens, Hinekora's) for the economy panel, in divine-per-item.
 // These aren't on the currency strip (the exalted side is junk for them), so they
 // get their own divine-side exchange call — but SWR-cached on the SAME 10-min TTL
@@ -3066,6 +3103,30 @@ function priceCraftMethods(result, proxy) {
   result.priced = true;
 }
 
+// Expected-profit route scoring (recipe layer "Later phases" 2). Labels the Pareto
+// corners of a PRICED ranking so the UI can say WHY a route, instead of one opaque sort:
+//   cheapest    — lowest expected total to land one (the current default sort)
+//   safest      — best one-shot odds (least brick/reroll churn)
+//   low_budget  — least spent per attempt (what a miss actually costs you)
+//   best_ev     — highest per-attempt expected profit p×value − perAttemptCost; only
+//                 when the caller supplies the finished item's market value (from
+//                 /api/craft/resale) — we never invent prices.
+// perAttemptDivineCost = divineCost × p (expectedOrbs is the ÷p amortized number).
+function tagRouteClasses(methods, targetValueDiv) {
+  const round4 = (n) => Math.round(n * 10000) / 10000;
+  const live = (methods || []).filter((m) => m.feasible && !m.impractical && m.divineCost != null);
+  for (const m of live) {
+    m.perAttemptDivineCost = round4(m.divineCost * m.successPerAttempt);
+    if (targetValueDiv != null) m.expectedProfitDiv = round4(m.successPerAttempt * targetValueDiv - m.perAttemptDivineCost);
+  }
+  if (!live.length) return;
+  const tag = (m, c) => { (m.routeClasses = m.routeClasses || []).push(c); };
+  tag(live.reduce((a, b) => (b.divineCost < a.divineCost ? b : a)), "cheapest");
+  tag(live.reduce((a, b) => (b.successPerAttempt > a.successPerAttempt ? b : a)), "safest");
+  tag(live.reduce((a, b) => (b.perAttemptDivineCost < a.perAttemptDivineCost ? b : a)), "low_budget");
+  if (targetValueDiv != null) tag(live.reduce((a, b) => (b.expectedProfitDiv > a.expectedProfitDiv ? b : a)), "best_ev");
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://" + HOST + ":" + PORT);
@@ -4187,6 +4248,8 @@ const server = http.createServer(async (req, res) => {
       const jewellery = baseCls === "Ring" || baseCls === "Amulet";   // catalysts apply to jewellery
       const result = craftEngine.rankMethods(mods, targets, { seed, essences, jewellery });
       try { priceCraftMethods(result, await getProxyData(sanitizeLeague(input.league))); } catch { /* pricing is a bonus; fall back to orb-count ranking */ }
+      // route classes on the priced ranking; targetValueDiv (optional, from /api/craft/resale) adds best_ev
+      if (result.priced) tagRouteClasses(result.methods, Number(input.targetValueDiv) > 0 ? Number(input.targetValueDiv) : null);
       send(res, 200, JSON.stringify(result), J);
       return;
     }
@@ -4247,8 +4310,23 @@ const server = http.createServer(async (req, res) => {
       // EV(continue) = P(success|here) × targetValue − remaining cost, a FLOOR (scrap value of
       // misses isn't modeled). advice: "sell" when the in-hand value beats that floor... barely a
       // recommendation to sell — a big gap the other way IS a real "keep going".
+      const targetValueDiv = Number(input.targetValueDiv) > 0 ? Number(input.targetValueDiv) : null;
+      // Expected profit per attempt: p×targetValue + (1−p)×missValue − per-attempt spend.
+      // missValueDiv = what a MISS liquidates for (the "selling useful misses" half of
+      // profitable crafting) — defaults 0 (a floor), caller prices it via /api/craft/resale.
+      if (m.feasible && proxy) {
+        let pc = 0, pcMissing = false;
+        for (const [orb, n] of Object.entries(m.perAttemptOrbs || {})) {
+          const pv = proxyPrice(proxy, CRAFT_ORB_PROXY[orb] || orb);
+          if (pv && pv.div > 0) pc += n * pv.div; else pcMissing = true;
+        }
+        m.perAttemptDivineCost = pcMissing && !(pc > 0) ? null : Math.round(pc * 10000) / 10000;
+        if (targetValueDiv != null && m.perAttemptDivineCost != null) {
+          const missValueDiv = Number(input.missValueDiv) > 0 ? Number(input.missValueDiv) : 0;
+          m.expectedProfitDiv = Math.round((m.successPerAttempt * targetValueDiv + (1 - m.successPerAttempt) * missValueDiv - m.perAttemptDivineCost) * 10000) / 10000;
+        }
+      }
       if (m.feasible && m.decisionPoints) {
-        const targetValueDiv = Number(input.targetValueDiv) > 0 ? Number(input.targetValueDiv) : null;
         const stepValues = (input.stepValues && typeof input.stepValues === "object") ? input.stepValues : {};
         for (const dp of m.decisionPoints) {
           let cost = 0, missing = false;
@@ -4378,11 +4456,14 @@ const server = http.createServer(async (req, res) => {
         const rates = await getExchangeRates(used).catch(() => ({}));
         const ids = search.result.slice(0, 10).join(",");
         const fetched = await fetchTrade("https://www.pathofexile.com/api/trade2/fetch/" + ids + "?query=" + encodeURIComponent(search.id));
-        const prices = [];
-        for (const e of (fetched.result || [])) { const p = listingPriceFromEntry(e, rates); if (p && p.divine > 0) prices.push(p.divine); }
-        prices.sort((a, b2) => a - b2);
-        let i = 0; while (i < prices.length - 1 && prices[i] < prices[i + 1] * 0.5) i++;   // drop lowball baits
-        send(res, 200, JSON.stringify({ priced: true, cheapestDiv: prices[i] != null ? prices[i] : null, count: total, url: url2, league: used }), J);
+        const listings = [];
+        for (const e of (fetched.result || [])) {
+          const p = listingPriceFromEntry(e, rates);
+          if (p && p.divine > 0) listings.push({ div: p.divine, indexedAt: e.listing && e.listing.indexed });
+        }
+        const rp = robustResalePrice(listings);
+        // cheapestDiv kept for existing callers (now the robust sale anchor, not the raw ask)
+        send(res, 200, JSON.stringify({ priced: true, cheapestDiv: rp.saleDiv, saleDiv: rp.saleDiv, liquidationDiv: rp.liquidationDiv, thin: rp.thin, sample: rp.sample, freshSample: rp.freshSample, count: total, url: url2, league: used }), J);
       } catch (err) {
         if (String(err && err.message).includes("rate limited")) { send(res, 200, JSON.stringify({ limited: true, tradeStatus: tradeStatus() }), J); return; }
         send(res, 200, JSON.stringify({ error: String(err.message) }), J);
@@ -4452,6 +4533,8 @@ module.exports = {
   collectExchangeOffers,
   bestExchangeOffer,
   divineMarketPrice,
+  robustResalePrice,
+  tagRouteClasses,
   sanitizeLeague,
   buildExchangeCatalog,
   gearSearchSlots,

@@ -177,6 +177,13 @@ function staticChecks() {
   } catch {
     check(false, "craft Monte Carlo engine probabilities are correct (craft-engine-test.js)");
   }
+  // Resale pricing realism + expected-profit route classes (offline, pure functions)
+  try {
+    require("child_process").execFileSync("node", [path.join(ROOT, "craft-profit-test.js")], { stdio: "ignore", env: { ...process.env, POE2_NO_OPEN: "1" } });
+    check(true, "resale price is lowball/stale-proof + route classes tag honestly (craft-profit-test.js)");
+  } catch {
+    check(false, "resale price is lowball/stale-proof + route classes tag honestly (craft-profit-test.js)");
+  }
   // Recipe snapshot (poe2-kb recipe-v1 → gen-recipes.js → recipe-data.js) validates + simulates.
   // Needs the poe2-kb checkout for the schema — skipped where it's absent (e.g. the container).
   if (fs.existsSync(path.join(ROOT, "recipe-data.js")) && fs.existsSync(path.join(ROOT, "..", "poe2-kb", "crafting", "schema", "recipe-v1.schema.json"))) {
