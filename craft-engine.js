@@ -925,6 +925,14 @@ function simulateRecipe(doc, mods, opts) {
 
   const outcomes = { success: 0, failed: 0, stopped: 0 };
   const costSum = {};
+  // Sell-vs-continue decision points: per step, over the trials that REACHED it, the
+  // conditional success odds + expected remaining spend from that point. One-shot marginal
+  // numbers (not ÷p amortized) — the decision at a step is about THIS in-flight item:
+  //   EV(continue) ≈ P(success | here) × targetValue − E[remaining spend | here]
+  // vs selling the current item now. Failed/stopped items keep scrap value we don't model,
+  // so EV(continue) is a floor.
+  const stepStats = {};
+  for (const s of doc.steps) stepStats[s.id] = { reached: 0, success: 0, remaining: {} };
   const bump = (cost, name, n) => { cost[name] = (cost[name] || 0) + (n || 1); };
   for (let t = 0; t < trials; t++) {
     const item = recipeStartItem(doc.starting_state, mods, fillerMods, rnd);
@@ -932,12 +940,14 @@ function simulateRecipe(doc, mods, opts) {
     const ctx = { target: doc.target, noLegal: false };
     let step = doc.steps[0];
     let result = "stopped";
+    const visited = {};   // step id → cost snapshot at FIRST arrival (the decision moment)
     for (let iter = 0; iter < RECIPE_ITER_CAP; iter++) {
       // global stop conditions first (target may already hold / a prior step ended the run)
       ctx.noLegal = false;
       const hit = (doc.stop_conditions || []).find((sc) => evalRecipeCond(sc.expression, item, ctx));
       if (hit) { result = hit.result === "success" ? "success" : hit.result === "failed" ? "failed" : "stopped"; break; }
       if (!step) break;   // routed to a terminal below
+      if (!(step.id in visited)) visited[step.id] = Object.assign({}, cost);
       const legal = (step.preconditions || []).every((c) => evalRecipeCond(c, item, ctx))
         && recipeApplyCurrency(step.currency, item, mods, rnd) === true;
       if (!legal) {       // no legal transition → only a no_legal_transition stop can name the result
@@ -956,6 +966,12 @@ function simulateRecipe(doc, mods, opts) {
     }
     outcomes[result]++;
     for (const k in cost) bump(costSum, k, cost[k]);
+    for (const id in visited) {
+      const st = stepStats[id];
+      st.reached++;
+      if (result === "success") st.success++;
+      for (const k in cost) { const rem = cost[k] - (visited[id][k] || 0); if (rem > 0) st.remaining[k] = (st.remaining[k] || 0) + rem; }
+    }
   }
 
   const p = outcomes.success / trials;
@@ -963,9 +979,20 @@ function simulateRecipe(doc, mods, opts) {
   for (const k in costSum) perAttemptOrbs[k] = costSum[k] / trials;
   const expectedOrbs = {};
   if (p > 0) for (const k in costSum) expectedOrbs[k] = (costSum[k] / trials) / p;
+  const decisionPoints = doc.steps.map((s) => {
+    const st = stepStats[s.id];
+    const remainingOrbs = {};
+    for (const k in st.remaining) remainingOrbs[k] = st.remaining[k] / (st.reached || 1);
+    return {
+      step: s.id, action: s.action, currency: s.currency,
+      reachRate: st.reached / trials,
+      successGivenReached: st.reached ? st.success / st.reached : 0,
+      remainingOrbs,
+    };
+  });
   return {
     key: "recipe:" + doc.id, label: doc.name,
-    successPerAttempt: p, outcomes, perAttemptOrbs, expectedOrbs,
+    successPerAttempt: p, outcomes, perAttemptOrbs, expectedOrbs, decisionPoints,
     feasible: p > 0, impractical: p > 0 && p < PRACTICAL_MIN,
     warnings: warnings.length ? warnings : undefined,
   };

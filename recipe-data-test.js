@@ -71,6 +71,19 @@ ok(r.outcomes.success + r.outcomes.failed + r.outcomes.stopped === 10000, "every
 // determinism: same seed → same distribution
 const r2 = engine.simulateRecipe(fix, mods, { seed: 42, trials: 10000 });
 ok(r2.successPerAttempt === r.successPerAttempt, "seeded sim is deterministic");
+
+// ── sell-vs-continue decision points ──
+const dps = Object.fromEntries(r.decisionPoints.map((d) => [d.step, d]));
+ok(r.decisionPoints.length === fix.steps.length, "one decision point per step");
+ok(dps.regal.reachRate === 1, "first step reached on every trial");
+ok(dps.exalt.reachRate > 0 && dps.exalt.reachRate < 1, "exalt reached only when the regal missed");
+ok(Math.abs(dps.regal.reachRate * dps.regal.successGivenReached - r.successPerAttempt) < 1e-9,
+  "P(reach first step)×P(success|reached) equals overall success");
+ok(dps.regal.remainingOrbs["Regal Orb"] === 1, "remaining spend at regal includes the regal itself");
+ok(!dps.exalt.remainingOrbs["Regal Orb"] && dps.exalt.remainingOrbs["Exalted Orb"] === 1,
+  "remaining spend at exalt is just the exalt (regal already sunk)");
+ok(dps.regal.successGivenReached > dps.exalt.successGivenReached,
+  "odds shrink downstream (regal still has two shots, exalt one)");
 // unsupported action is refused, not faked
 const un = clone();
 un.steps[0].action = "use_rune";

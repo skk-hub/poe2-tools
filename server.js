@@ -4236,7 +4236,49 @@ const server = http.createServer(async (req, res) => {
       const m = craftEngine.simulateRecipe(doc, mods, { seed });
       const result = { recipe: { id: doc.id, name: doc.name, status: doc.status, patch: doc.patch, warnings: doc.warnings || [] }, base: baseName, ilvl, methods: [m], impossible: !!m.impossible };
       // recipe currency labels ARE proxy display names, so the shared pricer applies as-is
-      if (m.feasible) { try { priceCraftMethods(result, await getProxyData(sanitizeLeague(input.league))); } catch { /* orb counts still rank */ } }
+      let proxy = null;
+      if (m.feasible) {
+        try { proxy = await getProxyData(sanitizeLeague(input.league)); priceCraftMethods(result, proxy); } catch { /* orb counts still rank */ }
+      }
+      // Sell-vs-continue: price each decision point's expected REMAINING spend in divine, and
+      // when the caller supplies item values, do the comparison. targetValueDiv = the finished
+      // item's sale value; stepValues = {stepId: current item's liquidation value at that step}
+      // (both in divine — get them from /api/craft/resale / the trade site; we never invent them).
+      // EV(continue) = P(success|here) × targetValue − remaining cost, a FLOOR (scrap value of
+      // misses isn't modeled). advice: "sell" when the in-hand value beats that floor... barely a
+      // recommendation to sell — a big gap the other way IS a real "keep going".
+      if (m.feasible && m.decisionPoints) {
+        const targetValueDiv = Number(input.targetValueDiv) > 0 ? Number(input.targetValueDiv) : null;
+        const stepValues = (input.stepValues && typeof input.stepValues === "object") ? input.stepValues : {};
+        for (const dp of m.decisionPoints) {
+          let cost = 0, missing = false;
+          for (const [orb, count] of Object.entries(dp.remainingOrbs)) {
+            const pv = proxy ? proxyPrice(proxy, CRAFT_ORB_PROXY[orb] || orb) : null;
+            if (pv && pv.div > 0) cost += count * pv.div; else missing = true;
+          }
+          // 4-decimal: a step's MARGINAL spend (one orb) is often sub-cent in divine
+          dp.remainingDivineCost = missing && !(cost > 0) ? null : Math.round(cost * 10000) / 10000;
+          if (targetValueDiv != null && dp.remainingDivineCost != null) {
+            dp.continueEvDiv = Math.round((dp.successGivenReached * targetValueDiv - dp.remainingDivineCost) * 10000) / 10000;
+            const inHand = Number(stepValues[dp.step]);
+            if (inHand > 0) dp.advice = inHand > dp.continueEvDiv ? "sell" : "continue";
+          }
+        }
+      }
+      // Ready-to-POST /api/craft/resale query for the FINISHED item (target mods → trade stat
+      // filters via the advise plumbing) — the seed of targetValueDiv. null when the class has
+      // no resale profile or no target mod maps to a known trade stat.
+      const adviseSlot = craftAdviseSlot(b.class);
+      const gearSlot = adviseSlot ? (ADVISE_TO_GEAR_SLOT[adviseSlot] || adviseSlot) : null;
+      const category = (() => { try { const s = gearSlot ? gearSlotCfg(gearSlot) : null; return s ? s.category : null; } catch { return null; } })();
+      if (category && mods) {
+        const idx = buildCraftGroupIndex(mods);
+        const groups = (doc.target.required_mods || [])
+          .map((r) => { const pm = mods.find((x) => x.key === r.ref || x.group === r.ref); return pm && { group: pm.group }; })
+          .filter(Boolean);
+        const rf = buildResaleFilters(gearSlot, groups, [], idx);
+        result.resale = (rf.statFilters.length || rf.rarityMin) ? { category, statFilters: rf.statFilters, rarityMin: rf.rarityMin, baseSlot: gearSlot } : null;
+      } else result.resale = null;
       send(res, 200, JSON.stringify(result), J);
       return;
     }
