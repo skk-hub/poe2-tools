@@ -67,3 +67,31 @@ everything executable about it. Design rationale: `poe2-kb/meta/recipe-schema-pr
 `gen-recipes.js` produces `recipe-data.js` from the KB fixture; validator rejects
 each malformed-case test; `/api/craft/recipes` lists the fixture;
 `/api/craft/recipe-sim` returns a priced distribution for it; smoke green.
+
+## Later phases (explicitly OUT of this handoff's scope — parked so they don't get lost)
+
+From the 2026-07-11 design discussion; do these only after the DoD above, each as
+its own session:
+
+1. **Sell-vs-continue decision points**: at each recipe step, compare expected value
+   of continuing vs liquidating the current item (`/api/craft/resale` is the seed of
+   this). Profitable crafting is mostly selling useful misses.
+2. **Expected-profit route scoring**: Σ(outcome probability × sale value) − cost, and
+   distinct route classes (cheapest / best-EV / safest / low-budget). Needs pricing
+   realism first: minimum sample sizes, listing-age checks, outlier removal,
+   liquidation discount — one absurd listing must not make a bad craft look profitable
+   (`divineMarketPrice`'s clustered-offer logic is the pattern to extend).
+3. **Exact probability evaluator** alongside the Monte Carlo (closed-form from mod
+   weights where the move is simple; MC stays the fallback for omen/essence
+   interactions).
+4. **Auto-flagging beyond ref-resolution**: gen-recipes already fails when a mod
+   disappears; also flag when required ilvl thresholds move, when a step can't legally
+   produce its claimed result, and (runtime, not gen) when market value no longer
+   justifies a `verified` recipe.
+5. **Corpus growth (KB side, not this repo)**: import ~20-30 sourced, patch-tagged
+   crafts across common gear classes via the poe2-kb capture→ingest pipeline; each
+   needs exact starting item, currency sequence, claimed cost/outcome, reproduction
+   status.
+6. **Novel-route generation LAST**: only after backtesting recommendations against
+   the verified corpus — the advisor proposing routes no guide has tested is the
+   final step, not an early feature.
