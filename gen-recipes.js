@@ -166,6 +166,72 @@ function semanticErrors(doc, craftData) {
   for (const [i, c] of ((doc.target || {}).base_classes || []).entries()) if (!classes.has(c)) errs.push(`target.base_classes[${i}]: unknown class "${c}"`);
   for (const [i, b] of ((doc.target || {}).bases || []).entries()) if (!craftData.bases[b]) errs.push(`target.bases[${i}]: unknown base "${b}"`);
 
+  // ── auto-flags beyond ref-resolution (patch drift) ──
+  // (a) ilvl thresholds: every required target mod must be SPAWNABLE on at least one of
+  // the declared bases AT the declared minimum_item_level — catches GGG moving a tier's
+  // ilvl (recipe says 75, the mod now needs 81 → the doc is mechanically wrong).
+  const weightFor = (mod, base) => {   // same first-tag-wins rule as server craftWeightFor
+    const tagset = new Set(base.tags);
+    for (const [tag, w] of mod.weights) if (tag === "default" || tagset.has(tag)) return w;
+    return 0;
+  };
+  const declaredBases = ((doc.target || {}).bases || []).length
+    ? (doc.target.bases || []).map((n) => craftData.bases[n]).filter(Boolean)
+    : Object.values(craftData.bases).filter((b) => ((doc.target || {}).base_classes || []).includes(b.class));
+  const minIlvl = (doc.target || {}).minimum_item_level || 100;
+  if (declaredBases.length) {
+    for (const [i, r] of ((doc.target || {}).required_mods || []).entries()) {
+      const tiers = Object.entries(craftData.mods).filter(([k, m]) => k === r.ref || m.group === r.ref);
+      if (!tiers.length) continue;   // unresolvable — already reported above
+      let spawnIlvl = Infinity;
+      for (const [, m] of tiers) if (declaredBases.some((b) => weightFor(m, b) > 0)) spawnIlvl = Math.min(spawnIlvl, m.ilvl);
+      if (spawnIlvl === Infinity) errs.push(`target.required_mods[${i}]: "${r.ref}" cannot spawn on the declared bases at all`);
+      else if (spawnIlvl > minIlvl) errs.push(`target.required_mods[${i}]: "${r.ref}" needs item level ${spawnIlvl} on these bases, but the recipe claims minimum_item_level ${minIlvl} (threshold moved?)`);
+    }
+  }
+  // (b) a step that can never legally act: propagate the possible arrival RARITIES through
+  // the step graph from starting_state; a step whose currency's required rarity is disjoint
+  // from every rarity it can arrive with can't produce its claimed result. Only PROVABLE
+  // breaks flag — unknown currencies/actions pass "any rarity" through (no false positives).
+  const CURRENCY_RARITY = {   // display name (lowercased) → [fromRarity, toRarity]
+    "orb of transmutation": ["normal", "magic"], "orb of augmentation": ["magic", "magic"],
+    "regal orb": ["magic", "rare"], "orb of alchemy": ["normal", "rare"],
+    "exalted orb": ["rare", "rare"], "greater exalted orb": ["rare", "rare"], "perfect exalted orb": ["rare", "rare"],
+    "chaos orb": ["rare", "rare"], "orb of annulment": ["rare", "rare"],
+  };
+  if (doc.steps && doc.steps.length && doc.starting_state && !errs.length) {
+    const stepByIdx = new Map(doc.steps.map((s, i) => [s.id, i]));
+    const arrive = doc.steps.map(() => new Set());
+    arrive[0].add(doc.starting_state.rarity);
+    const queue = [0];
+    while (queue.length) {
+      const i = queue.shift();
+      const s = doc.steps[i];
+      const cr = s.action === "use_currency" || s.action === "use_omen_combo" ? CURRENCY_RARITY[String(s.currency || "").toLowerCase()] : null;
+      // exit rarities: known currency → its result rarity iff it can legally act here
+      // (an "any" arrival keeps "any" alive — could be anything); unknown → "any".
+      let exits;
+      if (!cr) exits = ["any"];
+      else {
+        exits = [];
+        if ([...arrive[i]].some((x) => x === cr[0])) exits.push(cr[1]);
+        if (arrive[i].has("any")) exits.push("any");
+      }
+      for (const d of [s.on_success, s.on_failure]) {
+        if (!stepByIdx.has(d)) continue;
+        const j = stepByIdx.get(d);
+        let grew = false;
+        for (const x of exits) if (!arrive[j].has(x)) { arrive[j].add(x); grew = true; }
+        if (grew) queue.push(j);
+      }
+    }
+    for (const [i, s] of doc.steps.entries()) {
+      const cr = s.action === "use_currency" || s.action === "use_omen_combo" ? CURRENCY_RARITY[String(s.currency || "").toLowerCase()] : null;
+      if (!cr || !arrive[i].size || arrive[i].has("any")) continue;
+      if (![...arrive[i]].some((x) => x === cr[0])) errs.push(`steps[${i}]: "${s.currency}" needs a ${cr[0]} item but this step is only reached with ${[...arrive[i]].join("/")} — it can never legally act`);
+    }
+  }
+
   return errs;
 }
 

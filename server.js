@@ -4331,6 +4331,11 @@ const server = http.createServer(async (req, res) => {
         if (targetValueDiv != null && m.perAttemptDivineCost != null) {
           const missValueDiv = Number(input.missValueDiv) > 0 ? Number(input.missValueDiv) : 0;
           m.expectedProfitDiv = Math.round((m.successPerAttempt * targetValueDiv + (1 - m.successPerAttempt) * missValueDiv - m.perAttemptDivineCost) * 10000) / 10000;
+          // runtime auto-flag: a VERIFIED recipe whose EV goes negative at the quoted market
+          // values is mechanically fine but economically dead — surface it, don't hide it.
+          if (doc.status === "verified" && m.expectedProfitDiv < 0) {
+            result.marketFlag = `verified recipe is currently unprofitable (${m.expectedProfitDiv} div expected per attempt at your quoted values) — the market may no longer justify it`;
+          }
         }
       }
       if (m.feasible && m.decisionPoints) {

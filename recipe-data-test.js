@@ -43,6 +43,12 @@ failsWith((d) => { d.steps.push({ ...clone().steps[1], id: "orphan" }); }, "unre
 failsWith((d) => { d.target.base_classes = ["Chestplate of Lies"]; }, "unknown class", "unknown base class");
 failsWith((d) => { d.extra_field = 1; }, "unknown property", "additionalProperties rejected");
 
+// auto-flags beyond ref-resolution (patch drift)
+failsWith((d) => { d.target.required_mods[0].ref = "GlobalSpellGemsLevel3"; d.target.minimum_item_level = 50; },
+  "threshold moved", "ilvl threshold drift (tier needs 75, recipe claims 50)");
+failsWith((d) => { d.target.base_classes = ["Ring"]; }, "cannot spawn", "target mod unspawnable on the declared class");
+failsWith((d) => { d.starting_state.rarity = "rare"; }, "can never legally act", "regal on a rare start can never act");
+
 // duplicate recipe id across two files (loadAll-level check)
 const tmp = fs.mkdtempSync(path.join(require("os").tmpdir(), "recipes-"));
 try {
