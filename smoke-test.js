@@ -177,6 +177,16 @@ function staticChecks() {
   } catch {
     check(false, "craft Monte Carlo engine probabilities are correct (craft-engine-test.js)");
   }
+  // Recipe snapshot (poe2-kb recipe-v1 → gen-recipes.js → recipe-data.js) validates + simulates.
+  // Needs the poe2-kb checkout for the schema — skipped where it's absent (e.g. the container).
+  if (fs.existsSync(path.join(ROOT, "recipe-data.js")) && fs.existsSync(path.join(ROOT, "..", "poe2-kb", "crafting", "schema", "recipe-v1.schema.json"))) {
+    try {
+      require("child_process").execFileSync("node", [path.join(ROOT, "recipe-data-test.js")], { stdio: "ignore", env: { ...process.env, POE2_NO_OPEN: "1" } });
+      check(true, "recipe snapshot validates + step machine simulates (recipe-data-test.js)");
+    } catch {
+      check(false, "recipe snapshot validates + step machine simulates (recipe-data-test.js)");
+    }
+  }
   // Desecrated reference data (scraped from poe2db) loads with the expected shape (if present)
   if (fs.existsSync(path.join(ROOT, "desecrated-data.js"))) {
     try {
@@ -193,6 +203,7 @@ async function httpChecks() {
     const r = await get(BASE + p); check(r.status === 200 && r.type.includes(type), `GET ${p} -> 200 ${type}`);
   }
   const ts = await get(BASE + "/api/trade-status"); check(ts.status === 200 && ts.body.includes("limited"), "GET /api/trade-status -> 200 JSON");
+  const rc = await get(BASE + "/api/craft/recipes"); check(rc.status === 200 && /"recipes"/.test(rc.body), "GET /api/craft/recipes -> 200 JSON (recipes)");
   const co = await get(BASE + "/api/currency/overview?league=Runes%20of%20Aldur"); check(co.status === 200 && /"items"/.test(co.body), "GET /api/currency/overview -> 200 JSON (items)");
 }
 

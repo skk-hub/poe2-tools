@@ -16,6 +16,8 @@ try { POB_BASES = require("./pob-bases.js"); } catch { /* not generated → keyw
 // error; the rest of the app is unaffected.
 let CRAFT_DATA = null;
 try { CRAFT_DATA = require("./craft-data.js"); } catch { /* run gen-craft-data.lua to create */ }
+let RECIPE_DATA = null;
+try { RECIPE_DATA = require("./recipe-data.js"); } catch { /* run gen-recipes.js to create */ }
 const craftEngine = require("./craft-engine.js");   // Monte Carlo crafting simulator
 const { archetypeKey } = require("./craft-archetype.js");   // base → Craft-of-Exile weight archetype
 // Desecrated modifier REFERENCE (Abyssal Bones + Well of Souls) scraped from poe2db —
@@ -4185,6 +4187,56 @@ const server = http.createServer(async (req, res) => {
       const jewellery = baseCls === "Ring" || baseCls === "Amulet";   // catalysts apply to jewellery
       const result = craftEngine.rankMethods(mods, targets, { seed, essences, jewellery });
       try { priceCraftMethods(result, await getProxyData(sanitizeLeague(input.league))); } catch { /* pricing is a bonus; fall back to orb-count ranking */ }
+      send(res, 200, JSON.stringify(result), J);
+      return;
+    }
+
+    // Recipes (poe2-kb recipe-v1 snapshot, gen-recipes.js): list the loadable recipes.
+    // superseded recipes are ignored by default; only `verified` is trustworthy —
+    // `extracted` may be mechanically wrong, the client shows status so the user knows.
+    if (url.pathname === "/api/craft/recipes") {
+      const J = "application/json; charset=utf-8";
+      if (!RECIPE_DATA) { send(res, 503, JSON.stringify({ error: "recipe-data.js not generated — run gen-recipes.js" }), J); return; }
+      const recipes = Object.values(RECIPE_DATA.recipes)
+        .filter((r) => r.status !== "superseded")
+        .map((r) => ({
+          id: r.id, name: r.name, status: r.status, patch: r.patch,
+          target: {
+            base_classes: r.target.base_classes, bases: r.target.bases || [],
+            minimum_item_level: r.target.minimum_item_level || 1,
+            required_mods: (r.target.required_mods || []).map((m) => ({ ref: m.ref, alias: m.alias || null })),
+          },
+          warnings: r.warnings || [],
+        }));
+      send(res, 200, JSON.stringify({ generated: RECIPE_DATA.generated, recipes }), J);
+      return;
+    }
+    // Simulate one recipe on a concrete base+ilvl → Monte Carlo cost/success distribution
+    // priced in divine, like /api/craft/simulate (same engine, same pricing).
+    if (url.pathname === "/api/craft/recipe-sim" && req.method === "POST") {
+      const J = "application/json; charset=utf-8";
+      if (!RECIPE_DATA) { send(res, 503, JSON.stringify({ error: "recipe-data.js not generated — run gen-recipes.js" }), J); return; }
+      if (!CRAFT_DATA) { send(res, 503, JSON.stringify({ error: "craft-data.js not generated — run gen-craft-data.lua" }), J); return; }
+      const input = await readJson(req);
+      const doc = RECIPE_DATA.recipes[String(input.id || "")];
+      if (!doc) { send(res, 404, JSON.stringify({ error: "unknown recipe id" }), J); return; }
+      if (doc.status === "superseded") { send(res, 400, JSON.stringify({ error: "recipe is superseded — use its successor" }), J); return; }
+      const baseName = String(input.base || "");
+      const b = CRAFT_DATA.bases[baseName];
+      if (!b) { send(res, 404, JSON.stringify({ error: "unknown base" }), J); return; }
+      const ilvl = Math.max(1, Math.min(100, Number(input.ilvl) || 100));
+      const t = doc.target;
+      if (t.bases && t.bases.length ? !t.bases.includes(baseName) : !t.base_classes.includes(b.class)) {
+        send(res, 400, JSON.stringify({ error: `recipe targets ${t.bases && t.bases.length ? t.bases.join("/") : t.base_classes.join("/")}, not ${baseName} (${b.class})` }), J); return;
+      }
+      if (t.minimum_item_level && ilvl < t.minimum_item_level) { send(res, 400, JSON.stringify({ error: `recipe needs item level ≥ ${t.minimum_item_level} (got ${ilvl})` }), J); return; }
+      if (t.maximum_item_level && ilvl > t.maximum_item_level) { send(res, 400, JSON.stringify({ error: `recipe needs item level ≤ ${t.maximum_item_level} (got ${ilvl})` }), J); return; }
+      const mods = craftModList(baseName, ilvl);
+      const seed = (Math.random() * 4294967296) >>> 0;
+      const m = craftEngine.simulateRecipe(doc, mods, { seed });
+      const result = { recipe: { id: doc.id, name: doc.name, status: doc.status, patch: doc.patch, warnings: doc.warnings || [] }, base: baseName, ilvl, methods: [m], impossible: !!m.impossible };
+      // recipe currency labels ARE proxy display names, so the shared pricer applies as-is
+      if (m.feasible) { try { priceCraftMethods(result, await getProxyData(sanitizeLeague(input.league))); } catch { /* orb counts still rank */ } }
       send(res, 200, JSON.stringify(result), J);
       return;
     }

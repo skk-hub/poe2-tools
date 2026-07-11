@@ -820,6 +820,157 @@ function rankFinish(mods, currentMods, fillGroups, opts) {
   return { impossible: false, prefixTargets: fillP, suffixTargets: fillS, trials, methods };
 }
 
+// ── Recipe step machine (poe2-kb recipe-v1 documents) ──────────────────────
+// A recipe is a declarative step graph over moves this engine already simulates.
+// simulateRecipe runs the graph as a Monte Carlo: build the starting item per
+// starting_state, walk steps applying currencies, route on success_when, count costs
+// by DISPLAY name (they double as poe.ninja proxy names for pricing). Recipes whose
+// actions/currencies the engine can't model yet return {unsupported:true} — honest
+// beats a fake number. Mod refs (already gen-validated) match key OR group.
+
+const RECIPE_ITER_CAP = 200;   // hard bound: a cyclic recipe ends as "stopped", never spins
+
+function refOn(item, ref) {
+  for (const m of item.prefixes) if (m.key === ref || m.group === ref) return true;
+  for (const m of item.suffixes) if (m.key === ref || m.group === ref) return true;
+  return false;
+}
+function recipeTargetSatisfied(item, target) {
+  for (const r of target.required_mods || []) if (!refOn(item, r.ref)) return false;
+  for (const r of target.forbidden_mods || []) if (refOn(item, r.ref)) return false;
+  return true;
+}
+// ctx = {target, noLegal} — noLegal true only when evaluating stop conditions after a
+// step couldn't act (failed precondition / illegal currency use).
+function evalRecipeCond(c, item, ctx) {
+  if (c.all) { for (const s of c.all) if (!evalRecipeCond(s, item, ctx)) return false; return true; }
+  if (c.any) { for (const s of c.any) if (evalRecipeCond(s, item, ctx)) return true; return false; }
+  if (c.expression === "target_satisfied") return recipeTargetSatisfied(item, ctx.target);
+  if (c.expression === "no_legal_transition") return !!ctx.noLegal;
+  switch (c.predicate) {
+    case "has_mod": return refOn(item, c.ref);
+    case "missing_mod": return !refOn(item, c.ref);
+    case "open_prefixes_at_least": return CAP[item.rarity].prefix - item.prefixes.length >= c.value;
+    case "open_suffixes_at_least": return CAP[item.rarity].suffix - item.suffixes.length >= c.value;
+    case "rarity_is": return item.rarity === c.value;
+    default: return false;
+  }
+}
+// Apply one currency use. true = applied, false = illegal here (no legal transition),
+// null = this engine can't model that currency yet.
+function recipeApplyCurrency(currency, item, mods, rnd) {
+  switch (String(currency).toLowerCase()) {
+    case "orb of transmutation": if (item.rarity !== "normal") return false; item.rarity = "magic"; addMod(item, mods, rnd); return true;
+    case "orb of augmentation": return item.rarity === "magic" ? addMod(item, mods, rnd) : false;
+    case "regal orb": if (item.rarity !== "magic") return false; item.rarity = "rare"; addMod(item, mods, rnd); return true;
+    case "orb of alchemy": if (item.rarity !== "normal") return false; item.rarity = "rare"; for (let i = 0; i < 4; i++) addMod(item, mods, rnd); return true;
+    case "exalted orb": return item.rarity === "rare" ? addMod(item, mods, rnd) : false;
+    case "greater exalted orb": return item.rarity === "rare" ? addMod(item, mods, rnd, null, 35) : false;
+    case "perfect exalted orb": return item.rarity === "rare" ? addMod(item, mods, rnd, null, 50) : false;
+    case "chaos orb": if (item.rarity !== "rare" || !removeRandom(item, rnd)) return false; addMod(item, mods, rnd); return true;
+    case "orb of annulment": return item.rarity === "rare" ? removeRandom(item, rnd) : false;
+    default: return null;
+  }
+}
+// Starting item per starting_state: seed the required mods (weighted pick among the
+// ref's tiers in the pool), then fill each side to cap minus its minimum_open with
+// filler mods (target/forbidden groups excluded) — the "bought base" worst case.
+function recipeStartItem(ss, mods, fillerMods, rnd) {
+  const item = newItem();
+  item.rarity = ss.rarity;
+  for (const r of ss.required_mods || []) {
+    const cands = mods.filter((m) => m.key === r.ref || m.group === r.ref);
+    if (!cands.length) continue;                       // gen guarantees resolution; pool ilvl may still exclude it
+    const pick = weightedPick(cands, rnd);
+    if ((pick.type === "prefix" ? item.prefixes : item.suffixes).length < CAP[item.rarity][pick.type]) {
+      (pick.type === "prefix" ? item.prefixes : item.suffixes).push(pick);
+    }
+  }
+  const cap = CAP[item.rarity];
+  const openP = ss.minimum_open_prefixes || 0, openS = ss.minimum_open_suffixes || 0;
+  while (item.prefixes.length < cap.prefix - openP) if (!addMod(item, fillerMods, rnd, "prefix")) break;
+  while (item.suffixes.length < cap.suffix - openS) if (!addMod(item, fillerMods, rnd, "suffix")) break;
+  return item;
+}
+
+// Monte Carlo a recipe-v1 document over a base's eligible mod pool. opts: {trials, seed}.
+// Returns rankMethods-method shape (successPerAttempt/expectedOrbs/feasible + outcome
+// counts) so the existing pricing + UI rendering apply unchanged.
+function simulateRecipe(doc, mods, opts) {
+  opts = opts || {};
+  const trials = opts.trials || 5000;
+  const rnd = rng((opts.seed >>> 0) || 12345);
+  const warnings = [];
+
+  // refuse to fake what we can't model — unsupported action or currency
+  for (const s of doc.steps) {
+    if (s.action !== "use_currency") return { key: "recipe", label: doc.name, unsupported: true, feasible: false, reason: `step "${s.id}": action "${s.action}" not simulatable yet` };
+    if (recipeApplyCurrency(s.currency, newItem(), [], rng(1)) === null) return { key: "recipe", label: doc.name, unsupported: true, feasible: false, reason: `step "${s.id}": currency "${s.currency}" not simulatable yet` };
+  }
+  // every required target mod must be reachable in THIS pool (base + ilvl)
+  const missing = (doc.target.required_mods || []).filter((r) => !mods.some((m) => m.key === r.ref || m.group === r.ref)).map((r) => r.ref);
+  if (missing.length) return { key: "recipe", label: doc.name, impossible: true, missing, feasible: false };
+  for (const r of doc.target.required_mods || []) {
+    if (r.minimum_tier != null) warnings.push(`minimum_tier on "${r.ref}" is not modeled (any tier counts)`);
+    if ((r.count || 1) > 1) warnings.push(`count ${r.count} on "${r.ref}" is not modeled (presence only)`);
+  }
+
+  const excluded = new Set();   // filler must not pre-satisfy the target or violate the start
+  for (const lists of [doc.target.required_mods, doc.target.forbidden_mods, (doc.starting_state || {}).forbidden_mods]) {
+    for (const r of lists || []) for (const m of mods) if (m.key === r.ref || m.group === r.ref) excluded.add(m.group);
+  }
+  const fillerMods = mods.filter((m) => !excluded.has(m.group));
+  const stepById = {};
+  for (const s of doc.steps) stepById[s.id] = s;
+
+  const outcomes = { success: 0, failed: 0, stopped: 0 };
+  const costSum = {};
+  const bump = (cost, name, n) => { cost[name] = (cost[name] || 0) + (n || 1); };
+  for (let t = 0; t < trials; t++) {
+    const item = recipeStartItem(doc.starting_state, mods, fillerMods, rnd);
+    const cost = {};
+    const ctx = { target: doc.target, noLegal: false };
+    let step = doc.steps[0];
+    let result = "stopped";
+    for (let iter = 0; iter < RECIPE_ITER_CAP; iter++) {
+      // global stop conditions first (target may already hold / a prior step ended the run)
+      ctx.noLegal = false;
+      const hit = (doc.stop_conditions || []).find((sc) => evalRecipeCond(sc.expression, item, ctx));
+      if (hit) { result = hit.result === "success" ? "success" : hit.result === "failed" ? "failed" : "stopped"; break; }
+      if (!step) break;   // routed to a terminal below
+      const legal = (step.preconditions || []).every((c) => evalRecipeCond(c, item, ctx))
+        && recipeApplyCurrency(step.currency, item, mods, rnd) === true;
+      if (!legal) {       // no legal transition → only a no_legal_transition stop can name the result
+        ctx.noLegal = true;
+        const sc = (doc.stop_conditions || []).find((s) => evalRecipeCond(s.expression, item, ctx));
+        result = sc && sc.result === "success" ? "success" : sc && sc.result === "failed" ? "failed" : "stopped";
+        break;
+      }
+      bump(cost, step.currency);
+      for (const o of step.omens || []) bump(cost, o);
+      const dest = evalRecipeCond(step.success_when, item, ctx) ? step.on_success : step.on_failure;
+      if (dest === "finish") { result = recipeTargetSatisfied(item, doc.target) ? "success" : "failed"; break; }
+      if (dest === "stop") { result = "stopped"; break; }
+      if (dest === "fail") { result = "failed"; break; }
+      step = stepById[dest];
+    }
+    outcomes[result]++;
+    for (const k in cost) bump(costSum, k, cost[k]);
+  }
+
+  const p = outcomes.success / trials;
+  const perAttemptOrbs = {};
+  for (const k in costSum) perAttemptOrbs[k] = costSum[k] / trials;
+  const expectedOrbs = {};
+  if (p > 0) for (const k in costSum) expectedOrbs[k] = (costSum[k] / trials) / p;
+  return {
+    key: "recipe:" + doc.id, label: doc.name,
+    successPerAttempt: p, outcomes, perAttemptOrbs, expectedOrbs,
+    feasible: p > 0, impractical: p > 0 && p < PRACTICAL_MIN,
+    warnings: warnings.length ? warnings : undefined,
+  };
+}
+
 // Rank the known methods for hitting targetGroups on a base's mod pool.
 function rankMethods(mods, targetGroups, opts) {
   opts = opts || {};
@@ -892,4 +1043,4 @@ function rankMethods(mods, targetGroups, opts) {
   return { impossible: false, prefixTargets: pfx, suffixTargets: sfx, trials, methods };
 }
 
-module.exports = { rng, weightedPick, addMod, addModBiased, itemTags, simulateHomogenising, simulateCatalyst, simulateDesecration, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateFracture, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, simulateFinishEssence, rankFinish, rankMethods, CAP, newItem };
+module.exports = { rng, weightedPick, addMod, addModBiased, itemTags, simulateHomogenising, simulateCatalyst, simulateDesecration, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateFracture, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, simulateFinishEssence, rankFinish, rankMethods, simulateRecipe, CAP, newItem };
