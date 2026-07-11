@@ -872,22 +872,23 @@ function recipeApplyCurrency(currency, item, mods, rnd) {
     default: return null;
   }
 }
-// Apply one essence use (0.5 semantics, mirroring simulateEssence/simulateFinishEssence):
-// Lesser upgrades Normal→Magic, plain/Greater upgrade Magic→Rare, Perfect works on a Rare
-// (removes a random mod first). All add the essence's guaranteed mod for the base's class;
-// illegal when the rarity is wrong or the mod's group is already present. e comes from the
+// Apply one essence use (0.5 semantics per PoE2DB, poe2-kb crafting/reference/essences.md:
+// "An essence upgrades a Magic item to Rare and adds one guaranteed modifier ... Perfect
+// essences apply to Rare items: they remove a random modifier and add the guaranteed one").
+// Tiers only differ in rolled values / min ilvl — Lesser/Standard/Greater ALL act on Magic
+// (a Lesser≠Normal→Magic misread here was caught by the 2026-07-12 verification pass).
+// Illegal when the rarity is wrong or the mod's group is already present. e comes from the
 // server's craftEssenceOptions (so the guaranteed mod is known to exist in this pool).
 function recipeApplyEssence(e, item, rnd) {
   if (!e) return null;
-  const tier = /^Perfect\b/i.test(e.name) ? "perfect" : /^Lesser\b/i.test(e.name) ? "lesser" : "mid";
-  const need = tier === "perfect" ? "rare" : tier === "lesser" ? "normal" : "magic";
-  if (item.rarity !== need) return false;
+  const perfect = /^Perfect\b/i.test(e.name);
+  if (item.rarity !== (perfect ? "rare" : "magic")) return false;
   if (refOn(item, e.group)) return false;                       // one mod per group
-  if (tier === "perfect") {
+  if (perfect) {
     removeRandom(item, rnd);
     const full = e.type === "prefix" ? item.prefixes.length >= CAP.rare.prefix : item.suffixes.length >= CAP.rare.suffix;
     if (full) removeRandomOnSide(item, e.type, rnd);
-  } else item.rarity = tier === "lesser" ? "magic" : "rare";
+  } else item.rarity = "rare";
   (e.type === "prefix" ? item.prefixes : item.suffixes).push({ key: e.modKey, group: e.group, type: e.type, ilvl: 1 });
   return true;
 }

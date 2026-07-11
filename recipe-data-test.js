@@ -22,7 +22,9 @@ const schema = JSON.parse(fs.readFileSync(
 ok(D.generated && D.recipes && typeof D.recipes === "object", "recipe-data.js top-level shape");
 const fix = D.recipes["amulet-plus-one-spell-skills-regal-exalt"];
 ok(fix, "KB fixture recipe present");
-ok(fix.status === "extracted", "fixture status is extracted (not auto-promoted)");
+// status must mirror the KB document exactly — the gen must never touch it (promotion
+// happened IN poe2-kb 2026-07-12, with the verification record in provenance.notes).
+ok(fix.status === "verified" && /VERIFIED 2026-07-12/.test(fix.provenance.notes), "fixture status mirrors the KB doc, with its verification record");
 ok(validateRecipeDoc(fix, schema, CD).length === 0, "fixture re-validates clean");
 const modGroups = new Set(Object.values(CD.mods).map((m) => m.group));
 for (const r of fix.target.required_mods) ok(CD.mods[r.ref] || modGroups.has(r.ref), `target ref "${r.ref}" resolves against craft-data`);
