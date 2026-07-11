@@ -92,4 +92,22 @@ ok(engine.simulateRecipe(un, mods, { seed: 1, trials: 10 }).unsupported === true
 const noTargetMods = mods.filter((m) => m.group !== "GlobalIncreaseSpellSkillGemLevel");
 ok(engine.simulateRecipe(fix, noTargetMods, { seed: 1, trials: 10 }).impossible === true, "unresolvable ref in pool → impossible, not simulated");
 
+// ── exact probability evaluator (closed form vs Monte Carlo) ──
+const ex = engine.exactRecipeProbability(fix, mods);
+ok(ex && ex.method === "closed_form" && ex.feasible, "fixture qualifies for the exact evaluator");
+ok(ex.successPerAttempt > 0 && ex.successPerAttempt < 0.2, `exact odds sane (${(ex.successPerAttempt * 100).toFixed(3)}%)`);
+// the MC must agree with the closed form within sampling error (4σ on 10k trials)
+const sigma = Math.sqrt(ex.successPerAttempt * (1 - ex.successPerAttempt) / 10000);
+ok(Math.abs(r.successPerAttempt - ex.successPerAttempt) < 4 * sigma,
+  `Monte Carlo agrees with closed form (MC ${r.successPerAttempt}, exact ${ex.successPerAttempt.toFixed(5)}, 4σ ${(4 * sigma).toFixed(5)})`);
+ok(Math.abs(ex.perAttemptOrbs["Regal Orb"] - 1) < 1e-9, "exact: every attempt spends exactly 1 Regal");
+ok(Math.abs(r.perAttemptOrbs["Exalted Orb"] - ex.perAttemptOrbs["Exalted Orb"]) < 0.01, "exact and MC agree on expected Exalts per attempt");
+// non-simple moves refuse the closed form (MC stands alone)
+const chaosDoc = clone();
+chaosDoc.steps[1].currency = "Chaos Orb";
+ok(engine.exactRecipeProbability(chaosDoc, mods) === null, "chaos step → no closed form (MC only)");
+const twoTargets = clone();
+twoTargets.target.required_mods.push({ ref: "IncreasedLife", alias: null, minimum_tier: null, count: 1 });
+ok(engine.exactRecipeProbability(twoTargets, mods) === null, "multi-target → no closed form (MC only)");
+
 console.log(`recipe-data-test: ${pass} checks passed`);

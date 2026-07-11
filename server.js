@@ -4297,11 +4297,18 @@ const server = http.createServer(async (req, res) => {
       const mods = craftModList(baseName, ilvl);
       const seed = (Math.random() * 4294967296) >>> 0;
       const m = craftEngine.simulateRecipe(doc, mods, { seed });
-      const result = { recipe: { id: doc.id, name: doc.name, status: doc.status, patch: doc.patch, warnings: doc.warnings || [] }, base: baseName, ilvl, methods: [m], impossible: !!m.impossible };
+      // Closed-form evaluator where the recipe's moves are simple (null otherwise — the
+      // MC stands alone). When present it's the AUTHORITATIVE probability; the MC keeps
+      // owning decision points/outcome counts. Priced like the MC so the two compare.
+      const exact = !m.unsupported && !m.impossible ? craftEngine.exactRecipeProbability(doc, mods) : null;
+      const result = { recipe: { id: doc.id, name: doc.name, status: doc.status, patch: doc.patch, warnings: doc.warnings || [] }, base: baseName, ilvl, methods: [m], exact, impossible: !!m.impossible };
       // recipe currency labels ARE proxy display names, so the shared pricer applies as-is
       let proxy = null;
       if (m.feasible) {
         try { proxy = await getProxyData(sanitizeLeague(input.league)); priceCraftMethods(result, proxy); } catch { /* orb counts still rank */ }
+      }
+      if (exact && exact.feasible && proxy) {
+        try { const wrap = { impossible: false, methods: [exact] }; priceCraftMethods(wrap, proxy); } catch { /* unpriced exact is fine */ }
       }
       // Sell-vs-continue: price each decision point's expected REMAINING spend in divine, and
       // when the caller supplies item values, do the comparison. targetValueDiv = the finished

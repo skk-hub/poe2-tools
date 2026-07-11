@@ -893,6 +893,123 @@ function recipeStartItem(ss, mods, fillerMods, rnd) {
   return item;
 }
 
+// ── Exact probability evaluator (recipe "Later phases" 3) ──────────────────
+// Closed-form success probability + expected per-attempt orbs straight from the mod
+// weights, for recipes whose moves are SIMPLE: a linear chain of single-add currencies
+// (Transmute/Augment/Regal/Exalt tiers), ONE required target mod, target_satisfied
+// success checks, no cycles. It enumerates the start-filler and every junk-add branch
+// exactly, so side caps / consumed groups / preconditions are evaluated per state — no
+// approximation. Anything else (chaos/annul/alchemy loops, omens, essences, multi-target,
+// tier requirements) returns null and the Monte Carlo stands alone. Where both apply
+// they cross-validate: the test asserts MC agrees within sampling error.
+const EXACT_ADD_CURRENCIES = {
+  "orb of transmutation": { fromRarity: "normal", toRarity: "magic", minIlvl: 0 },
+  "orb of augmentation": { fromRarity: "magic", minIlvl: 0 },
+  "regal orb": { fromRarity: "magic", toRarity: "rare", minIlvl: 0 },
+  "exalted orb": { fromRarity: "rare", minIlvl: 0 },
+  "greater exalted orb": { fromRarity: "rare", minIlvl: 35 },
+  "perfect exalted orb": { fromRarity: "rare", minIlvl: 50 },
+};
+const EXACT_DEPTH_CAP = 3;   // branch enumeration is O(pool^depth); 3 ≈ millions, fine — 5 is not
+
+function exactRecipeProbability(doc, mods) {
+  const t = doc.target || {};
+  const ss = doc.starting_state || {};
+  if ((t.required_mods || []).length !== 1) return null;
+  const req = t.required_mods[0];
+  if (req.minimum_tier != null || (req.count || 1) > 1) return null;
+  if ((t.forbidden_mods || []).length) return null;          // junk hitting a forbidden mod needs order tracking
+  if ((ss.required_mods || []).length) return null;          // seeded starts → MC
+  const steps = doc.steps || [];
+  if (!steps.length || steps.length > EXACT_DEPTH_CAP) return null;
+  const SIMPLE_PREDICATES = new Set(["rarity_is", "open_prefixes_at_least", "open_suffixes_at_least", "has_mod", "missing_mod"]);
+  const condSimple = (c) => c.all ? c.all.every(condSimple) : c.any ? c.any.every(condSimple) : SIMPLE_PREDICATES.has(c.predicate);
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    if (s.action !== "use_currency" || !EXACT_ADD_CURRENCIES[String(s.currency).toLowerCase()]) return null;
+    if (!s.success_when || s.success_when.expression !== "target_satisfied") return null;
+    if (s.on_success !== "finish") return null;
+    const next = steps[i + 1];
+    if (!(s.on_failure === "stop" || s.on_failure === "fail" || (next && s.on_failure === next.id))) return null;
+    if (!(s.preconditions || []).every(condSimple)) return null;
+  }
+  for (const sc of doc.stop_conditions || []) {              // only the standard pair — extra semantics → MC
+    const e = sc.expression && sc.expression.expression;
+    if (e !== "target_satisfied" && e !== "no_legal_transition") return null;
+  }
+
+  const isTarget = (m) => m.key === req.ref || m.group === req.ref;
+  const excluded = new Set();                                // filler exclusions — mirrors simulateRecipe
+  for (const lists of [t.required_mods, ss.forbidden_mods]) {
+    for (const r of lists || []) for (const m of mods) if (m.key === r.ref || m.group === r.ref) excluded.add(m.group);
+  }
+  const sideCount = (present, type) => { let n = 0; for (const m of present) if (m.type === type) n++; return n; };
+  const refOnPresent = (present, ref) => present.some((m) => m.key === ref || m.group === ref);
+  const preOk = (c, rarity, present) => {
+    if (c.all) return c.all.every((x) => preOk(x, rarity, present));
+    if (c.any) return c.any.some((x) => preOk(x, rarity, present));
+    switch (c.predicate) {
+      case "rarity_is": return rarity === c.value;
+      case "open_prefixes_at_least": return CAP[rarity].prefix - sideCount(present, "prefix") >= c.value;
+      case "open_suffixes_at_least": return CAP[rarity].suffix - sideCount(present, "suffix") >= c.value;
+      case "has_mod": return refOnPresent(present, c.ref);
+      case "missing_mod": return !refOnPresent(present, c.ref);
+      default: return false;
+    }
+  };
+
+  let pSuccess = 0;
+  const orbUse = {};
+  function walk(i, rarity, present, prob) {
+    if (prob <= 0 || i >= steps.length) return;
+    const s = steps[i];
+    const cur = EXACT_ADD_CURRENCIES[String(s.currency).toLowerCase()];
+    if (!(s.preconditions || []).every((c) => preOk(c, rarity, present))) return;   // stopped, no spend
+    if (cur.fromRarity && cur.fromRarity !== rarity) return;                        // illegal use, no spend
+    const nextRarity = cur.toRarity || rarity;
+    const pFull = sideCount(present, "prefix") >= CAP[nextRarity].prefix;
+    const sFull = sideCount(present, "suffix") >= CAP[nextRarity].suffix;
+    const groups = present.map((m) => m.group);
+    const elig = [];
+    let W = 0, Wt = 0;
+    for (const m of mods) {
+      if (cur.minIlvl && m.ilvl < cur.minIlvl) continue;
+      if (m.type === "prefix" ? pFull : sFull) continue;
+      if (groups.indexOf(m.group) >= 0) continue;
+      elig.push(m); W += m.weight;
+      if (isTarget(m)) Wt += m.weight;
+    }
+    if (!(W > 0)) return;                                                           // addMod would fail → stopped
+    orbUse[s.currency] = (orbUse[s.currency] || 0) + prob;
+    pSuccess += prob * (Wt / W);
+    const next = steps[i + 1];
+    if (!next || s.on_failure !== next.id) return;                                  // a miss ends the recipe
+    for (const m of elig) {
+      if (isTarget(m)) continue;
+      walk(i + 1, nextRarity, present.concat(m), prob * (m.weight / W));
+    }
+  }
+
+  // Start states — mirror recipeStartItem: fill to cap minus minimum_open with filler
+  // (excluded groups removed). Exact supports ≤1 filler slot; more → MC.
+  const cap = CAP[ss.rarity];
+  const fillP = Math.max(0, cap.prefix - (ss.minimum_open_prefixes || 0));
+  const fillS = Math.max(0, cap.suffix - (ss.minimum_open_suffixes || 0));
+  if (fillP + fillS > 1) return null;
+  if (fillP + fillS === 0) walk(0, ss.rarity, [], 1);
+  else {
+    const side = fillP ? "prefix" : "suffix";
+    const cands = mods.filter((m) => m.type === side && !excluded.has(m.group));
+    const Wf = cands.reduce((s2, m) => s2 + m.weight, 0);
+    if (!(Wf > 0)) walk(0, ss.rarity, [], 1);                                       // no filler available → empty start
+    else for (const f of cands) walk(0, ss.rarity, [f], f.weight / Wf);
+  }
+
+  const expectedOrbs = {};
+  if (pSuccess > 0) for (const k in orbUse) expectedOrbs[k] = orbUse[k] / pSuccess;
+  return { method: "closed_form", successPerAttempt: pSuccess, perAttemptOrbs: orbUse, expectedOrbs, feasible: pSuccess > 0 };
+}
+
 // Monte Carlo a recipe-v1 document over a base's eligible mod pool. opts: {trials, seed}.
 // Returns rankMethods-method shape (successPerAttempt/expectedOrbs/feasible + outcome
 // counts) so the existing pricing + UI rendering apply unchanged.
@@ -1070,4 +1187,4 @@ function rankMethods(mods, targetGroups, opts) {
   return { impossible: false, prefixTargets: pfx, suffixTargets: sfx, trials, methods };
 }
 
-module.exports = { rng, weightedPick, addMod, addModBiased, itemTags, simulateHomogenising, simulateCatalyst, simulateDesecration, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateFracture, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, simulateFinishEssence, rankFinish, rankMethods, simulateRecipe, CAP, newItem };
+module.exports = { rng, weightedPick, addMod, addModBiased, itemTags, simulateHomogenising, simulateCatalyst, simulateDesecration, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateFracture, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, simulateFinishEssence, rankFinish, rankMethods, simulateRecipe, exactRecipeProbability, CAP, newItem };
