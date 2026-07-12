@@ -3021,21 +3021,8 @@ function desecratedPoolN(faction, type) {
 
 // craft-engine's essence input. Only essences whose forced mod exists in the normal
 // pool (some Perfect/essence-exclusive mods aren't in ModItem) and is reachable at ilvl.
-function craftEssenceOptions(baseName, itemLevel) {
-  if (!CRAFT_DATA || !CRAFT_DATA.essences) return [];
-  const base = CRAFT_DATA.bases[baseName];
-  if (!base) return [];
-  const cls = base.class, ilvl = Math.max(1, Math.min(100, itemLevel | 0 || 100));
-  const out = [];
-  for (const [name, e] of Object.entries(CRAFT_DATA.essences)) {
-    const mk = e.mods && e.mods[cls];
-    if (!mk) continue;
-    const m = CRAFT_DATA.mods[mk];
-    if (!m || m.ilvl > ilvl) continue;                 // essence-exclusive mod, or tier needs higher ilvl
-    out.push({ name, modKey: mk, group: m.group, type: m.type === "Prefix" ? "prefix" : "suffix", stat: m.stats[0] || "" });
-  }
-  return out;
-}
+// moved into craft-engine.js so the tests/tools build the same essence list the server serves
+const craftEssenceOptions = (baseName, itemLevel) => craftEngine.craftEssenceOptions(CRAFT_DATA, baseName, itemLevel);
 
 // Phase 3: price each crafting method in Divine via the poe.ninja proxy, then rank by real
 // cost (not raw orb count) — Chaos/omens are far pricier than Transmute/Alchemy, so this

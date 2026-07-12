@@ -1340,4 +1340,25 @@ function craftModList(data, baseName, itemLevel) {
   return list;
 }
 
-module.exports = { rng, weightedPick, addMod, addModBiased, itemTags, simulateHomogenising, simulateCatalyst, simulateDesecration, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateFracture, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, simulateFinishEssence, rankFinish, rankMethods, simulateRecipe, exactRecipeProbability, recipeApplyCurrency, ORB_TIER, craftWeightFor, craftEffWeight, craftModList, CAP, newItem };
+// The essences applicable to one base at one item level. Lives here for the same reason
+// craftModList does: it was server-only, so anything outside server.js that tried to simulate
+// an essence recipe passed no essence list and got a FALSE "essence not applicable" — the
+// harvest loop's engine-gap reporter did exactly that and cried wolf on two perfectly good
+// recipes. One definition, shared by the server, the tests, and the tools.
+function craftEssenceOptions(data, baseName, itemLevel) {
+  if (!data || !data.essences) return [];
+  const base = data.bases[baseName];
+  if (!base) return [];
+  const cls = base.class, ilvl = Math.max(1, Math.min(100, itemLevel | 0 || 100));
+  const out = [];
+  for (const [name, e] of Object.entries(data.essences)) {
+    const mk = e.mods && e.mods[cls];
+    if (!mk) continue;
+    const m = data.mods[mk];
+    if (!m || m.ilvl > ilvl) continue;                 // essence-exclusive mod, or tier needs higher ilvl
+    out.push({ name, modKey: mk, group: m.group, type: m.type === "Prefix" ? "prefix" : "suffix", stat: m.stats[0] || "" });
+  }
+  return out;
+}
+
+module.exports = { rng, weightedPick, addMod, addModBiased, itemTags, craftEssenceOptions, simulateHomogenising, simulateCatalyst, simulateDesecration, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateFracture, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, simulateFinishEssence, rankFinish, rankMethods, simulateRecipe, exactRecipeProbability, recipeApplyCurrency, ORB_TIER, craftWeightFor, craftEffWeight, craftModList, CAP, newItem };
