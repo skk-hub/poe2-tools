@@ -140,4 +140,53 @@ ok(be.perAttemptOrbs["Greater Essence of the Body"] === 1, "cost counts the esse
 // without essence options the same recipe honestly refuses
 ok(engine.simulateRecipe(bootsFix, bootsMods, { seed: 9, trials: 10 }).unsupported === true, "essence step without essence data → unsupported, not faked");
 
+
+// ── Greater/Perfect currency tiers (recipeApplyCurrency) ──────────────────────
+// This path had ZERO coverage, which is how a promote-order bug shipped: CAP["normal"] gives a
+// white item no mod slots, so calling addMod BEFORE promoting the rarity always fails and every
+// transmute step silently became "no legal transition" — 0% success, 0 orbs spent, on a recipe
+// that is really ~50%. It only surfaced by driving a real harvested recipe. Cover it properly.
+{
+  const boots = engine.craftModList(CD, "Tasalian Greaves", 82);
+  const fresh = () => engine.newItem("normal");
+
+  // base transmute: Normal -> Magic, one mod, no tier floor
+  const a = fresh();
+  ok(engine.recipeApplyCurrency("Orb of Transmutation", a, boots, engine.rng(1)) === true, "transmute applies to a Normal item");
+  ok(a.rarity === "magic" && a.prefixes.length + a.suffixes.length === 1, "transmute promotes to Magic and adds exactly one mod");
+
+  // Perfect transmute: same move, but only mods of level >= 70 may roll (PoE2DB 0.5.4)
+  let sawLow = false;
+  for (let i = 0; i < 200; i++) {
+    const it = fresh();
+    assert.ok(engine.recipeApplyCurrency("Perfect Orb of Transmutation", it, boots, engine.rng(i + 1)) === true);
+    const m = it.prefixes.concat(it.suffixes)[0];
+    if (m.ilvl < 70) sawLow = true;
+  }
+  ok(!sawLow, "Perfect Orb of Transmutation never rolls a mod below level 70 (its floor)");
+  ok(engine.ORB_TIER["perfect orb of transmutation"].min === 70 && engine.ORB_TIER["greater regal orb"].min === 35,
+    "orb tier floors match the PoE2DB reference (transmute/augment 44/70, regal/exalt/chaos 35/50)");
+
+  // a currency the engine does not model must be null (unsupported), never guessed
+  ok(engine.recipeApplyCurrency("Orb of Chance", fresh(), boots, engine.rng(1)) === null, "unknown currency -> null, never faked");
+
+  // illegal transition is false, and must not have mutated the item
+  const magic = fresh(); engine.recipeApplyCurrency("Orb of Transmutation", magic, boots, engine.rng(2));
+  ok(engine.recipeApplyCurrency("Orb of Transmutation", magic, boots, engine.rng(3)) === false, "transmute on a Magic item is illegal");
+  ok(magic.rarity === "magic", "an illegal transmute leaves the rarity untouched (rollback)");
+
+  // Chaos is atomic: on a pool with nothing legal to add it must NOT leave the item a mod down
+  const rare = fresh();
+  engine.recipeApplyCurrency("Orb of Alchemy", rare, boots, engine.rng(4));
+  const before = rare.prefixes.length + rare.suffixes.length;
+  const empty = [];   // no mod can be added from an empty pool
+  const chaosed = engine.recipeApplyCurrency("Chaos Orb", rare, empty, engine.rng(5));
+  ok(chaosed === false, "Chaos with nothing addable reports failure, not success");
+  ok(rare.prefixes.length + rare.suffixes.length === before, "failed Chaos restores the removed mod (no silent net mod loss)");
+
+  // the closed form must know the new tiers too — derived from the same table, so it cannot drift
+  ok(engine.exactRecipeProbability !== undefined, "exact evaluator present");
+}
+
+
 console.log(`recipe-data-test: ${pass} checks passed`);

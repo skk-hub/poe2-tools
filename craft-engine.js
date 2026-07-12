@@ -863,19 +863,83 @@ function evalRecipeCond(c, item, ctx) {
     default: return false;
   }
 }
+// Greater/Perfect variants of a currency do EXACTLY what the base orb does, but enforce a
+// minimum modifier level (i.e. only higher-tier mods can roll). Straight from the PoE2DB 0.5.4
+// reference in the KB (crafting/reference/currency.md): "Greater/Perfect variants do the same
+// thing but enforce a higher minimum modifier level. Base orbs have no minimum."
+//   Transmutation / Augmentation : Greater 44, Perfect 70
+//   Regal / Exalted / Chaos      : Greater 35, Perfect 50
+// Not invented — if GGG changes these, change them here and in that reference doc together.
+const ORB_TIER = {
+  "orb of transmutation": { base: "transmute", min: 0 },
+  "greater orb of transmutation": { base: "transmute", min: 44 },
+  "perfect orb of transmutation": { base: "transmute", min: 70 },
+  "orb of augmentation": { base: "augment", min: 0 },
+  "greater orb of augmentation": { base: "augment", min: 44 },
+  "perfect orb of augmentation": { base: "augment", min: 70 },
+  "regal orb": { base: "regal", min: 0 },
+  "greater regal orb": { base: "regal", min: 35 },
+  "perfect regal orb": { base: "regal", min: 50 },
+  "exalted orb": { base: "exalt", min: 0 },
+  "greater exalted orb": { base: "exalt", min: 35 },
+  "perfect exalted orb": { base: "exalt", min: 50 },
+  "chaos orb": { base: "chaos", min: 0 },
+  "greater chaos orb": { base: "chaos", min: 35 },
+  "perfect chaos orb": { base: "chaos", min: 50 },
+  "orb of alchemy": { base: "alchemy", min: 0 },
+  "orb of annulment": { base: "annul", min: 0 },
+};
+
 // Apply one currency use. true = applied, false = illegal here (no legal transition),
 // null = this engine can't model that currency yet.
+//
+// addMod's RETURN VALUE IS LOAD-BEARING and used to be discarded on transmute/regal/alchemy/
+// chaos: on an exhausted pool (every legal group already present, or a minIlvl floor no mod
+// clears) the add silently no-ops. For Chaos that is worse than a no-op — it removed a mod
+// first, so the item came out a mod DOWN and the step still reported success, and the
+// `no_legal_transition` stop condition could never fire. Propagate it, and make Chaos atomic.
 function recipeApplyCurrency(currency, item, mods, rnd) {
-  switch (String(currency).toLowerCase()) {
-    case "orb of transmutation": if (item.rarity !== "normal") return false; item.rarity = "magic"; addMod(item, mods, rnd); return true;
-    case "orb of augmentation": return item.rarity === "magic" ? addMod(item, mods, rnd) : false;
-    case "regal orb": if (item.rarity !== "magic") return false; item.rarity = "rare"; addMod(item, mods, rnd); return true;
-    case "orb of alchemy": if (item.rarity !== "normal") return false; item.rarity = "rare"; for (let i = 0; i < 4; i++) addMod(item, mods, rnd); return true;
-    case "exalted orb": return item.rarity === "rare" ? addMod(item, mods, rnd) : false;
-    case "greater exalted orb": return item.rarity === "rare" ? addMod(item, mods, rnd, null, 35) : false;
-    case "perfect exalted orb": return item.rarity === "rare" ? addMod(item, mods, rnd, null, 50) : false;
-    case "chaos orb": if (item.rarity !== "rare" || !removeRandom(item, rnd)) return false; addMod(item, mods, rnd); return true;
-    case "orb of annulment": return item.rarity === "rare" ? removeRandom(item, rnd) : false;
+  const t = ORB_TIER[String(currency).toLowerCase()];
+  if (!t) return null;
+  const min = t.min || undefined;
+  switch (t.base) {
+    // Rarity MUST be promoted BEFORE addMod: CAP["normal"] gives a white item zero mod slots,
+    // so an add attempted while still Normal always fails. Promote, then add, then roll the
+    // rarity back if the add couldn't happen — atomic either way, and never a promoted item
+    // carrying no new mod.
+    case "transmute": {
+      if (item.rarity !== "normal") return false;
+      item.rarity = "magic";
+      if (!addMod(item, mods, rnd, null, min)) { item.rarity = "normal"; return false; }
+      return true;
+    }
+    case "augment":
+      return item.rarity === "magic" ? addMod(item, mods, rnd, null, min) : false;
+    case "regal": {
+      if (item.rarity !== "magic") return false;
+      item.rarity = "rare";
+      if (!addMod(item, mods, rnd, null, min)) { item.rarity = "magic"; return false; }
+      return true;
+    }
+    case "exalt":
+      return item.rarity === "rare" ? addMod(item, mods, rnd, null, min) : false;
+    case "alchemy": {
+      if (item.rarity !== "normal") return false;
+      item.rarity = "rare";
+      if (!addMod(item, mods, rnd)) { item.rarity = "normal"; return false; }
+      for (let i = 0; i < 3; i++) addMod(item, mods, rnd);      // 4 mods total; a short pool just yields fewer
+      return true;
+    }
+    case "chaos": {
+      // atomic: if the add can't happen, put the removed mod back rather than shipping a loss
+      if (item.rarity !== "rare") return false;
+      const pre = item.prefixes.slice(), suf = item.suffixes.slice();
+      if (!removeRandom(item, rnd)) return false;
+      if (!addMod(item, mods, rnd, null, min)) { item.prefixes = pre; item.suffixes = suf; return false; }
+      return true;
+    }
+    case "annul":
+      return item.rarity === "rare" ? removeRandom(item, rnd) : false;
     default: return null;
   }
 }
@@ -930,14 +994,24 @@ function recipeStartItem(ss, mods, fillerMods, rnd) {
 // approximation. Anything else (chaos/annul/alchemy loops, omens, essences, multi-target,
 // tier requirements) returns null and the Monte Carlo stands alone. Where both apply
 // they cross-validate: the test asserts MC agrees within sampling error.
-const EXACT_ADD_CURRENCIES = {
-  "orb of transmutation": { fromRarity: "normal", toRarity: "magic", minIlvl: 0 },
-  "orb of augmentation": { fromRarity: "magic", minIlvl: 0 },
-  "regal orb": { fromRarity: "magic", toRarity: "rare", minIlvl: 0 },
-  "exalted orb": { fromRarity: "rare", minIlvl: 0 },
-  "greater exalted orb": { fromRarity: "rare", minIlvl: 35 },
-  "perfect exalted orb": { fromRarity: "rare", minIlvl: 50 },
+// DERIVED from ORB_TIER, not a second hand-maintained list: the closed form and the Monte
+// Carlo must agree on what a currency does, and the surest way to guarantee that is to give
+// them one source of truth. (They previously drifted by construction — the MC knew only
+// Greater/Perfect Exalted, so a Perfect Orb of Transmutation recipe was `unsupported` in the
+// MC while this table decided separately what the closed form would accept.)
+// Only SINGLE-ADD currencies qualify; chaos/alchemy/annul aren't add-one moves, so they fall
+// out automatically by not having a shape here, and the closed form correctly returns null.
+const EXACT_ADD_SHAPE = {
+  transmute: { fromRarity: "normal", toRarity: "magic" },
+  augment: { fromRarity: "magic" },
+  regal: { fromRarity: "magic", toRarity: "rare" },
+  exalt: { fromRarity: "rare" },
 };
+const EXACT_ADD_CURRENCIES = {};
+for (const [name, t] of Object.entries(ORB_TIER)) {
+  const shape = EXACT_ADD_SHAPE[t.base];
+  if (shape) EXACT_ADD_CURRENCIES[name] = { ...shape, minIlvl: t.min || 0 };
+}
 const EXACT_DEPTH_CAP = 3;   // branch enumeration is O(pool^depth); 3 ≈ millions, fine — 5 is not
 
 function exactRecipeProbability(doc, mods) {
@@ -1266,4 +1340,4 @@ function craftModList(data, baseName, itemLevel) {
   return list;
 }
 
-module.exports = { rng, weightedPick, addMod, addModBiased, itemTags, simulateHomogenising, simulateCatalyst, simulateDesecration, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateFracture, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, simulateFinishEssence, rankFinish, rankMethods, simulateRecipe, exactRecipeProbability, craftWeightFor, craftEffWeight, craftModList, CAP, newItem };
+module.exports = { rng, weightedPick, addMod, addModBiased, itemTags, simulateHomogenising, simulateCatalyst, simulateDesecration, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateFracture, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, simulateFinishEssence, rankFinish, rankMethods, simulateRecipe, exactRecipeProbability, recipeApplyCurrency, ORB_TIER, craftWeightFor, craftEffWeight, craftModList, CAP, newItem };
