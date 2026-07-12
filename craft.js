@@ -406,22 +406,35 @@ window.__viewInit["craft"] = function () {
       const scope = (rc.target.bases && rc.target.bases.length ? rc.target.bases.join(" / ") : rc.target.base_classes.join(" / ")) +
         (rc.target.minimum_item_level > 1 ? ` · iL${rc.target.minimum_item_level}+` : "");
       const warn = (rc.warnings || []).map((w) => `<div class="cf-recipe-warn">⚠ ${esc(w)}</div>`).join("");
+      // "verified" only means the MECHANICS check out — it does not mean anyone documented this
+      // craft. An uncited recipe must not look identical to one backed by a real guide.
+      const uncited = rc.sourced === false
+        ? ` <span class="cf-runcited" title="No source: the mechanics and identifiers check out, but no guide or VOD documents this route — it is an in-house construction, not a cited craft.">uncited</span>` : "";
       return `<div class="cf-recipe" data-i="${i}"><div class="cf-recipe-top">` +
-        `<span class="cf-recipe-name">${esc(rc.name)} <span class="cf-rstatus cf-rstatus-${esc(rc.status)}" title="lifecycle status">${esc(rc.status)}</span> <span class="cf-gmeta">patch ${esc(rc.patch)}</span></span>` +
+        `<span class="cf-recipe-name">${esc(rc.name)} <span class="cf-rstatus cf-rstatus-${esc(rc.status)}" title="lifecycle status">${esc(rc.status)}</span>${uncited} <span class="cf-gmeta">patch ${esc(rc.patch)}</span></span>` +
         `<button type="button" class="btn btn-sm cf-recipe-sim" data-i="${i}">Simulate</button></div>` +
         `<div class="cf-recipe-scope muted">${esc(scope)}</div><div class="cf-advise-chips">${mods}</div>${warn}` +
         `<div class="cf-recipe-out" data-i="${i}"></div></div>`;
     }).join("");
     recipeList.querySelectorAll(".cf-recipe-sim").forEach((b) => b.addEventListener("click", () => simRecipe(Number(b.dataset.i), b)));
   }
-  async function simRecipe(i, btn) {
+  // vals = { targetValueDiv, baseCostDiv } — what the finished item sells for and what the
+  // Magic base costs. Both caller-supplied (never invented); without them the server returns
+  // odds + spend only and no EV. WITH them the whole profit layer lights up: expected profit
+  // per attempt, the unprofitable-recipe flag, and per-step sell-vs-continue advice.
+  async function simRecipe(i, btn, vals) {
     const rc = recipes[i], outEl = recipeList.querySelector(`.cf-recipe-out[data-i="${i}"]`);
     const base = recipeBase(rc);
     if (!base) { outEl.innerHTML = `<div class="cf-simerr">No known base matches this recipe.</div>`; return; }
     const ilvl = Math.max(rc.target.minimum_item_level || 1, Math.min(100, parseInt(ilvlIn.value, 10) || 82));
+    const tv = vals && Number(vals.targetValueDiv) > 0 ? Number(vals.targetValueDiv) : null;
+    const bc = vals && Number(vals.baseCostDiv) > 0 ? Number(vals.baseCostDiv) : null;
     btn.disabled = true; outEl.innerHTML = `<div class="cf-simload">Simulating on ${esc(base)} (iL${ilvl})…</div>`;
     try {
-      const r = await fetch("/api/craft/recipe-sim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: rc.id, base, ilvl }) });
+      const body = { id: rc.id, base, ilvl };
+      if (tv != null) body.targetValueDiv = tv;
+      if (bc != null) body.baseCostDiv = bc;
+      const r = await fetch("/api/craft/recipe-sim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await r.json();
       if (d.error) { outEl.innerHTML = `<div class="cf-simerr">${esc(d.error)}</div>`; return; }
       const m = d.methods && d.methods[0];
@@ -432,17 +445,63 @@ window.__viewInit["craft"] = function () {
       const div = d.exact && d.exact.divineCost != null ? d.exact.divineCost : m.divineCost;
       const pct = p >= 0.995 ? "100%" : (p * 100).toFixed(p >= 0.1 ? 0 : p >= 0.01 ? 1 : 2) + "%";
       const fmtTiny = (n) => n >= 0.01 ? fmtDiv(n) : n > 0 ? n.toFixed(4) : "0";   // a step's marginal spend is often sub-cent
+      // fmtTiny is for COSTS — always ≥ 0, so it collapses anything negative to "0". EV and
+      // EV(continue) go negative all the time (that IS the finding: an unprofitable craft), and
+      // rendering -0.1737 as "0" would show a money-loser as break-even. Sign it explicitly.
+      const fmtEv = (n) => (n < 0 ? "−" : "+") + (Math.abs(n) >= 0.01 ? fmtDiv(Math.abs(n)) : Math.abs(n).toFixed(4));
+      const hasEv = m.expectedProfitDiv != null;
       const dps = (m.decisionPoints || []).map((dp) =>
         `<tr><td>${esc(dp.step)}</td><td>${esc(dp.currency || dp.action)}</td>` +
         `<td>${(dp.successGivenReached * 100).toFixed(dp.successGivenReached >= 0.1 ? 0 : 1)}%</td>` +
-        `<td>${dp.remainingDivineCost != null ? fmtTiny(dp.remainingDivineCost) + " div" : fmtOrbs(dp.remainingOrbs)}</td></tr>`).join("");
+        `<td>${dp.remainingDivineCost != null ? fmtTiny(dp.remainingDivineCost) + " div" : fmtOrbs(dp.remainingOrbs)}</td>` +
+        (hasEv ? `<td>${dp.continueEvDiv != null ? fmtEv(dp.continueEvDiv) + " div" : "—"}</td>` : "") + `</tr>`).join("");
+      // Profit panel. The server only computes EV when we quote it real market values, so the
+      // inputs ARE the feature — without them the recipe layer can tell you the odds but not
+      // whether the craft is worth doing. Base cost matters most: at ~1%/attempt you buy ~90
+      // bases, which routinely dwarfs the orb bill.
+      const evRow = hasEv
+        ? `<div class="cf-recipe-ev-out ${m.expectedProfitDiv >= 0 ? "good" : "bad"}">` +
+          `<b>${fmtEv(m.expectedProfitDiv)} div</b> expected profit per attempt` +
+          `<span class="cf-ev-break"> — spend ${fmtTiny(m.perAttemptDivineCost)}/attempt (${fmtTiny(m.perAttemptOrbCostDiv || 0)} orbs + ${fmtTiny(m.perAttemptBaseCostDiv || 0)} base)` +
+          (m.divineCostWithBase != null ? ` · ${fmtDiv(m.divineCostWithBase)} div all-in per success` : "") + `</span></div>`
+        : "";
       outEl.innerHTML = `<div class="cf-simresult">` +
         `<div class="cf-method best"><div class="cf-method-top"><span class="cf-method-name">On ${esc(base)} (iL${ilvl})${d.exact ? ` <span class="cf-est" title="closed-form probability from mod weights (exact, not sampled)">exact</span>` : ""}</span>` +
         `<span class="cf-method-cost">${div != null ? `<b>${fmtDiv(div)}</b> div` : fmtOrbs(m.expectedOrbs)}</span></div>` +
-        `<div class="cf-method-sub">lands ${pct}/attempt · ${fmtOrbs(m.expectedOrbs)} expected</div></div>` +
+        `<div class="cf-method-sub">lands ${pct}/attempt · ${fmtOrbs(m.expectedOrbs)} expected${div != null ? " (orbs only)" : ""}</div></div>` +
         (d.marketFlag ? `<div class="cf-simwarn">${esc(d.marketFlag)}</div>` : "") +
-        (dps ? `<table class="cf-recipe-dps"><thead><tr><th>step</th><th>uses</th><th title="chance of finishing the recipe from this point">P(success)</th><th title="expected further spend from this point — compare vs selling the item as-is">cost from here</th></tr></thead><tbody>${dps}</tbody></table>` : "") +
+        `<div class="cf-recipe-ev">` +
+          `<label>Sells for <input type="number" class="cf-ev-target" min="0" step="0.1" value="${tv != null ? tv : ""}" placeholder="div"></label>` +
+          `<label>Base costs <input type="number" class="cf-ev-base" min="0" step="0.1" value="${bc != null ? bc : ""}" placeholder="div"></label>` +
+          `<button type="button" class="btn btn-sm cf-ev-go">Score profit</button>` +
+          (d.resale ? `<button type="button" class="btn btn-sm cf-ev-lookup">Look up sale price</button><span class="cf-ev-lookout"></span>` : "") +
+        `</div>` + evRow +
+        (dps ? `<table class="cf-recipe-dps"><thead><tr><th>step</th><th>uses</th><th title="chance of finishing the recipe from this point">P(success)</th><th title="expected further spend from this point — the base is already sunk, so it is not counted here">cost from here</th>${hasEv ? `<th title="expected value of continuing — sell instead if the item in hand beats this">EV(continue)</th>` : ""}</tr></thead><tbody>${dps}</tbody></table>` : "") +
         `</div>`;
+      // re-simulate with the quoted values — the EV layer only exists once we have them
+      const getVals = () => ({
+        targetValueDiv: outEl.querySelector(".cf-ev-target").value,
+        baseCostDiv: outEl.querySelector(".cf-ev-base").value,
+      });
+      outEl.querySelector(".cf-ev-go").addEventListener("click", () => simRecipe(i, btn, getVals()));
+      // Prefill "sells for" from the live market: saleDiv is robustResalePrice's anchor
+      // (stale/lowball-proofed), NOT the raw cheapest ask.
+      const lookup = outEl.querySelector(".cf-ev-lookup");
+      if (lookup) lookup.addEventListener("click", async () => {
+        const out = outEl.querySelector(".cf-ev-lookout");
+        lookup.disabled = true; out.textContent = " checking…";
+        try {
+          const rr = await fetch("/api/craft/resale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...d.resale, league: d.league }) });
+          const rd = await rr.json();
+          if (rd.limited) { out.textContent = " Trade is rate-limited — try again shortly."; return; }
+          if (rd.error) { out.textContent = " " + rd.error; return; }
+          if (rd.saleDiv == null) { out.textContent = rd.count ? ` ~${rd.count} listed, none priced in divine` : " none listed like this"; return; }
+          outEl.querySelector(".cf-ev-target").value = rd.saleDiv;
+          out.innerHTML = ` <b>${fmtDiv(rd.saleDiv)}</b> div (${rd.count} listed${rd.thin ? ", thin market" : ""})` +
+            (rd.url ? ` · <a href="${esc(rd.url)}" target="_blank" rel="noopener">view</a>` : "");
+        } catch (e) { out.textContent = " lookup failed"; }
+        finally { lookup.disabled = false; }
+      });
     } catch (e) { outEl.innerHTML = `<div class="cf-simerr">Failed: ${esc(e.message || e)}</div>`; }
     finally { btn.disabled = false; }
   }

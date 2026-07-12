@@ -2,6 +2,13 @@
 // Given a base's eligible mod pool + a set of target mod GROUPS, it simulates known
 // crafting methods and reports success chance + expected currency spend. Zero-dep.
 //
+// The POOL BUILDER (craftModList, below) lives here rather than in server.js so that the
+// server and the tests build the pool the SAME way. It used to live in server.js only, so
+// every test reimplemented a naive raw-PoB-weight pool — which meant the closed-form-vs-MC
+// cross-validation ran on a pool no user ever gets, and silently skipped the Craft-of-Exile
+// spawn-weight overlay that is the whole point of craftEffWeight. (Symptom: the fixture
+// documented at 3.1074% actually serves 1.0790% — same code, two different pools.)
+//
 // Mechanics (PoE2 patch 0.5 "Runes of Aldur", sourced from maxroll's crafting overview +
 // community consensus — NOT invented):
 //   - Transmutation: Normal → Magic, +1 affix
@@ -1218,4 +1225,45 @@ function rankMethods(mods, targetGroups, opts) {
   return { impossible: false, prefixTargets: pfx, suffixTargets: sfx, trials, methods };
 }
 
-module.exports = { rng, weightedPick, addMod, addModBiased, itemTags, simulateHomogenising, simulateCatalyst, simulateDesecration, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateFracture, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, simulateFinishEssence, rankFinish, rankMethods, simulateRecipe, exactRecipeProbability, CAP, newItem };
+// ── Mod pool builder (shared by server.js AND the tests — see header note) ─────
+const { archetypeKey } = require("./craft-archetype.js");
+
+// PoB's binary tag weight decides ELIGIBILITY: the first tag in a mod's ordered `weights`
+// list that the base carries wins; "default" matches everything (usually 0 = can't spawn).
+function craftWeightFor(mod, tagset) {
+  for (const [tag, w] of mod.weights) { if (tag === "default" || tagset.has(tag)) return w; }
+  return 0;
+}
+
+// Effective spawn weight: PoB's binary weight is authoritative for ELIGIBILITY (0 = the mod
+// cannot roll on this base), but when eligible we use the REAL Craft-of-Exile weight baked as
+// mod.cw[archetype]. Unmatched mods keep the binary weight, so odds are never worse than before.
+// archKey = the base's CoE archetype (null → binary only).
+function craftEffWeight(mod, tagset, archKey) {
+  const binW = craftWeightFor(mod, tagset);
+  if (binW <= 0) return 0;                         // ineligible on this base
+  const cw = archKey && mod.cw ? mod.cw[archKey] : undefined;
+  return cw != null ? cw : binW;                   // real weight, else binary fallback
+}
+
+// The eligible prefix/suffix pool for one base at one item level. `data` is craft-data.js.
+// This is THE pool — anything that reasons about odds must build it through here, or it is
+// reasoning about a base that does not exist.
+function craftModList(data, baseName, itemLevel) {
+  if (!data) return null;
+  const base = data.bases[baseName];
+  if (!base) return null;
+  const ilvl = Math.max(1, Math.min(100, itemLevel | 0 || 100));
+  const tagset = new Set(base.tags);
+  const archKey = archetypeKey(base.class, base.tags);
+  const list = [];
+  for (const [key, m] of Object.entries(data.mods)) {
+    if (m.ilvl > ilvl) continue;
+    const w = craftEffWeight(m, tagset, archKey);
+    if (w <= 0) continue;
+    list.push({ key, type: m.type === "Prefix" ? "prefix" : "suffix", group: m.group, weight: w, ilvl: m.ilvl, tags: m.tags || [] });
+  }
+  return list;
+}
+
+module.exports = { rng, weightedPick, addMod, addModBiased, itemTags, simulateHomogenising, simulateCatalyst, simulateDesecration, removeRandom, removeLowestIlvl, removeLowestIlvlOnSide, removeRandomOnSide, directedFill, hasAllTargets, craftFresh, simulateFresh, simulateChaosSpam, simulateEssence, simulateWhittling, simulateErasureChaos, simulateAnnulExalt, simulateFracture, simulateDirected, seedItem, simulateFinish, simulateFinishAnnul, simulateFinishEssence, rankFinish, rankMethods, simulateRecipe, exactRecipeProbability, craftWeightFor, craftEffWeight, craftModList, CAP, newItem };

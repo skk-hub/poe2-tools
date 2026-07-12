@@ -61,16 +61,14 @@ try {
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 
 // ── step machine: seeded Monte Carlo on a real amulet pool ──
-const base = CD.bases["Jade Amulet"];
-const tagset = new Set(base.tags);
-const weightFor = (m) => { for (const [t, w] of m.weights) if (t === "default" || tagset.has(t)) return w; return 0; };
-const mods = [];
-for (const [key, m] of Object.entries(CD.mods)) {
-  if (m.ilvl > 80) continue;
-  const w = weightFor(m);
-  if (w > 0) mods.push({ key, type: m.type === "Prefix" ? "prefix" : "suffix", group: m.group, weight: w, ilvl: m.ilvl, tags: m.tags || [] });
-}
+// Build the pool through the SAME builder the server serves from (engine.craftModList).
+// This test used to hand-roll a raw-PoB-weight pool, which skipped the Craft-of-Exile
+// spawn-weight overlay — so the closed-form-vs-MC cross-check below validated a pool no
+// user ever gets (it agreed at 3.107% while the server served 1.079% for the same recipe).
+// If this ever diverges from what /api/craft/recipe-sim returns, the cross-check is lying.
+const mods = engine.craftModList(CD, "Jade Amulet", 80);
 ok(mods.some((m) => m.group === "GlobalIncreaseSpellSkillGemLevel"), "target group in the amulet pool at ilvl 80");
+ok(mods.some((m) => m.weight > 1), "pool carries real Craft-of-Exile spawn weights, not binary eligibility flags");
 const r = engine.simulateRecipe(fix, mods, { seed: 42, trials: 10000 });
 ok(r.feasible && r.successPerAttempt > 0 && r.successPerAttempt < 0.5, `recipe sim feasible with sane odds (${(r.successPerAttempt * 100).toFixed(2)}%)`);
 ok(r.perAttemptOrbs["Regal Orb"] === 1, "every attempt spends exactly 1 Regal");

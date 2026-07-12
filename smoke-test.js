@@ -32,6 +32,16 @@ function get(url) {
       .on("error", () => resolve({ status: 0, body: "", type: "" }));
   });
 }
+function post(url, obj) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify(obj);
+    const u = new URL(url);
+    const req = http.request({ hostname: u.hostname, port: u.port, path: u.pathname, method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } },
+      (res) => { let d = ""; res.on("data", c => d += c); res.on("end", () => resolve({ status: res.statusCode, body: d })); });
+    req.on("error", () => resolve({ status: 0, body: "" }));
+    req.end(body);
+  });
+}
 function waitUp(tries) {
   return new Promise((resolve) => {
     const t = () => get(BASE + "/").then(r => { if (r.status === 200) resolve(true); else if (--tries <= 0) resolve(false); else setTimeout(t, 400); });
@@ -212,6 +222,27 @@ async function httpChecks() {
   const ts = await get(BASE + "/api/trade-status"); check(ts.status === 200 && ts.body.includes("limited"), "GET /api/trade-status -> 200 JSON");
   const rc = await get(BASE + "/api/craft/recipes"); check(rc.status === 200 && /"recipes"/.test(rc.body), "GET /api/craft/recipes -> 200 JSON (recipes)");
   const co = await get(BASE + "/api/currency/overview?league=Runes%20of%20Aldur"); check(co.status === 200 && /"items"/.test(co.body), "GET /api/currency/overview -> 200 JSON (items)");
+
+  // Recipe EV must PAY FOR THE BASE ITEM the recipe tells you to buy. Every recipe starts from
+  // a purchased Magic base and a failed attempt destroys it, so a base is consumed per attempt.
+  // The EV used to sum orbs only — which called a money-losing craft profitable (the amulet
+  // fixture: +0.027 div/attempt with a free base, -0.17 div/attempt once the base costs 0.2).
+  // Two sims differing ONLY in baseCostDiv must differ in EV by exactly that base cost.
+  // Asserted WITHIN one response (the MC resamples p between calls, so comparing two runs
+  // would fold in sampling noise): EV must equal p×target − (orbs + base), exactly.
+  const paid = await post(BASE + "/api/craft/recipe-sim",
+    { id: "amulet-plus-one-spell-skills-regal-exalt", base: "Jade Amulet", ilvl: 80, targetValueDiv: 3, baseCostDiv: 1 });
+  if (paid.status === 200) {
+    const m = JSON.parse(paid.body).methods[0];
+    if (m.expectedProfitDiv == null) check(true, "recipe EV: skipped (no live orb prices — proxy unavailable)");
+    else {
+      const want = m.successPerAttempt * 3 - (m.perAttemptOrbCostDiv + m.perAttemptBaseCostDiv);
+      check(Math.abs(m.expectedProfitDiv - want) < 0.001,
+        `recipe EV = p×target − (orbs + base) [${m.expectedProfitDiv} ≈ ${want.toFixed(4)}]`);
+      check(m.perAttemptBaseCostDiv === 1 && Math.abs(m.perAttemptDivineCost - (m.perAttemptOrbCostDiv + 1)) < 1e-6,
+        "recipe EV charges for the base item the recipe tells you to buy (orbs + base, reported separately)");
+    }
+  } else check(false, "recipe EV: POST /api/craft/recipe-sim -> 200");
 }
 
 // ---- 3) browser checks ----

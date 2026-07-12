@@ -2791,24 +2791,11 @@ function dominationPrune(pool) {
 // seller, not whether the item is still in their stash.
 
 // ── Crafter (Phase 1) ─────────────────────────────────────────────────────────
-// Resolve a base's craftable mod pool from CRAFT_DATA. Weight rule (matches
-// craft-data-test.js): the first tag in a mod's ordered `weights` list that the base
-// carries wins; "default" matches everything (usually weight 0 = can't spawn). A mod
-// is craftable on the base when itemLevel >= mod.ilvl AND resolved weight > 0.
-function craftWeightFor(mod, tagset) {
-  for (const [tag, w] of mod.weights) { if (tag === "default" || tagset.has(tag)) return w; }
-  return 0;
-}
-// Effective spawn weight: PoB's binary tag weight decides ELIGIBILITY (a 0 means the mod can't
-// roll on this base — authoritative), but when eligible we use the REAL Craft-of-Exile weight
-// baked as mod.cw[archetype] (gen-craft-weights.js). Unmatched mods keep the binary weight (1),
-// so odds are never worse than before. archKey = the base's CoE archetype (null → binary only).
-function craftEffWeight(mod, tagset, archKey) {
-  const binW = craftWeightFor(mod, tagset);
-  if (binW <= 0) return 0;                                      // ineligible on this base
-  const cw = archKey && mod.cw ? mod.cw[archKey] : undefined;
-  return cw != null ? cw : binW;                               // real weight, else binary fallback
-}
+// The pool builder now lives in craft-engine.js so the server and the tests build the pool
+// the SAME way. It used to be defined only here, so the tests reimplemented a naive
+// raw-PoB-weight version — and the closed-form-vs-MC cross-validation therefore ran on a
+// pool no user ever gets, skipping the Craft-of-Exile spawn-weight overlay entirely.
+const { craftWeightFor, craftEffWeight } = craftEngine;
 // Bases that can roll at least one explicit mod (early-exits) — filters out jewels/
 // flasks whose pools live in other PoB files we don't extract. Memoized (data is static).
 let _craftBaseList = null;
@@ -2867,22 +2854,7 @@ function craftPool(baseName, itemLevel) {
 
 // Flat eligible-mod list for a base at an item level — the craft-engine's input.
 // Same weight rule as craftPool; type lowercased to match the engine's "prefix"/"suffix".
-function craftModList(baseName, itemLevel) {
-  if (!CRAFT_DATA) return null;
-  const base = CRAFT_DATA.bases[baseName];
-  if (!base) return null;
-  const ilvl = Math.max(1, Math.min(100, itemLevel | 0 || 100));
-  const tagset = new Set(base.tags);
-  const archKey = archetypeKey(base.class, base.tags);
-  const list = [];
-  for (const [key, m] of Object.entries(CRAFT_DATA.mods)) {
-    if (m.ilvl > ilvl) continue;
-    const w = craftEffWeight(m, tagset, archKey);
-    if (w <= 0) continue;
-    list.push({ key, type: m.type === "Prefix" ? "prefix" : "suffix", group: m.group, weight: w, ilvl: m.ilvl, tags: m.tags || [] });
-  }
-  return list;
-}
+const craftModList = (baseName, itemLevel) => craftEngine.craftModList(CRAFT_DATA, baseName, itemLevel);
 
 // ── Craft Advisor: map mod TEXT → craft-data group ─────────────────────────────
 // Normalize a stat line to a template (roll ranges/numbers → #, drop commas) — same rule as
@@ -4263,7 +4235,9 @@ const server = http.createServer(async (req, res) => {
       const recipes = Object.values(RECIPE_DATA.recipes)
         .filter((r) => r.status !== "superseded")
         .map((r) => ({
-          id: r.id, name: r.name, status: r.status, patch: r.patch,
+          // sourced=false → "verified" here means the mechanics check out, but no guide/VOD
+          // documents the route. The card badges it so it can't pass for a cited craft.
+          id: r.id, name: r.name, status: r.status, sourced: !!(RECIPE_DATA.sourced || {})[r.id], patch: r.patch,
           target: {
             base_classes: r.target.base_classes, bases: r.target.bases || [],
             minimum_item_level: r.target.minimum_item_level || 1,
@@ -4301,7 +4275,9 @@ const server = http.createServer(async (req, res) => {
       // MC stands alone). When present it's the AUTHORITATIVE probability; the MC keeps
       // owning decision points/outcome counts. Priced like the MC so the two compare.
       const exact = !m.unsupported && !m.impossible ? craftEngine.exactRecipeProbability(doc, mods) : null;
-      const result = { recipe: { id: doc.id, name: doc.name, status: doc.status, patch: doc.patch, warnings: doc.warnings || [] }, base: baseName, ilvl, methods: [m], exact, impossible: !!m.impossible };
+      // league travels with the result so the client can POST /api/craft/resale for the target
+      // without holding its own league state (the Crafter has no league picker).
+      const result = { recipe: { id: doc.id, name: doc.name, status: doc.status, sourced: !!(RECIPE_DATA.sourced || {})[doc.id], patch: doc.patch, warnings: doc.warnings || [] }, base: baseName, ilvl, league: sanitizeLeague(input.league), methods: [m], exact, impossible: !!m.impossible };
       // recipe currency labels ARE proxy display names, so the shared pricer applies as-is
       let proxy = null;
       if (m.feasible) {
@@ -4321,13 +4297,27 @@ const server = http.createServer(async (req, res) => {
       // Expected profit per attempt: p×targetValue + (1−p)×missValue − per-attempt spend.
       // missValueDiv = what a MISS liquidates for (the "selling useful misses" half of
       // profitable crafting) — defaults 0 (a floor), caller prices it via /api/craft/resale.
+      // Every recipe in the corpus STARTS FROM A PURCHASED MAGIC BASE ("buy a Magic ilvl-82
+      // boots with 30%+ Movement Speed"), and a failed attempt destroys it — the recipes' own
+      // warnings say so ("a bad exalt has no cheap undo and ends the recipe"). So a base is
+      // consumed EVERY attempt, and at ~1% per attempt you buy ~90 of them. The EV used to
+      // count orbs only, which quietly told you a craft was profitable while ignoring the
+      // single largest line item. baseCostDiv is caller-supplied (from /api/craft/resale or
+      // the trade site) and defaults to 0 — we never invent a price.
+      const baseCostDiv = Number(input.baseCostDiv) > 0 ? Number(input.baseCostDiv) : 0;
       if (m.feasible && proxy) {
         let pc = 0, pcMissing = false;
         for (const [orb, n] of Object.entries(m.perAttemptOrbs || {})) {
           const pv = proxyPrice(proxy, CRAFT_ORB_PROXY[orb] || orb);
           if (pv && pv.div > 0) pc += n * pv.div; else pcMissing = true;
         }
-        m.perAttemptDivineCost = pcMissing && !(pc > 0) ? null : Math.round(pc * 10000) / 10000;
+        m.perAttemptOrbCostDiv = pcMissing && !(pc > 0) ? null : Math.round(pc * 10000) / 10000;
+        m.perAttemptBaseCostDiv = baseCostDiv;
+        m.perAttemptDivineCost = m.perAttemptOrbCostDiv == null ? null : Math.round((m.perAttemptOrbCostDiv + baseCostDiv) * 10000) / 10000;
+        // amortized spend to land ONE success (orbs + all the bases you burned getting there)
+        if (m.perAttemptDivineCost != null && m.successPerAttempt > 0) {
+          m.divineCostWithBase = Math.round((m.perAttemptDivineCost / m.successPerAttempt) * 10000) / 10000;
+        }
         if (targetValueDiv != null && m.perAttemptDivineCost != null) {
           const missValueDiv = Number(input.missValueDiv) > 0 ? Number(input.missValueDiv) : 0;
           m.expectedProfitDiv = Math.round((m.successPerAttempt * targetValueDiv + (1 - m.successPerAttempt) * missValueDiv - m.perAttemptDivineCost) * 10000) / 10000;
@@ -4346,7 +4336,11 @@ const server = http.createServer(async (req, res) => {
             const pv = proxy ? proxyPrice(proxy, CRAFT_ORB_PROXY[orb] || orb) : null;
             if (pv && pv.div > 0) cost += count * pv.div; else missing = true;
           }
-          // 4-decimal: a step's MARGINAL spend (one orb) is often sub-cent in divine
+          // 4-decimal: a step's MARGINAL spend (one orb) is often sub-cent in divine.
+          // baseCostDiv is deliberately NOT added here: by the time you are standing at a
+          // decision point the base is already bought and in your hand — it is SUNK, and
+          // sunk cost must not enter a sell-vs-continue call. It belongs in per-attempt EV
+          // (above), not in remaining spend. Do not "fix" this by adding it.
           dp.remainingDivineCost = missing && !(cost > 0) ? null : Math.round(cost * 10000) / 10000;
           if (targetValueDiv != null && dp.remainingDivineCost != null) {
             dp.continueEvDiv = Math.round((dp.successGivenReached * targetValueDiv - dp.remainingDivineCost) * 10000) / 10000;
