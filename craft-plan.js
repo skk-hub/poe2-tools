@@ -28,10 +28,20 @@ const METHODS = require("./method-data.js");
 
 const CAP = E.CAP;
 const PRACTICAL_MIN = 0.02;      // below this per-attempt success, a route is a fantasy (see rank())
-const SCREEN_TRIALS = 300;       // cheap pass over every enumerated route
-const REFINE_TRIALS = 5000;      // accurate pass over the survivors
-const REFINE_KEEP = 10;
+const REFINE_TRIALS = 3000;      // accurate pass over the survivors — these are the REPORTED odds
+const REFINE_KEEP = 8;           // (±0.9% at p=0.5 — well inside the precision a whole-% display needs)
 const CHURN_CAP = 120;           // max fix-moves in one attempt before the item is scrapped
+// The SCREEN pass only has to RANK routes well enough to pick the survivors — the numbers it
+// produces are THROWN AWAY and re-measured at REFINE_TRIALS. So it runs fewer trials AND a
+// shallower churn cap: a chaos-spam route iterates up to CHURN_CAP times per trial, and that is
+// what actually costs the time (enumerating hundreds of routes instead of 13 made this the whole
+// budget — advise was 5.5s per candidate, i.e. 21s on the VM, before this split). A shallow cap
+// understates spam routes' success, but it understates them CONSISTENTLY, so the ORDERING it
+// hands to refine survives — and whatever it promotes is then measured honestly at full depth.
+// ponytail: a route sitting near p=PRACTICAL_MIN can miss the shortlist on screen noise; it would
+// have been flagged impractical anyway. Raise SCREEN_TRIALS if that ever bites.
+const SCREEN_TRIALS = 80;
+const SCREEN_CHURN_CAP = 30;
 
 const MOVES = {};
 for (const m of METHODS.moves) MOVES[m.id] = m;
@@ -471,7 +481,7 @@ function fixOk(f, ctx) {
 // ── route execution ──────────────────────────────────────────────────────────
 // Run one route once. This is the generic executor every route shares — there is no per-route
 // code anywhere in this file, which is the point.
-function runRoute(route, ctx, rnd, seed) {
+function runRoute(route, ctx, rnd, seed, churnCap) {
   const cost = {};
   const T = ctx.T;
   const item = seed ? clone(seed) : { rarity: "normal", quality: ctx.quality || 0, corrupted: false, prefixes: [], suffixes: [] };
@@ -512,8 +522,9 @@ function runRoute(route, ctx, rnd, seed) {
   }
 
   // Main loop: fill toward unmet targets; when the needed side is jammed, fix.
+  const cap = churnCap || CHURN_CAP;
   let churn = 0;
-  while (!allMet(item, T) && churn < CHURN_CAP) {
+  while (!allMet(item, T) && churn < cap) {
     const side = unmetSide(item, T);
     if (!side) break;
     const canFill = openOn(item, side) > 0;
@@ -616,11 +627,11 @@ function describeRoute(route, ctx, expectedOrbs, p) {
   return steps;
 }
 
-function simulateRoute(route, ctx, trials, rnd, seed) {
+function simulateRoute(route, ctx, trials, rnd, seed, churnCap) {
   let hits = 0;
   const costSum = {};
   for (let i = 0; i < trials; i++) {
-    const { cost, ok } = runRoute(route, ctx, rnd, seed);
+    const { cost, ok } = runRoute(route, ctx, rnd, seed, churnCap);
     if (ok) hits++;
     for (const k in cost) costSum[k] = (costSum[k] || 0) + cost[k];
   }
@@ -695,8 +706,46 @@ function reachability(mods, T) {
   return { missing, pfx, sfx, overCap: pfx > CAP.rare.prefix || sfx > CAP.rare.suffix };
 }
 
-// Plan a craft from a WHITE BASE. Drop-in replacement for the old rankMethods (same return
-// shape), but the routes are enumerated from the catalog instead of hand-written.
+// Narrow hundreds of enumerated routes down to the handful worth measuring properly, then measure
+// THOSE properly. Enumerating from the catalog means the route space is ~50× what the old
+// hand-written engine had, so a single full-depth pass over all of it would take ten seconds; a
+// single cheap pass would report noisy odds to the user. Hence a funnel:
+//
+//   PRESCREEN (coarse, only when the space is big) → SCREEN (cheap) → REFINE (accurate, reported)
+//
+// Only the REFINE numbers are ever shown. The earlier passes exist purely to ORDER routes, and
+// they order them consistently (same shallow cap for everyone), so the shortlist survives.
+// The prescreen bails out if it would leave too few candidates — on a genuinely hard craft every
+// route has low odds, and a coarse pass could otherwise throw the real answer away as "infeasible".
+const PRESCREEN_AT = 200;        // route counts above this get the coarse pass first
+const PRESCREEN_TRIALS = 30;
+const PRESCREEN_CHURN_CAP = 20;
+const PRESCREEN_KEEP = 120;
+const PRESCREEN_MIN_FEASIBLE = 40;   // fewer survivors than this → distrust the coarse pass, skip it
+
+function shortlist(routes, ctx, opts, seedItem) {
+  const seed = (opts.seed >>> 0) || 12345;
+  const sim = (r, trials, cap) => simulateRoute(r, ctx, trials, E.rng(seed), seedItem, cap);
+  const routesOf = (scored, keep) =>
+    rank(scored.filter((s) => s.m.feasible).map((s) => s.m))
+      .slice(0, keep)
+      .map((m) => scored.find((s) => s.m.key === m.key).r);
+
+  let pool = routes;
+  if (pool.length > PRESCREEN_AT) {
+    const pre = pool.map((r) => ({ r, m: sim(r, PRESCREEN_TRIALS, PRESCREEN_CHURN_CAP) }));
+    const kept = routesOf(pre, PRESCREEN_KEEP);
+    if (kept.length >= PRESCREEN_MIN_FEASIBLE) pool = kept;   // else: hard craft — keep the full space
+  }
+  const screened = pool.map((r) => ({ r, m: sim(r, SCREEN_TRIALS, SCREEN_CHURN_CAP) }));
+  const survivors = routesOf(screened, REFINE_KEEP);
+
+  const rnd = E.rng(seed);
+  return rank(survivors.map((r) => simulateRoute(r, ctx, opts.trials || REFINE_TRIALS, rnd, seedItem)));
+}
+
+// Plan a craft from a WHITE BASE. Drop-in replacement for the old rankMethods (same return shape),
+// but the routes are enumerated from the catalog instead of hand-written.
 function planRoutes(mods, targets, opts) {
   opts = opts || {};
   const ctx = buildCtx(mods, targets, opts);
@@ -704,16 +753,7 @@ function planRoutes(mods, targets, opts) {
   if (missing.length || overCap) return { impossible: true, missing, overCap, prefixTargets: pfx, suffixTargets: sfx, methods: [] };
 
   const routes = enumerateRoutes(ctx);
-  // Two passes: screen every route cheaply, then re-simulate the survivors accurately. A single
-  // 5000-trial pass over ~hundreds of routes would be too slow for a request; a single cheap pass
-  // would report noisy odds. This is the honest split — and the reported numbers are the accurate ones.
-  const screened = routes.map((r) => ({ r, m: simulateRoute(r, ctx, SCREEN_TRIALS, E.rng((opts.seed >>> 0) || 12345)) }));
-  const survivors = rank(screened.filter((s) => s.m.feasible).map((s) => s.m))
-    .slice(0, REFINE_KEEP)
-    .map((m) => screened.find((s) => s.m.key === m.key).r);
-
-  const rnd = E.rng((opts.seed >>> 0) || 12345);
-  const methods = rank(survivors.map((r) => simulateRoute(r, ctx, opts.trials || REFINE_TRIALS, rnd)));
+  const methods = shortlist(routes, ctx, opts, null);
   return {
     impossible: !methods.length, prefixTargets: pfx, suffixTargets: sfx,
     trials: opts.trials || REFINE_TRIALS, routesConsidered: routes.length, methods,
@@ -752,12 +792,7 @@ function adviseItem(mods, currentMods, fillTargets, opts) {
   const routes = enumerateRoutes(ctxAll, { seeded: true, startRarity })
     .filter((r) => r.fix !== "none" || (needP <= freeP && needS <= freeS));
 
-  const screened = routes.map((r) => ({ r, m: simulateRoute(r, ctxAll, SCREEN_TRIALS, E.rng((opts.seed >>> 0) || 12345), seed) }));
-  const survivors = rank(screened.filter((s) => s.m.feasible).map((s) => s.m))
-    .slice(0, REFINE_KEEP)
-    .map((m) => screened.find((s) => s.m.key === m.key).r);
-  const rnd = E.rng((opts.seed >>> 0) || 12345);
-  const methods = rank(survivors.map((r) => simulateRoute(r, ctxAll, opts.trials || REFINE_TRIALS, rnd, seed)));
+  const methods = shortlist(routes, ctxAll, opts, seed);
 
   const best = methods[0];
   if (!best || !best.feasible) {
