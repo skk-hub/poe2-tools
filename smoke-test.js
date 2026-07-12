@@ -220,29 +220,25 @@ async function httpChecks() {
     const r = await get(BASE + p); check(r.status === 200 && r.type.includes(type), `GET ${p} -> 200 ${type}`);
   }
   const ts = await get(BASE + "/api/trade-status"); check(ts.status === 200 && ts.body.includes("limited"), "GET /api/trade-status -> 200 JSON");
-  const rc = await get(BASE + "/api/craft/recipes"); check(rc.status === 200 && /"recipes"/.test(rc.body), "GET /api/craft/recipes -> 200 JSON (recipes)");
   const co = await get(BASE + "/api/currency/overview?league=Runes%20of%20Aldur"); check(co.status === 200 && /"items"/.test(co.body), "GET /api/currency/overview -> 200 JSON (items)");
 
-  // Recipe EV must PAY FOR THE BASE ITEM the recipe tells you to buy. Every recipe starts from
-  // a purchased Magic base and a failed attempt destroys it, so a base is consumed per attempt.
-  // The EV used to sum orbs only — which called a money-losing craft profitable (the amulet
-  // fixture: +0.027 div/attempt with a free base, -0.17 div/attempt once the base costs 0.2).
-  // Two sims differing ONLY in baseCostDiv must differ in EV by exactly that base cost.
-  // Asserted WITHIN one response (the MC resamples p between calls, so comparing two runs
-  // would fold in sampling noise): EV must equal p×target − (orbs + base), exactly.
-  const paid = await post(BASE + "/api/craft/recipe-sim",
-    { id: "amulet-plus-one-spell-skills-regal-exalt", base: "Jade Amulet", ilvl: 80, targetValueDiv: 3, baseCostDiv: 1 });
-  if (paid.status === 200) {
-    const m = JSON.parse(paid.body).methods[0];
-    if (m.expectedProfitDiv == null) check(true, "recipe EV: skipped (no live orb prices — proxy unavailable)");
-    else {
-      const want = m.successPerAttempt * 3 - (m.perAttemptOrbCostDiv + m.perAttemptBaseCostDiv);
-      check(Math.abs(m.expectedProfitDiv - want) < 0.001,
-        `recipe EV = p×target − (orbs + base) [${m.expectedProfitDiv} ≈ ${want.toFixed(4)}]`);
-      check(m.perAttemptBaseCostDiv === 1 && Math.abs(m.perAttemptDivineCost - (m.perAttemptOrbCostDiv + 1)) < 1e-6,
-        "recipe EV charges for the base item the recipe tells you to buy (orbs + base, reported separately)");
-    }
-  } else check(false, "recipe EV: POST /api/craft/recipe-sim -> 200");
+  // The planner enumerates routes from the move catalog rather than a hand-written list, so a real
+  // craft must come back with MANY routes considered — a collapse to a handful means enumeration
+  // silently gated everything out, which is the failure mode this whole layer exists to prevent.
+  const sim = await post(BASE + "/api/craft/simulate",
+    { base: "Sapphire Ring", ilvl: 82, targets: ["ChaosResistance", "LightningResistance"], league: "Runes of Aldur" });
+  if (sim.status === 200) {
+    const r = JSON.parse(sim.body);
+    check(!r.impossible && r.methods.length > 0, "POST /api/craft/simulate -> ranked routes");
+    check(r.routesConsidered > 50, `planner enumerated the route space (${r.routesConsidered} routes considered)`);
+    // Costs must be charged under REAL currency/omen names, because those are the names the
+    // poe.ninja proxy prices. A short internal alias ("Exaltation omen") prices as the wrong omen.
+    const orbs = Object.keys(r.methods[0].expectedOrbs || {});
+    check(orbs.length > 0 && orbs.every((o) => /Orb|Omen|Essence|Bone|Lock|Catalyst/.test(o)),
+      `route costs use real market names [${orbs.slice(0, 3).join(", ")}]`);
+    check(Array.isArray(r.methods[0].steps) && r.methods[0].steps.length > 1,
+      "each route carries step-by-step instructions derived from its own moves");
+  } else check(false, "POST /api/craft/simulate -> 200");
 }
 
 // ---- 3) browser checks ----

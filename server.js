@@ -16,9 +16,8 @@ try { POB_BASES = require("./pob-bases.js"); } catch { /* not generated → keyw
 // error; the rest of the app is unaffected.
 let CRAFT_DATA = null;
 try { CRAFT_DATA = require("./craft-data.js"); } catch { /* run gen-craft-data.lua to create */ }
-let RECIPE_DATA = null;
-try { RECIPE_DATA = require("./recipe-data.js"); } catch { /* run gen-recipes.js to create */ }
-const craftEngine = require("./craft-engine.js");   // Monte Carlo crafting simulator
+const craftEngine = require("./craft-engine.js");   // crafting primitives + the mod pool builder
+const craftPlan = require("./craft-plan.js");       // route planner: composes routes from the move catalog
 const { archetypeKey } = require("./craft-archetype.js");   // base → Craft-of-Exile weight archetype
 // Desecrated modifier REFERENCE (Abyssal Bones + Well of Souls) scraped from poe2db —
 // PoB lacks this data. Browsable list only; not simulated (reveal 3, pick 1; no odds data).
@@ -2959,42 +2958,6 @@ function generateCraftCandidates(slot, kept, poolMods, idx) {
   return sizes.map((n) => ({ fills: fills.slice(0, n), targets: fills.slice(0, n).map((f) => f.group) }));
 }
 
-// Turn a ranked finish-method into an ordered, human step-by-step recipe.
-function craftRecipeSteps(method, ctx) {
-  const steps = [];
-  const kept = (ctx.keptLabels && ctx.keptLabels.length) ? ctx.keptLabels.join(", ") : "its current mods";
-  steps.push(`Start with your ${ctx.base} (${ctx.startRarity === "magic" ? "Magic" : "Rare"}) — keep ${kept}.`);
-  if (ctx.startRarity === "magic") steps.push("Regal Orb → upgrade to Rare (adds one random mod).");
-  const o = method.expectedOrbs || {};
-  const exOrb = o["Perfect Exalted"] ? "Perfect Exalted Orb" : o["Greater Exalted"] ? "Greater Exalted Orb" : "Exalted Orb";
-  // An Exaltation omen is only needed to STEER the exalt when the opposite side still has an open
-  // slot. If the other side ends up full (from kept mods + fills going there), you fill it first and
-  // a plain Exalt is FORCED onto the target side — so drop the omen (it's wasted). This is why a
-  // full-prefix item finishing a suffix wants a bare Exalted Orb, not Omen of Dextral Exaltation.
-  const capP = 3, capS = 3;   // ponytail: every PoE2 rare is 3P/3S; no per-base cap needed
-  const pFills = ctx.fills.filter((f) => f.type === "prefix").length;
-  const sFills = ctx.fills.filter((f) => f.type === "suffix").length;
-  for (const f of ctx.fills) {
-    const otherFull = f.type === "suffix" ? (ctx.keptPrefix || 0) + pFills >= capP : (ctx.keptSuffix || 0) + sFills >= capS;
-    if (otherFull) {
-      const otherName = f.type === "suffix" ? "prefixes" : "suffixes";
-      steps.push(`${exOrb} → ${otherName} are full, so a plain Exalt is forced onto the ${f.type} side, toward ${f.label} (no Exaltation omen needed).`);
-    } else {
-      const omen = f.type === "prefix" ? "Omen of Sinistral Exaltation" : "Omen of Dextral Exaltation";
-      steps.push(`${omen} + ${exOrb} → exalt the ${f.type} side toward ${f.label}.`);
-    }
-  }
-  const pct = Math.round(method.successPerAttempt * 100);
-  // Annul route: the reroll-a-jammed-side loop is the whole point — spell it out.
-  if (o.Annulment > 0) steps.push("If a side jams with a junk mod: Omen of Sinistral/Dextral Annulment removes it (risks a kept mod), then Exalt that side again.");
-  const cost = method.divineCost != null ? `${method.divineCost} div`
-    : Object.entries(o).filter(([, n]) => n > 0).map(([k, n]) => `${(Math.round(n * 10) / 10)} ${k}`).join(" + ");
-  // Headline cost is AMORTIZED (expect to redo on fresh bases when an attempt misses); the % is the
-  // per-item one-shot chance — low % just means more re-tries, already folded into the cost.
-  steps.push(`≈ ${cost} expected to land one${pct < 100 ? ` · ~${pct}% per attempt (redo a cheap base if it misses)` : ""}.`);
-  return steps;
-}
-
 // Resale search filters for a finished item (kept + fills): top-2 stat ids + a rarity floor.
 function buildResaleFilters(gearSlot, kept, fills, idx) {
   const g2a = {}; for (const a in ALIAS_TEMPLATE) { const g = aliasCraftGroup(a, idx); if (g && !g2a[g.group]) g2a[g.group] = a; }
@@ -3024,25 +2987,22 @@ function desecratedPoolN(faction, type) {
 // moved into craft-engine.js so the tests/tools build the same essence list the server serves
 const craftEssenceOptions = (baseName, itemLevel) => craftEngine.craftEssenceOptions(CRAFT_DATA, baseName, itemLevel);
 
-// Phase 3: price each crafting method in Divine via the poe.ninja proxy, then rank by real
-// cost (not raw orb count) — Chaos/omens are far pricier than Transmute/Alchemy, so this
-// reshuffles the ranking. Maps the engine's orb labels → proxy currency names.
-const CRAFT_ORB_PROXY = {
-  Transmutation: "Orb of Transmutation", Augmentation: "Orb of Augmentation", Regal: "Regal Orb",
-  Alchemy: "Orb of Alchemy", Exalted: "Exalted Orb", Chaos: "Chaos Orb", Annulment: "Orb of Annulment",
-  "Greater Exalted": "Greater Exalted Orb", "Perfect Exalted": "Perfect Exalted Orb",
-  "Omen of Whittling": "Omen of Whittling", "Exaltation omen": "Omen of Sinistral Exaltation",
-  "Erasure omen": "Omen of Sinistral Erasure", "Annulment omen": "Omen of Sinistral Annulment",
-  "Homogenising omen": "Omen of Homogenising Exaltation", "Fracturing Orb": "Fracturing Orb",
-  "Catalysing omen": "Omen of Catalysing Exaltation", "Omen of Light": "Omen of Light",
-};
+// Price each route in Divine via the poe.ninja proxy, then rank by real cost (not raw orb count) —
+// Chaos/omens are far pricier than Transmute/Alchemy, so this reshuffles the ranking.
+//
+// There is no orb-label→proxy-name table any more: the planner charges costs under the EXACT
+// currency and omen names from the move catalog ("Exalted Orb", "Omen of Dextral Exaltation"),
+// which are already the market names, so they price directly. The old table mapped a generic
+// "Exaltation omen" to Omen of SINISTRAL Exaltation, which silently priced every dextral and
+// homogenising route at the sinistral omen's price. An unpriced currency (a new omen the proxy
+// doesn't track yet) lands in priceMissing and the cost is reported as a floor — never invented.
 function priceCraftMethods(result, proxy) {
   if (!result || result.impossible || !proxy) return;
   for (const m of result.methods) {
     if (!m.feasible) { m.divineCost = null; continue; }
     let cost = 0; const missing = [];
     for (const [orb, count] of Object.entries(m.expectedOrbs || {})) {
-      const name = CRAFT_ORB_PROXY[orb] || (orb === "Essence" ? m.essenceName : orb);
+      const name = orb;                       // catalog names ARE proxy names — see the note above
       const pv = name ? proxyPrice(proxy, name) : null;
       if (pv && pv.div > 0) cost += count * pv.div; else missing.push(orb);
     }
@@ -4205,151 +4165,10 @@ const server = http.createServer(async (req, res) => {
       const essences = craftEssenceOptions(String(input.base || ""), Number(input.ilvl) || 100);
       const baseCls = (CRAFT_DATA && CRAFT_DATA.bases[String(input.base || "")] || {}).class;
       const jewellery = baseCls === "Ring" || baseCls === "Amulet";   // catalysts apply to jewellery
-      const result = craftEngine.rankMethods(mods, targets, { seed, essences, jewellery });
+      const result = craftPlan.planRoutes(mods, targets, { seed, essences, jewellery });
       try { priceCraftMethods(result, await getProxyData(sanitizeLeague(input.league))); } catch { /* pricing is a bonus; fall back to orb-count ranking */ }
       // route classes on the priced ranking; targetValueDiv (optional, from /api/craft/resale) adds best_ev
       if (result.priced) tagRouteClasses(result.methods, Number(input.targetValueDiv) > 0 ? Number(input.targetValueDiv) : null);
-      send(res, 200, JSON.stringify(result), J);
-      return;
-    }
-
-    // Recipes (poe2-kb recipe-v1 snapshot, gen-recipes.js): list the loadable recipes.
-    // superseded recipes are ignored by default; only `verified` is trustworthy —
-    // `extracted` may be mechanically wrong, the client shows status so the user knows.
-    if (url.pathname === "/api/craft/recipes") {
-      const J = "application/json; charset=utf-8";
-      if (!RECIPE_DATA) { send(res, 503, JSON.stringify({ error: "recipe-data.js not generated — run gen-recipes.js" }), J); return; }
-      const recipes = Object.values(RECIPE_DATA.recipes)
-        .filter((r) => r.status !== "superseded")
-        .map((r) => ({
-          // sourced=false → "verified" here means the mechanics check out, but no guide/VOD
-          // documents the route. The card badges it so it can't pass for a cited craft.
-          id: r.id, name: r.name, status: r.status, sourced: !!(RECIPE_DATA.sourced || {})[r.id], patch: r.patch,
-          target: {
-            base_classes: r.target.base_classes, bases: r.target.bases || [],
-            minimum_item_level: r.target.minimum_item_level || 1,
-            required_mods: (r.target.required_mods || []).map((m) => ({ ref: m.ref, alias: m.alias || null })),
-          },
-          warnings: r.warnings || [],
-        }));
-      send(res, 200, JSON.stringify({ generated: RECIPE_DATA.generated, recipes }), J);
-      return;
-    }
-    // Simulate one recipe on a concrete base+ilvl → Monte Carlo cost/success distribution
-    // priced in divine, like /api/craft/simulate (same engine, same pricing).
-    if (url.pathname === "/api/craft/recipe-sim" && req.method === "POST") {
-      const J = "application/json; charset=utf-8";
-      if (!RECIPE_DATA) { send(res, 503, JSON.stringify({ error: "recipe-data.js not generated — run gen-recipes.js" }), J); return; }
-      if (!CRAFT_DATA) { send(res, 503, JSON.stringify({ error: "craft-data.js not generated — run gen-craft-data.lua" }), J); return; }
-      const input = await readJson(req);
-      const doc = RECIPE_DATA.recipes[String(input.id || "")];
-      if (!doc) { send(res, 404, JSON.stringify({ error: "unknown recipe id" }), J); return; }
-      if (doc.status === "superseded") { send(res, 400, JSON.stringify({ error: "recipe is superseded — use its successor" }), J); return; }
-      const baseName = String(input.base || "");
-      const b = CRAFT_DATA.bases[baseName];
-      if (!b) { send(res, 404, JSON.stringify({ error: "unknown base" }), J); return; }
-      const ilvl = Math.max(1, Math.min(100, Number(input.ilvl) || 100));
-      const t = doc.target;
-      if (t.bases && t.bases.length ? !t.bases.includes(baseName) : !t.base_classes.includes(b.class)) {
-        send(res, 400, JSON.stringify({ error: `recipe targets ${t.bases && t.bases.length ? t.bases.join("/") : t.base_classes.join("/")}, not ${baseName} (${b.class})` }), J); return;
-      }
-      if (t.minimum_item_level && ilvl < t.minimum_item_level) { send(res, 400, JSON.stringify({ error: `recipe needs item level ≥ ${t.minimum_item_level} (got ${ilvl})` }), J); return; }
-      if (t.maximum_item_level && ilvl > t.maximum_item_level) { send(res, 400, JSON.stringify({ error: `recipe needs item level ≤ ${t.maximum_item_level} (got ${ilvl})` }), J); return; }
-      const mods = craftModList(baseName, ilvl);
-      const seed = (Math.random() * 4294967296) >>> 0;
-      const m = craftEngine.simulateRecipe(doc, mods, { seed, essences: craftEssenceOptions(baseName, ilvl) });
-      // Closed-form evaluator where the recipe's moves are simple (null otherwise — the
-      // MC stands alone). When present it's the AUTHORITATIVE probability; the MC keeps
-      // owning decision points/outcome counts. Priced like the MC so the two compare.
-      const exact = !m.unsupported && !m.impossible ? craftEngine.exactRecipeProbability(doc, mods) : null;
-      // league travels with the result so the client can POST /api/craft/resale for the target
-      // without holding its own league state (the Crafter has no league picker).
-      const result = { recipe: { id: doc.id, name: doc.name, status: doc.status, sourced: !!(RECIPE_DATA.sourced || {})[doc.id], patch: doc.patch, warnings: doc.warnings || [] }, base: baseName, ilvl, league: sanitizeLeague(input.league), methods: [m], exact, impossible: !!m.impossible };
-      // recipe currency labels ARE proxy display names, so the shared pricer applies as-is
-      let proxy = null;
-      if (m.feasible) {
-        try { proxy = await getProxyData(sanitizeLeague(input.league)); priceCraftMethods(result, proxy); } catch { /* orb counts still rank */ }
-      }
-      if (exact && exact.feasible && proxy) {
-        try { const wrap = { impossible: false, methods: [exact] }; priceCraftMethods(wrap, proxy); } catch { /* unpriced exact is fine */ }
-      }
-      // Sell-vs-continue: price each decision point's expected REMAINING spend in divine, and
-      // when the caller supplies item values, do the comparison. targetValueDiv = the finished
-      // item's sale value; stepValues = {stepId: current item's liquidation value at that step}
-      // (both in divine — get them from /api/craft/resale / the trade site; we never invent them).
-      // EV(continue) = P(success|here) × targetValue − remaining cost, a FLOOR (scrap value of
-      // misses isn't modeled). advice: "sell" when the in-hand value beats that floor... barely a
-      // recommendation to sell — a big gap the other way IS a real "keep going".
-      const targetValueDiv = Number(input.targetValueDiv) > 0 ? Number(input.targetValueDiv) : null;
-      // Expected profit per attempt: p×targetValue + (1−p)×missValue − per-attempt spend.
-      // missValueDiv = what a MISS liquidates for (the "selling useful misses" half of
-      // profitable crafting) — defaults 0 (a floor), caller prices it via /api/craft/resale.
-      // Every recipe in the corpus STARTS FROM A PURCHASED MAGIC BASE ("buy a Magic ilvl-82
-      // boots with 30%+ Movement Speed"), and a failed attempt destroys it — the recipes' own
-      // warnings say so ("a bad exalt has no cheap undo and ends the recipe"). So a base is
-      // consumed EVERY attempt, and at ~1% per attempt you buy ~90 of them. The EV used to
-      // count orbs only, which quietly told you a craft was profitable while ignoring the
-      // single largest line item. baseCostDiv is caller-supplied (from /api/craft/resale or
-      // the trade site) and defaults to 0 — we never invent a price.
-      const baseCostDiv = Number(input.baseCostDiv) > 0 ? Number(input.baseCostDiv) : 0;
-      if (m.feasible && proxy) {
-        let pc = 0, pcMissing = false;
-        for (const [orb, n] of Object.entries(m.perAttemptOrbs || {})) {
-          const pv = proxyPrice(proxy, CRAFT_ORB_PROXY[orb] || orb);
-          if (pv && pv.div > 0) pc += n * pv.div; else pcMissing = true;
-        }
-        m.perAttemptOrbCostDiv = pcMissing && !(pc > 0) ? null : Math.round(pc * 10000) / 10000;
-        m.perAttemptBaseCostDiv = baseCostDiv;
-        m.perAttemptDivineCost = m.perAttemptOrbCostDiv == null ? null : Math.round((m.perAttemptOrbCostDiv + baseCostDiv) * 10000) / 10000;
-        // amortized spend to land ONE success (orbs + all the bases you burned getting there)
-        if (m.perAttemptDivineCost != null && m.successPerAttempt > 0) {
-          m.divineCostWithBase = Math.round((m.perAttemptDivineCost / m.successPerAttempt) * 10000) / 10000;
-        }
-        if (targetValueDiv != null && m.perAttemptDivineCost != null) {
-          const missValueDiv = Number(input.missValueDiv) > 0 ? Number(input.missValueDiv) : 0;
-          m.expectedProfitDiv = Math.round((m.successPerAttempt * targetValueDiv + (1 - m.successPerAttempt) * missValueDiv - m.perAttemptDivineCost) * 10000) / 10000;
-          // runtime auto-flag: a VERIFIED recipe whose EV goes negative at the quoted market
-          // values is mechanically fine but economically dead — surface it, don't hide it.
-          if (doc.status === "verified" && m.expectedProfitDiv < 0) {
-            result.marketFlag = `verified recipe is currently unprofitable (${m.expectedProfitDiv} div expected per attempt at your quoted values) — the market may no longer justify it`;
-          }
-        }
-      }
-      if (m.feasible && m.decisionPoints) {
-        const stepValues = (input.stepValues && typeof input.stepValues === "object") ? input.stepValues : {};
-        for (const dp of m.decisionPoints) {
-          let cost = 0, missing = false;
-          for (const [orb, count] of Object.entries(dp.remainingOrbs)) {
-            const pv = proxy ? proxyPrice(proxy, CRAFT_ORB_PROXY[orb] || orb) : null;
-            if (pv && pv.div > 0) cost += count * pv.div; else missing = true;
-          }
-          // 4-decimal: a step's MARGINAL spend (one orb) is often sub-cent in divine.
-          // baseCostDiv is deliberately NOT added here: by the time you are standing at a
-          // decision point the base is already bought and in your hand — it is SUNK, and
-          // sunk cost must not enter a sell-vs-continue call. It belongs in per-attempt EV
-          // (above), not in remaining spend. Do not "fix" this by adding it.
-          dp.remainingDivineCost = missing && !(cost > 0) ? null : Math.round(cost * 10000) / 10000;
-          if (targetValueDiv != null && dp.remainingDivineCost != null) {
-            dp.continueEvDiv = Math.round((dp.successGivenReached * targetValueDiv - dp.remainingDivineCost) * 10000) / 10000;
-            const inHand = Number(stepValues[dp.step]);
-            if (inHand > 0) dp.advice = inHand > dp.continueEvDiv ? "sell" : "continue";
-          }
-        }
-      }
-      // Ready-to-POST /api/craft/resale query for the FINISHED item (target mods → trade stat
-      // filters via the advise plumbing) — the seed of targetValueDiv. null when the class has
-      // no resale profile or no target mod maps to a known trade stat.
-      const adviseSlot = craftAdviseSlot(b.class);
-      const gearSlot = adviseSlot ? (ADVISE_TO_GEAR_SLOT[adviseSlot] || adviseSlot) : null;
-      const category = (() => { try { const s = gearSlot ? gearSlotCfg(gearSlot) : null; return s ? s.category : null; } catch { return null; } })();
-      if (category && mods) {
-        const idx = buildCraftGroupIndex(mods);
-        const groups = (doc.target.required_mods || [])
-          .map((r) => { const pm = mods.find((x) => x.key === r.ref || x.group === r.ref); return pm && { group: pm.group }; })
-          .filter(Boolean);
-        const rf = buildResaleFilters(gearSlot, groups, [], idx);
-        result.resale = (rf.statFilters.length || rf.rarityMin) ? { category, statFilters: rf.statFilters, rarityMin: rf.rarityMin, baseSlot: gearSlot } : null;
-      } else result.resale = null;
       send(res, 200, JSON.stringify(result), J);
       return;
     }
@@ -4383,12 +4202,15 @@ const server = http.createServer(async (req, res) => {
       const proxy = await getProxyData(league).catch(() => null);
       const seed = (Math.random() * 4294967296) >>> 0;
       const keptForEngine = kept.map((k) => ({ group: k.group, type: k.type }));
-      const essences = craftEssenceOptions(baseName, ilvl);   // lets rankFinish offer an essence-guarantee route
+      const essences = craftEssenceOptions(baseName, ilvl);   // lets the planner offer an essence-guarantee route
       const category = (() => { try { const s = gearSlotCfg(gearSlot); return s ? s.category : null; } catch { return null; } })();
       const out = [];
       for (const c of candidates) {
-        const r = craftEngine.rankFinish(poolMods, keptForEngine, c.targets, { startRarity, seed, essences });
-        if (r.impossible || !r.methods.length) continue;
+        // adviseItem returns a VERDICT as well as routes: CONTINUE / LONGSHOT / BRICKED /
+        // IMPOSSIBLE. A candidate with no route left is not rendered as a 0% plan — it is dropped
+        // here, and if EVERY candidate drops out the client shows the item as bricked.
+        const r = craftPlan.adviseItem(poolMods, keptForEngine, c.targets, { startRarity, seed, essences, jewellery: b.class === "Ring" || b.class === "Amulet" });
+        if (!r.methods.length) continue;
         try { priceCraftMethods(r, proxy); } catch { /* orb-count ranking is fine */ }
         const feas = r.methods.filter((m) => m.feasible);
         if (!feas.length) continue;
@@ -4397,12 +4219,15 @@ const server = http.createServer(async (req, res) => {
         // (usually the Annul reroll) is surfaced separately so the user can trade cost for one-shot odds.
         const best = feas.find((m) => !m.impractical) || feas[0];
         const reliable = feas.filter((m) => m !== best && m.successPerAttempt > best.successPerAttempt + 0.10).sort((a, b) => b.successPerAttempt - a.successPerAttempt)[0] || null;
-        const ctx = { base: baseName, startRarity, keptLabels: kept.map((k) => k.text), fills: c.fills, keptPrefix: kept.filter((k) => k.type === "prefix").length, keptSuffix: kept.filter((k) => k.type === "suffix").length };
         const rf = buildResaleFilters(gearSlot, kept, c.fills, idx);
-        // Drop the "(Exaltation omens)" tag from the label when the costed method used none (other
-        // side full → plain Exalts) — else the label contradicts the omen-free steps below it.
-        const labelOf = (m) => (m.expectedOrbs && m.expectedOrbs["Exaltation omen"]) ? m.label : m.label.replace(/\s*\((?:directed )?Exaltation omens\)/i, "").replace(/directed Exalts?/i, "Exalts");
-        const packMethod = (m) => ({ label: labelOf(m), steps: craftRecipeSteps(m, ctx), expectedOrbs: m.expectedOrbs, divineCost: m.divineCost != null ? m.divineCost : null, successPerAttempt: m.successPerAttempt, impractical: !!m.impractical });
+        // Steps come from the ROUTE (craft-plan's describeRoute), not from a narrator here — a
+        // step list rebuilt server-side could describe a route the planner never ran, and did.
+        const keptLine = `Start with your ${baseName} (${startRarity === "magic" ? "Magic" : "Rare"}) — keep ${kept.length ? kept.map((k) => k.text).join(", ") : "its current mods"}.`;
+        const packMethod = (m) => ({
+          label: m.label, steps: [keptLine, ...m.steps], expectedOrbs: m.expectedOrbs,
+          divineCost: m.divineCost != null ? m.divineCost : null,
+          successPerAttempt: m.successPerAttempt, impractical: !!m.impractical, estimate: !!m.estimate,
+        });
         out.push({
           label: c.fills.map((f) => f.label).join(" + "),
           fillCount: c.fills.length,
@@ -4421,7 +4246,18 @@ const server = http.createServer(async (req, res) => {
       out.sort((a, b2) => (a.achievable ? 0 : 1) - (b2.achievable ? 0 : 1)
         || b2.fillCount - a.fillCount
         || (a.method.divineCost == null ? Infinity : a.method.divineCost) - (b2.method.divineCost == null ? Infinity : b2.method.divineCost));
-      send(res, 200, JSON.stringify({ advisable: true, base: baseName, ilvl, slot, startRarity, kept: kept.map((k) => k.text), candidates: out, league }), J);
+      // Nothing survived: every worthwhile finish for this item is unreachable from where it now
+      // stands. That is the BRICKED answer, and saying it plainly is the point — the alternative
+      // is a 0.3%-per-attempt "plan" that quietly eats your currency.
+      if (!out.length) {
+        send(res, 200, JSON.stringify({
+          advisable: true, base: baseName, ilvl, slot, startRarity, kept: kept.map((k) => k.text),
+          verdict: "BRICKED", candidates: [], league,
+          reason: "No route reaches a worthwhile finish from this item's current mods without destroying what makes it worth keeping. Drop it and start on a fresh base.",
+        }), J);
+        return;
+      }
+      send(res, 200, JSON.stringify({ advisable: true, base: baseName, ilvl, slot, startRarity, kept: kept.map((k) => k.text), verdict: "CONTINUE", candidates: out, league }), J);
       return;
     }
 

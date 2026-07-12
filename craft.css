@@ -155,26 +155,6 @@
 .toolroot-craft .cf-dchip em{color:#8888ff}
 .toolroot-craft .cf-est{font:600 9px var(--font-mono);color:var(--text-faint);border:1px solid var(--border);border-radius:4px;padding:0 4px;text-transform:uppercase;vertical-align:middle}
 
-/* recipes panel (sourced step-by-step crafts from poe2-kb) */
-.toolroot-craft .cf-recipe{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:8px 0;background:rgba(255,255,255,.02)}
-.toolroot-craft .cf-recipe-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.toolroot-craft .cf-recipe-name{font-weight:600}
-.toolroot-craft .cf-recipe-scope{font-size:12px;margin:2px 0 4px}
-.toolroot-craft .cf-rstatus{font:600 9px var(--font-mono);border-radius:4px;padding:1px 5px;text-transform:uppercase;vertical-align:middle}
-.toolroot-craft .cf-rstatus-verified{color:#7dd87d;border:1px solid rgba(125,216,125,.4)}
-.toolroot-craft .cf-rstatus-extracted,.toolroot-craft .cf-rstatus-draft{color:#e0b45c;border:1px solid rgba(224,180,92,.4)}
-.toolroot-craft .cf-recipe-warn{color:var(--text-faint);font-size:12px;margin-top:4px}
-.toolroot-craft .cf-recipe-dps{width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px}
-.toolroot-craft .cf-recipe-dps th{text-align:left;color:var(--text-faint);font-weight:500;padding:3px 8px;border-bottom:1px solid var(--border)}
-.toolroot-craft .cf-recipe-dps td{padding:3px 8px;border-bottom:1px solid rgba(255,255,255,.04);font-family:var(--font-mono)}
-/* recipe profit panel — the EV layer only computes when we quote it real market values */
-.toolroot-craft .cf-recipe-ev{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
-.toolroot-craft .cf-recipe-ev label{display:inline-flex;align-items:center;gap:5px;color:var(--text-faint);font-size:12px}
-.toolroot-craft .cf-recipe-ev input{width:76px;padding:3px 6px;background:var(--bg-input,rgba(0,0,0,.25));border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--font-mono);font-size:12px}
 .toolroot-craft .cf-ev-lookout{color:var(--text-faint);font-size:12px}
-.toolroot-craft .cf-recipe-ev-out{margin-top:8px;padding:8px 10px;border-radius:4px;font-size:12.5px}
-.toolroot-craft .cf-recipe-ev-out.good{color:var(--green-bright,#7fd18b);background:rgba(127,209,139,.08)}
-.toolroot-craft .cf-recipe-ev-out.bad{color:var(--gold-bright);background:var(--gold-soft)}
 .toolroot-craft .cf-ev-break{display:block;margin-top:3px;color:var(--text-faint);font-size:11.5px;font-family:var(--font-mono)}
-/* "verified" covers mechanics, not citation — an uncited recipe must not look like a sourced one */
 .toolroot-craft .cf-runcited{padding:1px 5px;border-radius:3px;font-size:10.5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--gold-bright);background:var(--gold-soft);border:1px solid rgba(200,160,80,.28)}
