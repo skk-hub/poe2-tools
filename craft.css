@@ -154,3 +154,16 @@
 .toolroot-craft .cf-dmod:has(.cf-dsel:checked){background:var(--gold-soft)}
 .toolroot-craft .cf-dchip em{color:#8888ff}
 .toolroot-craft .cf-est{font:600 9px var(--font-mono);color:var(--text-faint);border:1px solid var(--border);border-radius:4px;padding:0 4px;text-transform:uppercase;vertical-align:middle}
+
+/* recipes panel (sourced step-by-step crafts from poe2-kb) */
+.toolroot-craft .cf-recipe{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:8px 0;background:rgba(255,255,255,.02)}
+.toolroot-craft .cf-recipe-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.toolroot-craft .cf-recipe-name{font-weight:600}
+.toolroot-craft .cf-recipe-scope{font-size:12px;margin:2px 0 4px}
+.toolroot-craft .cf-rstatus{font:600 9px var(--font-mono);border-radius:4px;padding:1px 5px;text-transform:uppercase;vertical-align:middle}
+.toolroot-craft .cf-rstatus-verified{color:#7dd87d;border:1px solid rgba(125,216,125,.4)}
+.toolroot-craft .cf-rstatus-extracted,.toolroot-craft .cf-rstatus-draft{color:#e0b45c;border:1px solid rgba(224,180,92,.4)}
+.toolroot-craft .cf-recipe-warn{color:var(--text-faint);font-size:12px;margin-top:4px}
+.toolroot-craft .cf-recipe-dps{width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px}
+.toolroot-craft .cf-recipe-dps th{text-align:left;color:var(--text-faint);font-weight:500;padding:3px 8px;border-bottom:1px solid var(--border)}
+.toolroot-craft .cf-recipe-dps td{padding:3px 8px;border-bottom:1px solid rgba(255,255,255,.04);font-family:var(--font-mono)}

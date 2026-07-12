@@ -373,6 +373,89 @@ window.__viewInit["craft"] = function () {
   }
   simBtn.addEventListener("click", simulate);
 
+  // ── Recipes: sourced step-by-step crafts from the poe2-kb recipe layer ──
+  // GET /api/craft/recipes lists them; per-recipe Simulate POSTs /api/craft/recipe-sim
+  // against a compatible base (the current one when it fits the recipe, else the first
+  // base of the recipe's class) at max(current ilvl, recipe minimum).
+  const recipesEl = $("cfRecipes"), recipeList = $("cfRecipeList");
+  let recipes = null;
+  function recipeBase(rc) {
+    const cur = byName[baseIn.value.trim()];
+    const t = rc.target;
+    const fits = (b) => t.bases && t.bases.length ? t.bases.includes(b.name) : t.base_classes.includes(b.class);
+    if (cur && fits({ name: baseIn.value.trim(), class: cur.class })) return baseIn.value.trim();
+    if (t.bases && t.bases.length) return t.bases[0];
+    // representative base for the class: odds are tag-driven so any base of the class
+    // gives the same pool — EXCEPT bases with structural "±N Modifier allowed" implicits
+    // (Absent Amulet), which really do change slot math the sim can't see. Skip those,
+    // prefer the highest drop-ilvl of the rest.
+    let best = null, fallback = null;
+    for (const name in byName) {
+      const b = byName[name];
+      if (!t.base_classes.includes(b.class)) continue;
+      if (!fallback) fallback = name;
+      if (/modifier allowed/i.test(b.implicit || "")) continue;
+      if (!best || (b.ilvl || 0) > (byName[best].ilvl || 0)) best = name;
+    }
+    return best || fallback;
+  }
+  function renderRecipes() {
+    if (!recipes.length) { recipeList.innerHTML = `<p class="muted cf-empty">No recipes in the snapshot yet.</p>`; return; }
+    recipeList.innerHTML = recipes.map((rc, i) => {
+      const mods = rc.target.required_mods.map((m) => `<span class="cf-tchip">${esc(m.alias || m.ref)}</span>`).join("");
+      const scope = (rc.target.bases && rc.target.bases.length ? rc.target.bases.join(" / ") : rc.target.base_classes.join(" / ")) +
+        (rc.target.minimum_item_level > 1 ? ` · iL${rc.target.minimum_item_level}+` : "");
+      const warn = (rc.warnings || []).map((w) => `<div class="cf-recipe-warn">⚠ ${esc(w)}</div>`).join("");
+      return `<div class="cf-recipe" data-i="${i}"><div class="cf-recipe-top">` +
+        `<span class="cf-recipe-name">${esc(rc.name)} <span class="cf-rstatus cf-rstatus-${esc(rc.status)}" title="lifecycle status">${esc(rc.status)}</span> <span class="cf-gmeta">patch ${esc(rc.patch)}</span></span>` +
+        `<button type="button" class="btn btn-sm cf-recipe-sim" data-i="${i}">Simulate</button></div>` +
+        `<div class="cf-recipe-scope muted">${esc(scope)}</div><div class="cf-advise-chips">${mods}</div>${warn}` +
+        `<div class="cf-recipe-out" data-i="${i}"></div></div>`;
+    }).join("");
+    recipeList.querySelectorAll(".cf-recipe-sim").forEach((b) => b.addEventListener("click", () => simRecipe(Number(b.dataset.i), b)));
+  }
+  async function simRecipe(i, btn) {
+    const rc = recipes[i], outEl = recipeList.querySelector(`.cf-recipe-out[data-i="${i}"]`);
+    const base = recipeBase(rc);
+    if (!base) { outEl.innerHTML = `<div class="cf-simerr">No known base matches this recipe.</div>`; return; }
+    const ilvl = Math.max(rc.target.minimum_item_level || 1, Math.min(100, parseInt(ilvlIn.value, 10) || 82));
+    btn.disabled = true; outEl.innerHTML = `<div class="cf-simload">Simulating on ${esc(base)} (iL${ilvl})…</div>`;
+    try {
+      const r = await fetch("/api/craft/recipe-sim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: rc.id, base, ilvl }) });
+      const d = await r.json();
+      if (d.error) { outEl.innerHTML = `<div class="cf-simerr">${esc(d.error)}</div>`; return; }
+      const m = d.methods && d.methods[0];
+      if (!m || m.unsupported) { outEl.innerHTML = `<div class="cf-simerr">${esc((m && m.reason) || "This recipe isn't simulatable yet.")}</div>`; return; }
+      if (m.impossible || d.impossible) { outEl.innerHTML = `<div class="cf-simerr">Not craftable on ${esc(base)} at iL${ilvl}${m.missing ? " — can't roll: " + m.missing.map(esc).join(", ") : ""}.</div>`; return; }
+      // exact closed form is authoritative when present; the MC owns decision points
+      const p = d.exact ? d.exact.successPerAttempt : m.successPerAttempt;
+      const div = d.exact && d.exact.divineCost != null ? d.exact.divineCost : m.divineCost;
+      const pct = p >= 0.995 ? "100%" : (p * 100).toFixed(p >= 0.1 ? 0 : p >= 0.01 ? 1 : 2) + "%";
+      const fmtTiny = (n) => n >= 0.01 ? fmtDiv(n) : n > 0 ? n.toFixed(4) : "0";   // a step's marginal spend is often sub-cent
+      const dps = (m.decisionPoints || []).map((dp) =>
+        `<tr><td>${esc(dp.step)}</td><td>${esc(dp.currency || dp.action)}</td>` +
+        `<td>${(dp.successGivenReached * 100).toFixed(dp.successGivenReached >= 0.1 ? 0 : 1)}%</td>` +
+        `<td>${dp.remainingDivineCost != null ? fmtTiny(dp.remainingDivineCost) + " div" : fmtOrbs(dp.remainingOrbs)}</td></tr>`).join("");
+      outEl.innerHTML = `<div class="cf-simresult">` +
+        `<div class="cf-method best"><div class="cf-method-top"><span class="cf-method-name">On ${esc(base)} (iL${ilvl})${d.exact ? ` <span class="cf-est" title="closed-form probability from mod weights (exact, not sampled)">exact</span>` : ""}</span>` +
+        `<span class="cf-method-cost">${div != null ? `<b>${fmtDiv(div)}</b> div` : fmtOrbs(m.expectedOrbs)}</span></div>` +
+        `<div class="cf-method-sub">lands ${pct}/attempt · ${fmtOrbs(m.expectedOrbs)} expected</div></div>` +
+        (d.marketFlag ? `<div class="cf-simwarn">${esc(d.marketFlag)}</div>` : "") +
+        (dps ? `<table class="cf-recipe-dps"><thead><tr><th>step</th><th>uses</th><th title="chance of finishing the recipe from this point">P(success)</th><th title="expected further spend from this point — compare vs selling the item as-is">cost from here</th></tr></thead><tbody>${dps}</tbody></table>` : "") +
+        `</div>`;
+    } catch (e) { outEl.innerHTML = `<div class="cf-simerr">Failed: ${esc(e.message || e)}</div>`; }
+    finally { btn.disabled = false; }
+  }
+  function loadRecipes() {
+    if (recipes) return;
+    fetch("/api/craft/recipes").then((r) => r.json()).then((d) => {
+      if (d.error) { recipeList.innerHTML = `<p class="muted">${esc(d.error)}</p>`; return; }
+      recipes = d.recipes || [];
+      renderRecipes();
+    }).catch((e) => { recipeList.innerHTML = `<p class="muted">Failed: ${esc(e.message || e)}</p>`; });
+  }
+  recipesEl.addEventListener("toggle", () => { if (recipesEl.open) loadRecipes(); });
+
   // ── desecrated modifier reference (Abyssal Bones + Well of Souls) ──
   const desecEl = $("cfDesec"), desecOut = $("cfDesecOut"), desecSearch = $("cfDesecSearch");
   const FACTION_LABEL = { lightless: "Lightless", amanamu: "Amanamu", kurgal: "Kurgal", ulaman: "Ulaman", abyss: "Abyss" };
