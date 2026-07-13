@@ -433,7 +433,11 @@ window.__viewInit["gear-finder"] = function () {
   function renderWeights(d) {
     if (!state.weights.length) { setStatus("Nothing improves this build's " + (d.metric || "stats") + " on this slot.", true); els.actions.hidden = true; return; }
     const max = state.weights[0].weight || 1;
-    const metricTxt = d.metric === "dps" ? "DPS" : "survivability (EHP — this build has no active skill set)";
+    // EHP-ranked = the slot is a DEFENCE slot (chest/helmet/boots/belt/shield) — that is the
+    // intended ranking, not a symptom. It used to read "(EHP — this build has no active skill
+    // set)" on every EHP slot, which blamed the build for working as designed; a build that
+    // really has no active skill is now refused server-side with a fix-it message instead.
+    const metricTxt = d.metric === "dps" ? "DPS" : "survivability (EHP)";
     els.weights.innerHTML = `<p class="gf-metric">For your build, a better <b>${esc(state.curSlot)}</b> is ranked by <b>${metricTxt}</b>. Highest-value stats:</p>` +
       state.weights.map((w) => `<div class="gf-wrow"><span class="gf-wlabel">${esc(w.label || w.key)}</span><span class="gf-wbar"><span style="width:${Math.round((w.weight / max) * 100)}%"></span></span><span class="gf-wval">×${w.weight}</span></div>`).join("");
     els.actions.hidden = false; els.snippetBox.hidden = true;

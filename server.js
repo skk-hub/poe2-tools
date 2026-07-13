@@ -2585,9 +2585,18 @@ async function computeGearWeights(buildXml, pobSlot, baseSlot, currentRaw) {
   // falls back to EHP rather than reporting "nothing improves this slot".
   const hasDefence = (equip.ev || 0) + (equip.ar || 0) + (equip.es || 0) > 0;
   const ehpSlot = hasDefence && baseSlot !== "gloves";
-  let metric = ehpSlot ? "ehp" : (dpsOfOut(base) > 0 ? "dps" : "ehp");
+  // A pure-OFFENCE slot with 0 DPS is not a slot to rank differently — it is a broken import, and
+  // saying so beats the fallback's answer. The EHP probe on a bow finds the only stat a bow has
+  // that touches EHP (an attribute roll) and reports "Strength ×20": a confident, useless number
+  // that reads like advice. PoB returns 0 DPS when no skill is active, so the fix is in PoB.
+  if (!ehpSlot && dpsOfOut(base) <= 0)
+    throw new Error("Path of Building reports 0 DPS for this build — no skill is active. Select your main skill gem in PoB (and make sure it's enabled), then re-import. A " + baseSlot + " can't be ranked on survivability: the weights would just tell you to buy attributes.");
+  let metric = ehpSlot ? "ehp" : "dps";
   let raw = await probe(metric);
-  if (metric === "dps" && !raw.length) { metric = "ehp"; raw = await probe("ehp"); }
+  // Same trap, quieter: if no probed stat moves DPS, fall back to EHP only where EHP is a real
+  // reason to buy the item (gloves — an armour piece we DPS-rank by choice). On a weapon/ring/
+  // amulet an empty DPS probe means "nothing here helps you", not "rank it by survivability".
+  if (metric === "dps" && !raw.length && hasDefence) { metric = "ehp"; raw = await probe("ehp"); }
   const max = raw.reduce((m, w) => Math.max(m, w.perUnit), 0) || 1;
   const weights = raw.map((w) => ({ ...w, weight: Math.max(1, Math.round((w.perUnit / max) * 20)) })).sort((a, b) => b.weight - a.weight);
   // PRESERVE floors: must-keep stats that PoB's DPS/EHP metric CAN'T see (so they score
