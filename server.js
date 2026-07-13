@@ -4256,10 +4256,17 @@ const server = http.createServer(async (req, res) => {
         // Steps come from the ROUTE (craft-plan's describeRoute), not from a narrator here — a
         // step list rebuilt server-side could describe a route the planner never ran, and did.
         const keptLine = `Start with your ${baseName} (${startRarity === "magic" ? "Magic" : "Rare"}) — keep ${kept.length ? kept.map((k) => k.text).join(", ") : "its current mods"}.`;
+        // The next orb's outcome split, with the jamming mods named (the engine speaks in group
+        // ids; the user reads stat lines).
+        const packRisk = (r) => r && !r.exhausted ? {
+          name: r.name, hit: r.hit, jam: r.jam, junk: r.junk,
+          jammers: r.jammers.map((j) => ({ label: craftGroupLabel(j.group), chance: j.chance })),
+        } : null;
         const packMethod = (m) => ({
           label: m.label, steps: [keptLine, ...m.steps], expectedOrbs: m.expectedOrbs,
           divineCost: m.divineCost != null ? m.divineCost : null,
           successPerAttempt: m.successPerAttempt, impractical: !!m.impractical, estimate: !!m.estimate,
+          risk: packRisk(m.risk),
         });
         out.push({
           label: c.fills.map((f) => f.label).join(" + "),

@@ -73,6 +73,22 @@
 .toolroot-craft .cf-advise-chips{display:flex;flex-wrap:wrap;gap:5px;margin:7px 0 4px}
 .toolroot-craft .cf-advise-steps{margin:6px 0 8px;padding-left:20px;color:var(--text-muted);font:400 12.5px var(--font-ui);line-height:1.5}
 .toolroot-craft .cf-advise-steps li{margin:2px 0}
+/* Next-orb outcome split: one bar, three parts — lands / harmless / jams. The jam segment is the
+   point of the whole block, so it gets the alarm colour. */
+.toolroot-craft .cf-risk{margin:0 0 8px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-sm,6px);background:var(--surface-1)}
+.toolroot-craft .cf-risk-head{color:var(--text);font:600 12px var(--font-ui);margin-bottom:6px}
+.toolroot-craft .cf-risk-bar{display:flex;height:8px;border-radius:var(--r-pill);overflow:hidden;background:var(--surface-3)}
+.toolroot-craft .cf-risk-hit{background:var(--gold-bright)}
+.toolroot-craft .cf-risk-junk{background:var(--surface-3)}
+.toolroot-craft .cf-risk-brick{background:var(--red)}
+.toolroot-craft .cf-risk-legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font:500 11.5px var(--font-ui)}
+.toolroot-craft .cf-risk-k{display:inline-flex;align-items:center;gap:5px;color:var(--text-muted)}
+.toolroot-craft .cf-risk-k::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--surface-3)}
+.toolroot-craft .cf-risk-k.hit::before{background:var(--gold-bright)}
+.toolroot-craft .cf-risk-k.brick::before{background:var(--red)}
+.toolroot-craft .cf-risk-k.brick{color:var(--red)}
+.toolroot-craft .cf-risk-jam{margin-top:6px;color:var(--text-muted);font:400 11.5px var(--font-ui);line-height:1.5}
+.toolroot-craft .cf-risk-jam em{font-style:normal;color:var(--red);font:600 11.5px var(--font-mono)}
 .toolroot-craft .cf-resale-btn{padding:5px 10px;border:1px solid var(--border-gold);background:transparent;color:var(--gold-bright);border-radius:var(--r-sm,6px);font:600 12px var(--font-ui);cursor:pointer}
 .toolroot-craft .cf-resale-btn:hover{background:var(--gold-soft)}
 .toolroot-craft .cf-resale-btn:disabled{opacity:.5;cursor:default}

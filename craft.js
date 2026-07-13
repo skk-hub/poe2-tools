@@ -279,6 +279,26 @@ window.__viewInit["craft"] = function () {
   }
   adviseBtn.addEventListener("click", advise);
 
+  // What the NEXT orb does to the item in hand. The per-attempt % says how often you win; this says
+  // what the losses cost you — junk you can Chaos off later vs a mod that JAMS the side you still
+  // need (from there only an Annul, which can eat a kept mod, or a full reroll). That is the number
+  // that decides "one more orb" vs "start on a fresh base", so it sits with the plan, not in a tip.
+  const riskBlock = (r) => {
+    if (!r) return "";
+    const pc = (n) => Math.round(n * 100) + "%";
+    const jammers = r.jammers.length
+      ? `<div class="cf-risk-jam">Jams it: ${r.jammers.map((j) => `${esc(j.label)} <em>${pc(j.chance)}</em>`).join(" · ")}</div>`
+      : "";
+    return `<div class="cf-risk"><div class="cf-risk-head">If you ${esc(r.name)} now</div>` +
+      `<div class="cf-risk-bar" title="what this one orb can roll">` +
+        `<span class="cf-risk-hit" style="width:${r.hit * 100}%"></span>` +
+        `<span class="cf-risk-junk" style="width:${r.junk * 100}%"></span>` +
+        `<span class="cf-risk-brick" style="width:${r.jam * 100}%"></span></div>` +
+      `<div class="cf-risk-legend"><span class="cf-risk-k hit">lands a target ${pc(r.hit)}</span>` +
+        `<span class="cf-risk-k junk">harmless junk ${pc(r.junk)}</span>` +
+        `<span class="cf-risk-k brick">jams a slot you need ${pc(r.jam)}</span></div>${jammers}</div>`;
+  };
+
   function renderAdvise(d) {
     if (!d || d.error) { adviseOut.innerHTML = `<div class="cf-simerr">${esc((d && d.error) || "no advice")}</div>`; return; }
     if (d.advisable === false) { adviseOut.innerHTML = `<div class="cf-simerr">${esc(d.reason || "No suggestion for this item type yet.")}</div>`; return; }
@@ -300,7 +320,7 @@ window.__viewInit["craft"] = function () {
       return `<div class="${cls}"><div class="cf-advise-top"><span class="cf-advise-name">${i === 0 && c.achievable ? "★ " : ""}Add ${esc(c.label)}</span>` +
         `<span class="cf-advise-cost">${cost} · ${pct}%${tag}</span></div>` +
         `<div class="cf-advise-chips">${c.fills.map(chip).join("")}</div>` +
-        `<ol class="cf-advise-steps">${steps}</ol>${gamble}${resaleBtn}</div>`;
+        `<ol class="cf-advise-steps">${steps}</ol>${riskBlock(m.risk)}${gamble}${resaleBtn}</div>`;
     }).join("");
     adviseOut.innerHTML = `<div class="cf-simresult">${head}${cards}</div>`;
     // Wire the on-demand resale buttons (1-2 Trade2 calls each, gated server-side on trade-status).

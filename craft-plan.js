@@ -714,6 +714,89 @@ function routeMoveIds(r) {
     ...(x ? x.moves || Object.values(x.steered || {}) : []), r.lock ? "hinekora" : null].filter(Boolean);
 }
 
+// ── what the NEXT orb can do to you ──────────────────────────────────────────
+// The plan says 6% per attempt. The other 94% is not all the same, and that difference is the whole
+// decision: some misses are junk you can Chaos away later, and some JAM — they eat the last open
+// slot on a side you still need (or consume a target's group at a tier you won't take), after which
+// only an Annul (which can eat a mod you're keeping) or a full reroll gets you out.
+//
+// Closed form off the pool weights — no simulation. It mirrors apply()'s candidate rules exactly
+// (side, min_mod_level, one-mod-per-group, tag restrict/boost) so these odds cannot drift from what
+// the simulator actually rolls. Single-mod adds only; a Chaos/Annul has no simple "what lands" split
+// and is a recovery move anyway, so it returns null rather than a number that means something else.
+function nextMoveRisk(ctx, item, moveId) {
+  const mv = MOVES[moveId];
+  if (!mv || !legal(mv, item, ctx)) return null;
+  const e = mv.effect || {};
+  if ((e.kind !== "add" && e.kind !== "upgrade_add") || (e.adds || 1) !== 1) return null;
+
+  const after = clone(item);
+  if (e.kind === "upgrade_add") after.rarity = e.to_rarity;      // a Regal promotes FIRST, then adds
+  // Two different caps, and conflating them is a lie in both directions:
+  //   LEGAL cap = the item's caps RIGHT NOW — an Augment can only go where a Magic item has room.
+  //   JAM cap   = the caps the item ENDS at. Every route out of a Magic item promotes it to Rare,
+  //              and Rare reopens the slots (1/1 → 3/3). Judging slot pressure at the Magic caps
+  //              said a junk Augment "jams 88%" of the time, when an Augment cannot brick anything:
+  //              the Regal that follows hands the slot straight back.
+  const cap = CAP[after.rarity];
+  const openP = cap.prefix - after.prefixes.length;
+  const openS = cap.suffix - after.suffixes.length;
+  const endCap = CAP[after.rarity === "magic" ? "rare" : after.rarity];
+  const endP = endCap.prefix - after.prefixes.length;
+  const endS = endCap.suffix - after.suffixes.length;
+  const unmet = ctx.T.filter((t) => !t.kept && !targetMet(after, t));
+  const present = after.prefixes.concat(after.suffixes).map((m) => m.group);
+  const restrict = e.restrict === "same_tag_as_item" ? E.itemTags(after) : null;
+  const boost = e.restrict === "catalysed_tag" ? ctx.catalysedTags : null;
+  const min = e.min_mod_level || 0;
+  const side = e.side || null;
+
+  const jammers = new Map();
+  let total = 0, hit = 0, jam = 0;
+  for (const m of ctx.mods) {
+    if (side && m.type !== side) continue;
+    if (min && m.ilvl < min) continue;
+    if (m.type === "prefix" ? openP <= 0 : openS <= 0) continue;
+    if (present.indexOf(m.group) >= 0) continue;                 // one mod per group
+    const tags = m.tags || [];
+    if (restrict && !tags.some((tg) => restrict.has(tg))) continue;
+    let w = m.weight;
+    if (boost && tags.some((tg) => boost.has(tg))) w *= 3;       // the same multiplier apply() uses
+    total += w;
+
+    const t = unmet.find((x) => x.group === m.group && x.type === m.type);
+    if (t) {
+      // Lands the target's group. A group-level target takes any tier; a key-level one does not —
+      // and a mod is one-per-group, so the wrong tier LOCKS the group and the target is gone.
+      if (!t.keys || t.keys.has(m.key)) hit += w;
+      else { jam += w; jammers.set(m.group, (jammers.get(m.group) || 0) + w); }
+      continue;
+    }
+    // Otherwise: does it take the LAST open slot on a side an unmet target still needs — counted at
+    // the rarity the item ends at, so a Magic add isn't blamed for a slot the Regal gives back?
+    const openAfter = (m.type === "prefix" ? endP : endS) - 1;
+    if (openAfter <= 0 && unmet.some((x) => x.type === m.type)) {
+      jam += w;
+      jammers.set(m.group, (jammers.get(m.group) || 0) + w);
+    }
+  }
+  if (!total) return { moveId, name: mv.name, exhausted: true, hit: 0, jam: 0, junk: 0, jammers: [] };
+  return {
+    moveId, name: mv.name,
+    hit: hit / total, jam: jam / total, junk: (total - hit - jam) / total,
+    jammers: [...jammers.entries()]
+      .map(([group, w]) => ({ group, chance: w / total }))
+      .sort((a, b) => b.chance - a.chance)
+      .slice(0, 5),
+  };
+}
+
+// The move a route would make on the item IN HAND: the first of its moves that is legal right now.
+function nextMoveOf(method, ctx, item) {
+  for (const id of (method && method.moves) || []) if (MOVES[id] && legal(MOVES[id], item, ctx)) return id;
+  return null;
+}
+
 // ── entry points ─────────────────────────────────────────────────────────────
 function buildCtx(mods, targets, opts) {
   const T = prepTargets(targets, mods);
@@ -888,6 +971,9 @@ function adviseItem(mods, currentMods, fillTargets, opts) {
     .filter((r) => r.fix !== "none" || (needP <= freeP && needS <= freeS));
 
   const methods = shortlist(routes, ctxAll, opts, seed);
+  // What the very next orb of each route can do to the item IN HAND — the odds the per-attempt
+  // success rate can't tell you: how much of the miss is recoverable junk, and how much of it jams.
+  for (const m of methods) m.risk = nextMoveRisk(ctxAll, seed, nextMoveOf(m, ctxAll, seed));
 
   const best = methods[0];
   if (!best || !best.feasible) {
@@ -935,4 +1021,5 @@ for (const a of AUGMENT_MOVES) if (a.move) EXECUTABLE.add(a.move);
 module.exports = {
   planRoutes, adviseItem, MOVES, UNSUPPORTED, EXECUTABLE, FILL_FAMILIES, FIX_FAMILIES,
   enumerateRoutes, simulateRoute, buildCtx, runRoute, legal, apply, PRACTICAL_MIN,
+  nextMoveRisk, nextMoveOf,
 };

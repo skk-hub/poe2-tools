@@ -392,5 +392,66 @@ ok("a multi-tier target group does not delete the Greater/Perfect orbs", () => {
   assert.strictEqual(perfectAug.length, 0, "Perfect Augment (floor 70) offered for a target whose best tier is ilvl 54");
 });
 
+console.log("craft-plan — what the next orb can do to you");
+
+// The risk split is a CLOSED FORM over the pool weights, while the plan's odds come from the Monte
+// Carlo. Two implementations of "what can this orb roll" drift apart the moment one of them changes,
+// so this checks the closed form against the simulator actually rolling that same move.
+ok("the next-orb split is exhaustive, and matches what the executor really rolls", () => {
+  // Rare item, one open prefix + one open suffix, both still wanted. Any junk lands on the last
+  // open slot of its side, so EVERY non-target mod jams — the extreme case, easy to reason about.
+  const pool = [
+    { key: "p_life", group: "Life", type: "prefix", weight: 100, ilvl: 1 },
+    { key: "p_junk", group: "JunkP", type: "prefix", weight: 300, ilvl: 1 },
+    { key: "s_res", group: "FireRes", type: "suffix", weight: 100, ilvl: 1 },
+    { key: "s_junk", group: "JunkS", type: "suffix", weight: 300, ilvl: 1 },
+  ];
+  const ctx = P.buildCtx(pool, [{ group: "Life", type: "prefix" }, { group: "FireRes", type: "suffix" }], {});
+  const item = {
+    rarity: "rare", quality: 0, corrupted: false,
+    prefixes: [{ key: "p_x", group: "X", type: "prefix", ilvl: 1 }, { key: "p_y", group: "Y", type: "prefix", ilvl: 1 }],
+    suffixes: [{ key: "s_x", group: "SX", type: "suffix", ilvl: 1 }, { key: "s_y", group: "SY", type: "suffix", ilvl: 1 }],
+  };
+  const r = P.nextMoveRisk(ctx, item, "exalt");
+  assert.ok(r && !r.exhausted, "no risk split for a plain Exalt on an item with two open slots");
+  assert.ok(Math.abs(r.hit + r.junk + r.jam - 1) < 1e-9, `the split must be exhaustive, got ${r.hit + r.junk + r.jam}`);
+  // 200/800 of the weight is a target; the other 600/800 fills the last slot on a side we need.
+  assert.ok(Math.abs(r.hit - 0.25) < 1e-9, `hit should be 200/800, got ${r.hit}`);
+  assert.ok(Math.abs(r.jam - 0.75) < 1e-9, `every non-target here takes a needed slot, got jam=${r.jam}`);
+  assert.strictEqual(r.junk, 0, "nothing is harmless when both open slots are the ones you need");
+
+  // Now the same question, asked of the executor: apply the move many times and count how often the
+  // item comes out with an unmet target that can no longer be added.
+  const rnd = E.rng(99);
+  let jammed = 0, landed = 0;
+  const TRIALS = 4000;
+  for (let i = 0; i < TRIALS; i++) {
+    const probe = JSON.parse(JSON.stringify(item));
+    P.apply(P.MOVES.exalt, probe, ctx, rnd, {});
+    const openP = 3 - probe.prefixes.length, openS = 3 - probe.suffixes.length;
+    const has = (g) => probe.prefixes.concat(probe.suffixes).some((m) => m.group === g);
+    if (has("Life") || has("FireRes")) landed++;
+    else if ((!has("Life") && openP === 0) || (!has("FireRes") && openS === 0)) jammed++;
+  }
+  assert.ok(Math.abs(landed / TRIALS - r.hit) < 0.03, `closed form says hit=${r.hit}, executor rolled ${landed / TRIALS}`);
+  assert.ok(Math.abs(jammed / TRIALS - r.jam) < 0.03, `closed form says jam=${r.jam}, executor rolled ${jammed / TRIALS}`);
+});
+
+ok("a min_mod_level orb's split only counts tiers it can actually roll", () => {
+  const pool = [
+    { key: "p_life_lo", group: "Life", type: "prefix", weight: 900, ilvl: 1 },   // a Greater Exalt won't roll this
+    { key: "p_life_hi", group: "Life", type: "prefix", weight: 100, ilvl: 60 },
+    { key: "p_junk_lo", group: "JunkP", type: "prefix", weight: 900, ilvl: 1 },  // …nor this
+    { key: "p_junk_hi", group: "JunkP", type: "prefix", weight: 100, ilvl: 60 },
+  ];
+  const ctx = P.buildCtx(pool, [{ group: "Life", type: "prefix" }], {});
+  const item = { rarity: "rare", quality: 0, corrupted: false, prefixes: [], suffixes: [] };
+  const plain = P.nextMoveRisk(ctx, item, "exalt");
+  const greater = P.nextMoveRisk(ctx, item, "exalt-greater");   // floor 35 → only the ilvl-60 tiers
+  assert.ok(Math.abs(plain.hit - 0.5) < 1e-9, `plain Exalt sees the whole pool: expected 1000/2000, got ${plain.hit}`);
+  assert.ok(Math.abs(greater.hit - 0.5) < 1e-9, `Greater Exalt sees only ilvl>=35: expected 100/200, got ${greater.hit}`);
+  assert.ok(greater.hit > 0, "the Greater Exalt must still be able to hit Life's ilvl-60 tier");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
