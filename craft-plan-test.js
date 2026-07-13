@@ -179,6 +179,52 @@ ok("the Lock raises one-shot odds and charges Locks", () => {
   assert.ok(b.expectedOrbs["Hinekora's Lock"] > 0, "a Lock route that charges no Locks is not using them");
 });
 
+console.log("craft-plan — ranking is on MONEY, and unbuyable never wins");
+
+ok("a route using a currency the market does not price is sunk below buyable routes", () => {
+  // The bug this pins, observed live: every top-5 route for a Sapphire Ring used Omen of
+  // Homogenising Exaltation — which the market does not price at all. Ranking on orb count made
+  // the unpriced omen a FREE orb, so the unbuyable route won precisely because nothing bid its
+  // price up, and the quoted divine cost silently excluded it. Unknown cost must mean "last",
+  // never "free".
+  const priceOf = (orb) => {
+    if (/Omen of Homogenising/.test(orb)) return null;   // not sold on the market
+    if (/Exalted Orb/.test(orb)) return 0.01;
+    if (/Essence/.test(orb)) return 0.05;
+    if (/Orb of Transmutation|Orb of Augmentation|Regal Orb|Orb of Alchemy/.test(orb)) return 0.001;
+    if (/Chaos Orb|Orb of Annulment/.test(orb)) return 0.02;
+    return 0.5;                                          // every other omen is priced
+  };
+  const r = P.planRoutes(POOL, ["Life", "FireRes"], { essences: ESSENCES, seed: 21, trials: 1200, priceOf });
+  assert.ok(r.methods.length, "no routes");
+  const top = r.methods[0];
+  assert.ok(!top.priceMissing,
+    `the best route depends on an unpriceable currency (${(top.priceMissing || []).join(", ")}) — unbuyable must never rank first`);
+  assert.ok(top.divineCost != null, "the best route must have a real, complete divine cost");
+  // and any route that IS unpriceable must sit below every priced one
+  const firstUnpriced = r.methods.findIndex((m) => m.priceMissing);
+  const lastPriced = r.methods.map((m) => !m.priceMissing).lastIndexOf(true);
+  if (firstUnpriced >= 0) {
+    assert.ok(firstUnpriced > lastPriced, "an unpriced route is ranked above a priced one");
+  }
+});
+
+ok("with prices, the cheapest MONEY route wins — not the fewest-orbs route", () => {
+  // Make Exalts dirt cheap and every omen absurd. The winner must be an omen-free route even
+  // though omen routes use fewer orbs.
+  const priceOf = (orb) => {
+    if (/Omen/.test(orb)) return 500;                    // priced, but ruinous
+    if (/Hinekora/.test(orb)) return 500;
+    if (/Exalted Orb/.test(orb)) return 0.001;
+    return 0.001;
+  };
+  const r = P.planRoutes(POOL, ["Life", "FireRes"], { essences: ESSENCES, seed: 22, trials: 1200, priceOf });
+  const top = r.methods[0];
+  const spentOnOmens = Object.keys(top.expectedOrbs).some((o) => /Omen|Hinekora/.test(o));
+  assert.ok(!spentOnOmens,
+    `best route buys ruinously-priced omens (${top.label}) — ranking is still on orb count, not money`);
+});
+
 console.log("craft-plan — advise a pasted item (continue vs BRICKED)");
 
 ok("an item one slot short of its target says CONTINUE", () => {

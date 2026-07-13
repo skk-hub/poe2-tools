@@ -2996,6 +2996,15 @@ const craftEssenceOptions = (baseName, itemLevel) => craftEngine.craftEssenceOpt
 // "Exaltation omen" to Omen of SINISTRAL Exaltation, which silently priced every dextral and
 // homogenising route at the sinistral omen's price. An unpriced currency (a new omen the proxy
 // doesn't track yet) lands in priceMissing and the cost is reported as a floor — never invented.
+// A currency-name -> divine price lookup for the PLANNER (craft-plan ranks routes with it).
+// Returns null for anything the market does not price — and the planner treats null as UNKNOWN,
+// not free, sinking that route below every route it can actually cost. This is what stops an
+// unbuyable omen from winning the ranking by costing nothing.
+const craftPriceOf = (proxy) => (name) => {
+  if (!proxy || !name) return null;
+  try { const pv = proxyPrice(proxy, name); return pv && pv.div > 0 ? pv.div : null; } catch { return null; }
+};
+
 function priceCraftMethods(result, proxy) {
   if (!result || result.impossible || !proxy) return;
   for (const m of result.methods) {
@@ -4165,8 +4174,14 @@ const server = http.createServer(async (req, res) => {
       const essences = craftEssenceOptions(String(input.base || ""), Number(input.ilvl) || 100);
       const baseCls = (CRAFT_DATA && CRAFT_DATA.bases[String(input.base || "")] || {}).class;
       const jewellery = baseCls === "Ring" || baseCls === "Amulet";   // catalysts apply to jewellery
-      const result = craftPlan.planRoutes(mods, targets, { seed, essences, jewellery });
-      try { priceCraftMethods(result, await getProxyData(sanitizeLeague(input.league))); } catch { /* pricing is a bonus; fall back to orb-count ranking */ }
+      // Prices go INTO the planner, not just onto its output. The planner shortlists hundreds of
+      // enumerated routes down to the few it measures properly, and shortlisting on orb count let
+      // a route spending 3 exotic omens beat one spending 30 cheap Exalts — the cheap route never
+      // reached the pricer at all. Worse, an omen the market does not price counted as a free orb,
+      // so unbuyable routes ranked FIRST. craftPriceOf() makes the funnel rank on money throughout.
+      const proxy = await getProxyData(sanitizeLeague(input.league)).catch(() => null);
+      const result = craftPlan.planRoutes(mods, targets, { seed, essences, jewellery, priceOf: craftPriceOf(proxy) });
+      try { priceCraftMethods(result, proxy); } catch { /* pricing is a bonus; fall back to orb-count ranking */ }
       // route classes on the priced ranking; targetValueDiv (optional, from /api/craft/resale) adds best_ev
       if (result.priced) tagRouteClasses(result.methods, Number(input.targetValueDiv) > 0 ? Number(input.targetValueDiv) : null);
       send(res, 200, JSON.stringify(result), J);
@@ -4209,7 +4224,7 @@ const server = http.createServer(async (req, res) => {
         // adviseItem returns a VERDICT as well as routes: CONTINUE / LONGSHOT / BRICKED /
         // IMPOSSIBLE. A candidate with no route left is not rendered as a 0% plan — it is dropped
         // here, and if EVERY candidate drops out the client shows the item as bricked.
-        const r = craftPlan.adviseItem(poolMods, keptForEngine, c.targets, { startRarity, seed, essences, jewellery: b.class === "Ring" || b.class === "Amulet" });
+        const r = craftPlan.adviseItem(poolMods, keptForEngine, c.targets, { startRarity, seed, essences, jewellery: b.class === "Ring" || b.class === "Amulet", priceOf: craftPriceOf(proxy) });
         if (!r.methods.length) continue;
         try { priceCraftMethods(r, proxy); } catch { /* orb-count ranking is fine */ }
         const feas = r.methods.filter((m) => m.feasible);

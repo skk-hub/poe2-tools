@@ -679,15 +679,44 @@ function buildCtx(mods, targets, opts) {
   ctx.rareEss = pickEssence(mods, T, ctx.essences, true);
   return ctx;
 }
-function rank(methods) {
-  const total = (r) => Object.values(r.expectedOrbs).reduce((s, n) => s + n, 0);
+// Rank routes. priceOf(currencyName) -> divine value, or null if the market does not price it.
+//
+// RANK ON MONEY, NOT ORB COUNT. This used to sort by raw orb count and let the server price the
+// survivors afterwards — which was survivable when there were 13 hand-written methods (all of them
+// priced) and is catastrophic now that hundreds of routes are enumerated: a route spending 3
+// exotic omens "beats" one spending 30 cheap Exalts, so the cheap route never even reaches the
+// pricer. Worse, an UNPRICED currency counted as just another orb, so a route leaning on an omen
+// nobody sells looked like the cheapest route on the board — it ranked first *because* nothing bid
+// its price up. (Observed live: every top-5 route for a Sapphire Ring used Omen of Homogenising
+// Exaltation, which the market does not price at all, and the quoted cost silently excluded it.)
+//
+// So: a route whose currency we cannot price has an UNKNOWN cost, not a zero one, and unknown
+// sinks below every route we can actually cost. If you cannot buy it, we do not recommend it.
+function rank(methods, priceOf) {
+  const totalOrbs = (r) => Object.values(r.expectedOrbs).reduce((s, n) => s + n, 0);
   methods.forEach((r) => {
-    r.totalOrbs = r.feasible ? total(r) : Infinity;
+    r.totalOrbs = r.feasible ? totalOrbs(r) : Infinity;
     // <2% per attempt = you reroll the whole item 50+ times; the "expected cost" is an
     // extrapolation nobody actually runs. Flag it and sink it below real plans.
     r.impractical = r.feasible && r.successPerAttempt < PRACTICAL_MIN;
+    r.priceMissing = undefined;
+    r.divineCost = null;
+    if (!priceOf || !r.feasible) return;
+    let cost = 0;
+    const missing = [];
+    for (const [orb, n] of Object.entries(r.expectedOrbs)) {
+      const p = priceOf(orb);
+      if (p > 0) cost += n * p; else missing.push(orb);
+    }
+    if (missing.length) r.priceMissing = missing;      // cost is a FLOOR — do not treat it as the price
+    else r.divineCost = Math.round(cost * 10000) / 10000;
   });
-  methods.sort((a, b) => (a.impractical ? 1 : 0) - (b.impractical ? 1 : 0) || a.totalOrbs - b.totalOrbs);
+  const key = (r) => (r.divineCost != null ? r.divineCost : Infinity);
+  methods.sort((a, b) =>
+    (a.impractical ? 1 : 0) - (b.impractical ? 1 : 0)      // brick-prone routes last
+    || (a.divineCost == null ? 1 : 0) - (b.divineCost == null ? 1 : 0)   // unbuyable/unpriced below buyable
+    || key(a) - key(b)                                     // then cheapest real money
+    || a.totalOrbs - b.totalOrbs);                         // no prices at all → fall back to orb count
   return methods;
 }
 // Reachability: a target that isn't in the pool at this item level is not a hard route, it is
@@ -725,9 +754,10 @@ const PRESCREEN_MIN_FEASIBLE = 40;   // fewer survivors than this → distrust t
 
 function shortlist(routes, ctx, opts, seedItem) {
   const seed = (opts.seed >>> 0) || 12345;
+  const priceOf = typeof opts.priceOf === "function" ? opts.priceOf : null;
   const sim = (r, trials, cap) => simulateRoute(r, ctx, trials, E.rng(seed), seedItem, cap);
   const routesOf = (scored, keep) =>
-    rank(scored.filter((s) => s.m.feasible).map((s) => s.m))
+    rank(scored.filter((s) => s.m.feasible).map((s) => s.m), priceOf)
       .slice(0, keep)
       .map((m) => scored.find((s) => s.m.key === m.key).r);
 
@@ -741,7 +771,7 @@ function shortlist(routes, ctx, opts, seedItem) {
   const survivors = routesOf(screened, REFINE_KEEP);
 
   const rnd = E.rng(seed);
-  return rank(survivors.map((r) => simulateRoute(r, ctx, opts.trials || REFINE_TRIALS, rnd, seedItem)));
+  return rank(survivors.map((r) => simulateRoute(r, ctx, opts.trials || REFINE_TRIALS, rnd, seedItem)), priceOf);
 }
 
 // Plan a craft from a WHITE BASE. Drop-in replacement for the old rankMethods (same return shape),
