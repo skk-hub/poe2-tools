@@ -352,5 +352,23 @@ ok("a two-mod MAGIC paste is not told to Augment", () => {
     `told to Augment an item with no open Magic slot: ${r.methods[0] && r.methods[0].label}`);
 });
 
+// A mod you are KEEPING is already on the item — nothing has to roll it, so its item level must not
+// gate which orbs are legal. It used to: the kept mod went into ctx.T, the tier floor took the min
+// over ALL targets, and one low-ilvl keeper (a 15% Rarity ring suffix, ilvl 8) dragged the floor
+// under 35 — silently deleting Greater/Perfect Regal, Augment, Exalt and Chaos from the plan.
+ok("a low-ilvl KEPT mod does not delete the Greater/Perfect orbs from a seeded plan", () => {
+  const pool = [
+    { key: "p_life_t1", group: "Life", type: "prefix", weight: 100, ilvl: 60 },
+    { key: "p_junk1", group: "JunkP1", type: "prefix", weight: 300, ilvl: 1 },
+    { key: "s_res", group: "FireRes", type: "suffix", weight: 100, ilvl: 60 },
+    { key: "s_rarity", group: "Rarity", type: "suffix", weight: 100, ilvl: 8 },   // the keeper
+  ];
+  const targets = [{ group: "Rarity", type: "suffix", kept: true }, { group: "Life", type: "prefix" }, { group: "FireRes", type: "suffix" }];
+  const ctx = P.buildCtx(pool, targets, {});
+  const routes = P.enumerateRoutes(ctx, { seeded: true, startRarity: "magic", magicSlotOpen: true });
+  const tiered = routes.filter((r) => /greater|perfect/i.test([r.promote, r.augment, r.fill, r.fix].join(" ")));
+  assert.ok(tiered.length > 0, "no Greater/Perfect route survived — a kept mod is gating the tier floor again");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -85,6 +85,9 @@ function prepTargets(targets, mods) {
     const pool = byGroup[o.group];
     return {
       group: o.group, keys, desecrated: !!o.desecrated, poolN: o.poolN, key: o.key,
+      // kept = already ON the pasted item. It is a target only in the sense that LOSING it is a
+      // failure; no move has to roll it, so it must not constrain which moves are legal (see rollT).
+      kept: !!o.kept,
       type: o.type || (pool ? pool.type : "prefix"),
     };
   });
@@ -371,11 +374,25 @@ const AUGMENT_MOVES = [
   { id: "augment-perfect", label: "Perfect Augment (top tiers)", move: "augment-perfect", minLevel: 70 },
 ];
 
+// The targets a move actually has to ROLL. On a pasted item the kept mods are targets too (losing
+// one is a failure), but they are already on the item — nothing has to roll them. Letting them into
+// the tier floor below was silently deleting every Greater/Perfect variant from a seeded plan: one
+// low-ilvl mod you happen to be keeping (a 15% Rarity ring mod) dragged the floor under 35 and the
+// Greater Regal / Greater Augment / Greater Exalt / Greater Chaos families all vanished.
+const rollT = (ctx) => {
+  const need = ctx.T.filter((t) => !t.kept);
+  return need.length ? need : ctx.T;
+};
+const tierFloor = (ctx) => {
+  const T = rollT(ctx);
+  return T.length ? Math.min(...T.map((t) => targetMinLevel(ctx.mods, t))) : 0;
+};
+
 // Which start moves make sense for this craft. Magic-route starts (transmute) pair with a
 // guarantee/fill; rare-route starts (alchemy) come out with 4 random mods and need a fix.
 function startMoves(ctx) {
   const out = [];
-  const floor = ctx.T.length ? Math.min(...ctx.T.map((t) => targetMinLevel(ctx.mods, t))) : 0;
+  const floor = tierFloor(ctx);
   out.push("transmute");
   if (floor >= 44) out.push("transmute-greater");
   if (floor >= 70) out.push("transmute-perfect");
@@ -389,7 +406,7 @@ function startMoves(ctx) {
 // Magic → Rare promotions (used after a transmute start, before/instead of an essence).
 function promoteMoves(ctx) {
   const out = ["regal"];
-  const floor = ctx.T.length ? Math.min(...ctx.T.map((t) => targetMinLevel(ctx.mods, t))) : 0;
+  const floor = tierFloor(ctx);
   if (floor >= 35) out.push("regal-greater");
   if (floor >= 50) out.push("regal-perfect");
   const pfx = ctx.T.some((t) => t.type === "prefix"), sfx = ctx.T.some((t) => t.type === "suffix");
@@ -499,11 +516,12 @@ function fillOk(f, ctx) {
   if (f.needsJewellery && !ctx.jewellery) return false;
   if (f.needsCluster && !ctx.clustered) return false;
   // A min-level fill that floors ABOVE a target's cheapest acceptable tier can never roll it.
-  if (f.minLevel) for (const t of ctx.T) if (targetMinLevel(ctx.mods, t) < f.minLevel) return false;
+  // Only the targets still to be ROLLED count — a kept mod is already there (see rollT).
+  if (f.minLevel) for (const t of rollT(ctx)) if (targetMinLevel(ctx.mods, t) < f.minLevel) return false;
   return true;
 }
 function fixOk(f, ctx) {
-  if (f.minLevel) for (const t of ctx.T) if (targetMinLevel(ctx.mods, t) < f.minLevel) return false;
+  if (f.minLevel) for (const t of rollT(ctx)) if (targetMinLevel(ctx.mods, t) < f.minLevel) return false;
   return true;
 }
 
@@ -853,7 +871,7 @@ function adviseItem(mods, currentMods, fillTargets, opts) {
   // Routes that keep the item: fill the open slots, or unjam a side and re-fill. Losing a KEPT
   // mod is a failure, so the kept groups are targets too — that is what makes an Annul route's
   // risk show up in its odds instead of hiding in a footnote.
-  const keptTargets = (currentMods || []).map((m) => ({ group: m.group, type: m.type, keys: m.key ? [m.key] : null }));
+  const keptTargets = (currentMods || []).map((m) => ({ group: m.group, type: m.type, keys: m.key ? [m.key] : null, kept: true }));
   const ctxAll = buildCtx(mods, [...keptTargets, ...fillTargets], opts);
   const magicSlotOpen = startRarity === "magic" && seed.prefixes.length + seed.suffixes.length < CAP.magic.prefix + CAP.magic.suffix;
   const routes = enumerateRoutes(ctxAll, { seeded: true, startRarity, magicSlotOpen })
