@@ -141,6 +141,13 @@ function legal(move, item, ctx) {
   if (r.has_prefix && item.prefixes.length < r.has_prefix) return false;
   if (r.has_suffix && item.suffixes.length < r.has_suffix) return false;
   if (r.has_desecrated && !item.prefixes.concat(item.suffixes).some((m) => m.desecrated)) return false;
+  // "Items with Desecrated Modifiers cannot be Desecrated again" (revealed or not). Repeat
+  // desecration IS legal — but only after an Orb of Annulment + Omen of Light removes the existing
+  // one, so the route must PAY for that scrub. Without this gate the planner happily boned an item
+  // that already carried a desecrated mod, which is illegal in game; it bit routes chasing TWO
+  // desecrated targets (the scrub loop for one target happened to respect the rule by accident).
+  // Omen of Putrefaction is exempt in the catalog — it replaces every modifier.
+  if (r.desecrated_absent && item.prefixes.concat(item.suffixes).some((m) => m.desecrated)) return false;
   if (r.quality && !(item.quality > 0)) return false;
   if (r.item_class === "jewellery" && !ctx.jewellery) return false;
   if (r.group_absent === "essence_group" && ctx.essence && hasGroup(item, ctx.essence.group)) return false;
@@ -732,6 +739,13 @@ function reachability(mods, T) {
   }
   const pfx = T.filter((t) => t.type === "prefix").length;
   const sfx = T.filter((t) => t.type === "suffix").length;
+  // At most ONE desecrated modifier can ever sit on a finished item. You may retry a bad reveal as
+  // often as you like (Orb of Annulment + Omen of Light scrubs the miss, restoring eligibility),
+  // but you cannot KEEP one and then bone again — "Items with Desecrated Modifiers cannot be
+  // Desecrated again". So two desecrated targets is not a hard craft, it is an impossible one, and
+  // saying so beats simulating a route that always fails.
+  const desec = T.filter((t) => t.desecrated).length;
+  if (desec > 1) missing.push(`${desec} desecrated modifiers — an item can only ever keep ONE (a bone is illegal while a Desecrated mod is on the item, and Omen of Light removes it rather than adding a second)`);
   return { missing, pfx, sfx, overCap: pfx > CAP.rare.prefix || sfx > CAP.rare.suffix };
 }
 

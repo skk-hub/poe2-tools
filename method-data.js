@@ -2,7 +2,7 @@
 // patch 0.5.4 (Runes of Aldur) — 60 moves, 46 searchable.
 // The KB owns this data. To change a move, change it there and re-run gen-methods.js.
 module.exports = {
-  "generated": "2026-07-12T22:19:07.379Z",
+  "generated": "2026-07-13T00:13:09.635Z",
   "patch": "0.5.4",
   "league": "Runes of Aldur",
   "moves": [
@@ -693,7 +693,8 @@ module.exports = {
       "currency": "Abyssal Bone",
       "requires": {
         "rarity": "rare",
-        "open_affix": 1
+        "open_affix": 1,
+        "desecrated_absent": true
       },
       "effect": {
         "kind": "reveal_pick",
@@ -714,7 +715,8 @@ module.exports = {
       ],
       "requires": {
         "rarity": "rare",
-        "open_prefix": 1
+        "open_prefix": 1,
+        "desecrated_absent": true
       },
       "effect": {
         "kind": "reveal_pick",
@@ -735,7 +737,8 @@ module.exports = {
       ],
       "requires": {
         "rarity": "rare",
-        "open_suffix": 1
+        "open_suffix": 1,
+        "desecrated_absent": true
       },
       "effect": {
         "kind": "reveal_pick",
@@ -756,7 +759,8 @@ module.exports = {
       ],
       "requires": {
         "rarity": "rare",
-        "open_affix": 1
+        "open_affix": 1,
+        "desecrated_absent": true
       },
       "effect": {
         "kind": "reveal_pick",
@@ -781,7 +785,8 @@ module.exports = {
       "requires": {
         "rarity": "rare",
         "open_affix": 1,
-        "item_class": "weapon_or_jewellery"
+        "item_class": "weapon_or_jewellery",
+        "desecrated_absent": true
       },
       "effect": {
         "kind": "reveal_pick",

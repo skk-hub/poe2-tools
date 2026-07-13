@@ -179,6 +179,34 @@ ok("the Lock raises one-shot odds and charges Locks", () => {
   assert.ok(b.expectedOrbs["Hinekora's Lock"] > 0, "a Lock route that charges no Locks is not using them");
 });
 
+console.log("craft-plan — desecration eligibility (sourced: crafting/techniques/)");
+
+ok("a bone is ILLEGAL while a Desecrated modifier is on the item", () => {
+  // "Items with Desecrated Modifiers cannot be Desecrated again" (revealed or not).
+  const item = { rarity: "rare", quality: 0, corrupted: false, prefixes: [{ key: "d", group: "DesecA", type: "prefix", ilvl: 1, desecrated: true }], suffixes: [] };
+  const ctx = { mods: POOL, T: [], essences: [], jewellery: false };
+  assert.strictEqual(P.legal(P.MOVES["desecrate"], item, ctx), false, "boned an item that already carries a desecrated mod");
+  assert.strictEqual(P.legal(P.MOVES["desecrate-echoes"], item, ctx), false, "echoes bone ignored the desecrated_absent gate");
+  // Omen of Light is the documented way back to eligibility — it must stay legal.
+  assert.strictEqual(P.legal(P.MOVES["annul-light"], item, ctx), true, "Omen of Light must be able to scrub the desecrated mod");
+});
+
+ok("a clean rare CAN be desecrated (the gate didn't over-fire)", () => {
+  const item = { rarity: "rare", quality: 0, corrupted: false, prefixes: [{ key: "p_junk1", group: "JunkP1", type: "prefix", ilvl: 1 }], suffixes: [] };
+  const ctx = { mods: POOL, T: [], essences: [], jewellery: false };
+  assert.strictEqual(P.legal(P.MOVES["desecrate"], item, ctx), true, "a clean rare must still be desecratable");
+});
+
+ok("TWO desecrated targets is impossible, not merely unlikely", () => {
+  const targets = [
+    { group: "desecrated:A", desecrated: true, type: "prefix", poolN: 30 },
+    { group: "desecrated:B", desecrated: true, type: "suffix", poolN: 30 },
+  ];
+  const r = P.planRoutes(POOL, targets, { essences: [], seed: 31, trials: 400 });
+  assert.strictEqual(r.impossible, true, "two desecrated mods on one item was reported as craftable");
+  assert.ok((r.missing || []).some((m) => /only ever keep ONE/i.test(m)), `expected a 'keep only one' reason, got ${JSON.stringify(r.missing)}`);
+});
+
 console.log("craft-plan — ranking is on MONEY, and unbuyable never wins");
 
 ok("a route using a currency the market does not price is sunk below buyable routes", () => {
