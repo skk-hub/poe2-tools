@@ -92,16 +92,24 @@ function prepTargets(targets, mods) {
     };
   });
 }
-// Lowest mod level among the tiers a target ACCEPTS — a min_mod_level move that floors above
-// this can never roll the target, so it must not be offered as that target's fill.
-function targetMinLevel(mods, t) {
-  let lo = Infinity;
+// HIGHEST mod level among the tiers a target ACCEPTS. This — not the lowest — is what decides
+// whether a min_mod_level orb (Greater/Perfect) can roll the target: the orb refuses to roll any
+// mod BELOW its floor, so it can still hit the target as long as ONE acceptable tier sits at or
+// above that floor. Excluding the target's low tiers is the entire reason to pay for the orb.
+//
+// This was the lowest tier, which meant every Greater/Perfect orb was filtered out of every plan
+// ever produced: a real target is a GROUP (any tier of Life is fine), a group's cheapest tier is
+// ilvl ~1, and "1 < 44" rejected the Greater Augment — even though Life's top tier is ilvl 54 and
+// the Greater Augment rolls it happily. Nobody noticed because the test pool's groups were single
+// high-ilvl mods, where lowest == highest.
+function targetMaxLevel(mods, t) {
+  let hi = 0;
   for (const m of mods) {
     if (m.group !== t.group) continue;
     if (t.keys && !t.keys.has(m.key)) continue;
-    if (m.ilvl < lo) lo = m.ilvl;
+    if (m.ilvl > hi) hi = m.ilvl;
   }
-  return lo === Infinity ? 0 : lo;
+  return hi;
 }
 function targetTags(mods, t) {
   const s = new Set();
@@ -383,9 +391,11 @@ const rollT = (ctx) => {
   const need = ctx.T.filter((t) => !t.kept);
   return need.length ? need : ctx.T;
 };
+// The highest min_mod_level a tiered orb may carry and still be able to roll EVERY target we still
+// have to roll: the weakest link is the target whose best acceptable tier is lowest.
 const tierFloor = (ctx) => {
   const T = rollT(ctx);
-  return T.length ? Math.min(...T.map((t) => targetMinLevel(ctx.mods, t))) : 0;
+  return T.length ? Math.min(...T.map((t) => targetMaxLevel(ctx.mods, t))) : 0;
 };
 
 // Which start moves make sense for this craft. Magic-route starts (transmute) pair with a
@@ -515,13 +525,13 @@ function enumerateRoutes(ctx, opts) {
 function fillOk(f, ctx) {
   if (f.needsJewellery && !ctx.jewellery) return false;
   if (f.needsCluster && !ctx.clustered) return false;
-  // A min-level fill that floors ABOVE a target's cheapest acceptable tier can never roll it.
-  // Only the targets still to be ROLLED count — a kept mod is already there (see rollT).
-  if (f.minLevel) for (const t of rollT(ctx)) if (targetMinLevel(ctx.mods, t) < f.minLevel) return false;
+  // A min-level fill can roll a target only if the target HAS an acceptable tier at/above the
+  // floor. Only the targets still to be ROLLED count — a kept mod is already there (see rollT).
+  if (f.minLevel) for (const t of rollT(ctx)) if (targetMaxLevel(ctx.mods, t) < f.minLevel) return false;
   return true;
 }
 function fixOk(f, ctx) {
-  if (f.minLevel) for (const t of rollT(ctx)) if (targetMinLevel(ctx.mods, t) < f.minLevel) return false;
+  if (f.minLevel) for (const t of rollT(ctx)) if (targetMaxLevel(ctx.mods, t) < f.minLevel) return false;
   return true;
 }
 

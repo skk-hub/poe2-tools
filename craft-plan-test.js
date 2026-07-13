@@ -370,5 +370,27 @@ ok("a low-ilvl KEPT mod does not delete the Greater/Perfect orbs from a seeded p
   assert.ok(tiered.length > 0, "no Greater/Perfect route survived — a kept mod is gating the tier floor again");
 });
 
+// A REAL target group spans many tiers (Ruby Ring: IncreasedLife ilvl 1-54, FireResistance 1-71).
+// The tier gate must key off the target's BEST acceptable tier, not its worst: a Greater orb floors
+// at ilvl>=44 and rolls Life's ilvl-54 tier happily — refusing to roll the junk low tiers is what
+// you are paying it for. Keying off the worst tier (ilvl 1 < 44) deleted every Greater/Perfect orb
+// from EVERY plan the planner ever produced, and the old single-mod-per-group test pool could not
+// see it because there lowest == highest.
+ok("a multi-tier target group does not delete the Greater/Perfect orbs", () => {
+  const pool = [];
+  for (const ilvl of [1, 12, 24, 36, 54]) pool.push({ key: `p_life_${ilvl}`, group: "Life", type: "prefix", weight: 100, ilvl });
+  for (const ilvl of [1, 20, 45, 71]) pool.push({ key: `s_res_${ilvl}`, group: "FireRes", type: "suffix", weight: 100, ilvl });
+  pool.push({ key: "p_junk", group: "JunkP", type: "prefix", weight: 300, ilvl: 1 });
+  pool.push({ key: "s_junk", group: "JunkS", type: "suffix", weight: 300, ilvl: 1 });
+  const ctx = P.buildCtx(pool, [{ group: "Life", type: "prefix" }, { group: "FireRes", type: "suffix" }], {});
+  const routes = P.enumerateRoutes(ctx);
+  const tiered = routes.filter((r) => /greater/i.test([r.start, r.promote, r.augment, r.fill, r.fix].join(" ")));
+  assert.ok(tiered.length > 0, "no Greater route enumerated — the tier gate is reading the target's worst tier again");
+  // …and the floor is still real: Life tops out at ilvl 54, so a Perfect Augment (floor 70) cannot
+  // roll it and must NOT be offered. The gate has to keep rejecting what it should reject.
+  const perfectAug = routes.filter((r) => r.augment === "augment-perfect");
+  assert.strictEqual(perfectAug.length, 0, "Perfect Augment (floor 70) offered for a target whose best tier is ilvl 54");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
