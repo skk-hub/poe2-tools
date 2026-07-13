@@ -3015,18 +3015,27 @@ function priceCraftMethods(result, proxy) {
       const pv = name ? proxyPrice(proxy, name) : null;
       if (pv && pv.div > 0) cost += count * pv.div; else missing.push(orb);
     }
-    // ALL orbs unpriced → no cost at all (null sorts last below); a 0 would sort as "cheapest".
-    m.divineCost = missing.length && !(cost > 0) ? null : Math.round(cost * 100) / 100;
-    if (missing.length) m.priceMissing = missing;   // e.g. an omen the proxy doesn't track → cost is a floor
+    // ANY unpriced currency → the route's cost is UNKNOWN, not a floor.
+    //
+    // This used to keep the partial sum as the price ("cost is a floor"), which was harmless when
+    // the 13 hand-written methods all used priced currency. With hundreds of enumerated routes it
+    // became the bug that made the engine recommend items nobody can craft: every top route for a
+    // Sapphire Ring used Omen of Homogenising Exaltation, which the market does not price at all,
+    // and the quoted 7951 div silently EXCLUDED it. A missing price made the route look cheaper,
+    // so it won — it ranked first precisely because nothing bid its price up. An unbuyable route
+    // is not a cheap route, it is a non-route. Unknown sorts last, and the UI shows no price.
+    m.priceMissing = missing.length ? missing : undefined;
+    m.divineCost = missing.length ? null : Math.round(cost * 100) / 100;
+    m.divineCostFloor = missing.length && cost > 0 ? Math.round(cost * 100) / 100 : undefined;  // what we COULD price, for display only
   }
-  // rank feasible fully-priced by Divine cost (cheapest first); partial/unpriced last.
-  // Impractical routes (<2% per attempt — the engine's flag) always sink below realistic ones,
-  // even if their theoretical divine cost looks cheap (cheap chaos × a 0.02% success is a
-  // fantasy number, not a plan).
+  // Cheapest fully-priced first. Impractical routes (<2% per attempt) always sink below realistic
+  // ones, and routes we cannot fully price sink below both — we do not recommend what you cannot buy.
   result.methods.sort((a, b) => {
     const av = a.feasible && a.divineCost != null ? a.divineCost : Infinity;
     const bv = b.feasible && b.divineCost != null ? b.divineCost : Infinity;
-    return (a.impractical ? 1 : 0) - (b.impractical ? 1 : 0) || av - bv;
+    return (a.impractical ? 1 : 0) - (b.impractical ? 1 : 0)
+      || (a.divineCost == null ? 1 : 0) - (b.divineCost == null ? 1 : 0)
+      || av - bv;
   });
   result.priced = true;
 }
