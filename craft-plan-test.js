@@ -324,5 +324,33 @@ ok("a full item of junk with no removal route is BRICKED, not a fantasy plan", (
     `a full item that cannot gain a 7th mod without losing one was reported as ${r.verdict}`);
 });
 
+// The user's Magic Ruby Ring: ONE mod, so the second Magic slot is still open. Regalling straight
+// away throws that slot away and buys it back with Exalts — the seeded path used to do exactly
+// that because it never enumerated an Augment. An Augment is ~free next to an Exalt, so the
+// cheapest route must take the free slot first.
+ok("a one-mod MAGIC paste augments the free slot before the Regal", () => {
+  // Ranking is on MONEY, so the check needs prices: an Augment is pennies next to an Exalt, which
+  // is exactly why taking the free slot wins. Divine-denominated, roughly live.
+  const PRICES = { "Exalted Orb": 0.0022, "Orb of Augmentation": 0.0001, "Regal Orb": 0.008, "Chaos Orb": 0.13 };
+  const priceOf = (name) => PRICES[name] || 0.5;
+  const current = [{ key: "s_speed", group: "AttackSpeed", type: "suffix", ilvl: 60 }];
+  const r = P.adviseItem(POOL, current, ["Life", "FireRes"], { startRarity: "magic", seed: 4, trials: 1500, priceOf });
+  assert.strictEqual(r.verdict, "CONTINUE");
+  assert.ok(/augment/i.test(JSON.stringify(r.methods[0])),
+    `cheapest route skipped the free Magic slot: ${r.methods[0] && r.methods[0].label}`);
+});
+
+// …but a FULL Magic paste (both slots used) has nothing to augment — legal() must no-op it, not
+// print "Augment" in a plan that can't run.
+ok("a two-mod MAGIC paste is not told to Augment", () => {
+  const current = [
+    { key: "p_phys", group: "PhysDamage", type: "prefix", ilvl: 60 },
+    { key: "s_speed", group: "AttackSpeed", type: "suffix", ilvl: 60 },
+  ];
+  const r = P.adviseItem(POOL, current, ["Life"], { startRarity: "magic", seed: 4, trials: 1500 });
+  assert.ok(!/augment/i.test(JSON.stringify(r.methods[0] || {})),
+    `told to Augment an item with no open Magic slot: ${r.methods[0] && r.methods[0].label}`);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

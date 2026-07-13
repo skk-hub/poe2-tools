@@ -417,13 +417,26 @@ function enumerateRoutes(ctx, opts) {
     const promotions = magic
       ? [...promoteMoves(ctx).map((p) => ({ promote: p })), ...(ctx.magicEss ? [{ essence: "essence-magic" }] : [])]
       : [{}, ...(ctx.rareEss ? [{ essence: "essence-rare" }, { essence: "essence-rare-sinistral" }, { essence: "essence-rare-dextral" }] : [])];
+    // A pasted Magic item with only ONE mod still has its second Magic slot open, and filling it
+    // with an Augment before the Regal is far cheaper than paying an Exalt for that slot later.
+    // Omitting this was the seeded path's version of the same bug the scratch path guards against:
+    // it told you to Regal a one-mod Magic ring and then buy the slot back with Exalts.
+    // Gated on a slot actually being open: legal() would no-op the Augment on a two-mod Magic item
+    // anyway, but the move would still be printed in the route's label — a plan that tells you to
+    // Augment an item that cannot be Augmented (the same lie the `seeded` guard above exists for).
+    const augments = magic && opts.magicSlotOpen
+      ? AUGMENT_MOVES.filter((a) => !a.minLevel || fillOk(a, ctx))
+      : [AUGMENT_MOVES[0]];
     for (const promo of promotions) {
-      for (const fill of FILL_FAMILIES) {
-        if (!fillOk(fill, ctx)) continue;
-        for (const fix of FIX_FAMILIES) {
-          if (!fixOk(fix, ctx)) continue;
-          routes.push({ ...promo, fill: fill.id, fix: fix.id, lock: false });
-          routes.push({ ...promo, fill: fill.id, fix: fix.id, lock: true });
+      for (const aug of augments) {
+        for (const fill of FILL_FAMILIES) {
+          if (!fillOk(fill, ctx)) continue;
+          for (const fix of FIX_FAMILIES) {
+            if (!fixOk(fix, ctx)) continue;
+            const r = { ...promo, augment: aug.move || null, fill: fill.id, fix: fix.id };
+            routes.push({ ...r, lock: false });
+            routes.push({ ...r, lock: true });
+          }
         }
       }
     }
@@ -842,7 +855,8 @@ function adviseItem(mods, currentMods, fillTargets, opts) {
   // risk show up in its odds instead of hiding in a footnote.
   const keptTargets = (currentMods || []).map((m) => ({ group: m.group, type: m.type, keys: m.key ? [m.key] : null }));
   const ctxAll = buildCtx(mods, [...keptTargets, ...fillTargets], opts);
-  const routes = enumerateRoutes(ctxAll, { seeded: true, startRarity })
+  const magicSlotOpen = startRarity === "magic" && seed.prefixes.length + seed.suffixes.length < CAP.magic.prefix + CAP.magic.suffix;
+  const routes = enumerateRoutes(ctxAll, { seeded: true, startRarity, magicSlotOpen })
     .filter((r) => r.fix !== "none" || (needP <= freeP && needS <= freeS));
 
   const methods = shortlist(routes, ctxAll, opts, seed);
