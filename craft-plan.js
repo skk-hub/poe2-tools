@@ -228,15 +228,24 @@ function apply(move, item, ctx, rnd, cost) {
       const g = ctx.essence;
       if (!g || hasGroup(item, g.group)) return false;                 // one mod per group — essence is illegal
       if (e.removes) {                                                 // Perfect/Corrupted: removes first
-        const ok = e.remove_side ? E.removeRandomOnSide(item, e.remove_side, rnd) : removeRandomUnfractured(item, rnd);
+        // The "random" removal is NOT random when the essence's own side is already full. A Rare
+        // cannot hold four suffixes, so a suffix essence facing three suffixes has no legal way to
+        // make room except by eating a SUFFIX — the removal is forced to that side and every prefix
+        // is safe. Randomness only returns when the essence's side has a free slot.
+        //   → A full target side is a Crystallisation omen FOR FREE, which is why serious crafts are
+        //     built one side at a time. We previously modelled this as "remove randomly, then remove a
+        //     SECOND mod to open the side" — an assumption I invented, which both destroyed an extra
+        //     mod and let a Perfect essence eat a top prefix it can never touch. It made the engine
+        //     reject safe crafts as risky and pay for omens the slot rule already gives away.
+        // Sourced: poe2-kb/crafting/techniques/a-full-side-forces-the-essence-removal-to-that-side.md
+        const side = g.type;
+        const sideFull = openOn(item, side) < 1;
+        const ok = e.remove_side                                       // Crystallisation omen: caller steers it
+          ? E.removeRandomOnSide(item, e.remove_side, rnd)
+          : sideFull
+            ? E.removeRandomOnSide(item, side, rnd)                    // forced — the only legal way to make room
+            : removeRandomUnfractured(item, rnd);                      // genuinely random across both sides
         if (!ok) return false;
-        // ASSUMPTION (carried over from the pre-rewrite engine, which passed the 2026-07-12
-        // verification pass): if that removal left the guaranteed mod's side still full, the
-        // essence opens the side rather than doing nothing — a currency that silently no-ops is
-        // not plausible. It costs a SECOND mod, which is exactly why a Perfect essence is risky
-        // and why the Crystallisation omens (which steer the removal) exist. Not sourced from
-        // poe2db, which does not state the full-side case; if GGG documents otherwise, fix here.
-        if (openOn(item, g.type) < 1) E.removeRandomOnSide(item, g.type, rnd);
       }
       if (e.to_rarity) item.rarity = e.to_rarity;
       if (openOn(item, g.type) < 1) return false;                      // still no room → the move cannot happen

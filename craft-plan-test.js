@@ -179,6 +179,41 @@ ok("the Lock raises one-shot odds and charges Locks", () => {
   assert.ok(b.expectedOrbs["Hinekora's Lock"] > 0, "a Lock route that charges no Locks is not using them");
 });
 
+console.log("craft-plan — Perfect essence removal (sourced: crafting/techniques/)");
+
+ok("a Perfect essence facing a FULL target side eats that side — the opposite side is untouchable", () => {
+  // A Rare cannot hold 4 prefixes. A PREFIX essence against 3 prefixes therefore has no legal way to
+  // make room except by removing a prefix, so every SUFFIX is safe — a Crystallisation omen for free.
+  // We used to model this as "remove at random, then remove a SECOND mod to open the side", which both
+  // destroyed an extra mod and let the essence eat suffixes it can never touch.
+  const ess = { name: "Perfect Essence of the Body", modKey: "p_life_t1", group: "Life", type: "prefix", stat: "life" };
+  const ctx = P.buildCtx(POOL, ["Life"], { essences: [ess] });
+  ctx.essence = ess;
+  const move = P.MOVES["essence-rare"];
+  const rnd = E.rng(77);
+  for (let i = 0; i < 300; i++) {
+    const item = {
+      rarity: "rare", quality: 0, corrupted: false,
+      prefixes: [
+        { key: "p_phys", group: "PhysDamage", type: "prefix", ilvl: 60 },
+        { key: "p_junk1", group: "JunkP1", type: "prefix", ilvl: 1 },
+        { key: "p_junk2", group: "JunkP2", type: "prefix", ilvl: 1 },
+      ],
+      suffixes: [
+        { key: "s_res", group: "FireRes", type: "suffix", ilvl: 60 },
+        { key: "s_speed", group: "AttackSpeed", type: "suffix", ilvl: 60 },
+        { key: "s_junk1", group: "JunkS1", type: "suffix", ilvl: 1 },
+      ],
+    };
+    const applied = P.apply(move, item, ctx, rnd, {});
+    assert.ok(applied, "the essence should apply");
+    assert.strictEqual(item.suffixes.length, 3, "a PREFIX essence removed a SUFFIX — the full-prefix side forces the removal");
+    assert.strictEqual(item.prefixes.length, 3, "prefix count wrong: it must lose exactly one prefix and gain Life");
+    assert.ok(item.prefixes.some((m) => m.group === "Life"), "the guaranteed Life prefix was not added");
+  }
+  pass++; pass--;   // assertions above are the check
+});
+
 console.log("craft-plan — desecration eligibility (sourced: crafting/techniques/)");
 
 ok("a bone is ILLEGAL while a Desecrated modifier is on the item", () => {
