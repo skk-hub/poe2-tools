@@ -144,6 +144,20 @@ window.__viewInit["craft"] = function () {
 
   // ── paste-an-item: parse the PoE2 clipboard format → in-game-style tooltip ──
   const TAG = /\((implicit|enchant|rune|fractured|crafted|desecrated|scourge|veiled)\)\s*$/i;
+  // PoE2's "advanced mod descriptions" copy format declares each modifier's TYPE on its own
+  // annotation line, instead of tagging the mod line:
+  //     { Implicit Modifier — Elemental, Fire, Resistance }
+  //     +21(20-30)% to Fire Resistance
+  // We only understood the legacy trailing "(implicit)" tag, so an annotated section matched
+  // nothing and fell through to "treat every line as an explicit" — which handed a Ruby Ring's
+  // IMPLICIT fire resistance to the planner as a kept AFFIX (and the "{ ... }" line itself as a
+  // second one). The engine then believed a slot was occupied that isn't, and tried to preserve a
+  // mod that never came from the affix pool — which is how a Ruby Ring produced a 2%-per-attempt,
+  // 45x-Regal "plan". An implicit is not an affix: it cannot be rolled, removed, or occupy a slot.
+  const ANNOT = /^\{\s*(implicit|prefix|suffix|enchant|rune|fractured|crafted|desecrated|scourge|veiled)\b/i;
+  // Advanced mode also prints the roll RANGE inline: "+21(20-30)% to Fire Resistance". Strip it, or
+  // no mod matcher will ever recognise the line.
+  const stripRanges = (s) => s.replace(/(\d+(?:\.\d+)?)\((?:[\d.]+\s*-\s*[\d.]+)\)/g, "$1");
   function parseItem(text) {
     const raw = (text || "").replace(/\r/g, "").trim();
     if (!/(^|\n)(Item Class|Rarity):/i.test(raw)) return null;
@@ -163,12 +177,21 @@ window.__viewInit["craft"] = function () {
     for (const s of secs.slice(1)) {
       const lines = s.split("\n").map((x) => x.trim()).filter(Boolean);
       if (!lines.length) continue;
-      if (lines.some((l) => TAG.test(l))) {                 // a modifier section (has a tag)
+      // A modifier section: legacy trailing "(implicit)" tags, OR advanced "{ Implicit Modifier }"
+      // annotation lines. An annotation applies to the mod lines that FOLLOW it, and is never a mod.
+      if (lines.some((l) => TAG.test(l) || ANNOT.test(l))) {
+        let cur = "";                                       // type declared by the last { ... } line
         for (const l of lines) {
-          const m = l.match(TAG), tag = m ? m[1].toLowerCase() : "", txt = l.replace(TAG, "").trim();
-          if (tag === "implicit") it.implicits.push(txt);
+          const a = l.match(ANNOT);
+          if (a) { cur = a[1].toLowerCase(); continue; }     // the annotation itself is NOT a modifier
+          const m = l.match(TAG);
+          const tag = m ? m[1].toLowerCase() : cur;
+          const txt = stripRanges(l.replace(TAG, "").trim());
+          if (!txt) continue;
+          if (tag === "implicit") it.implicits.push(txt);    // NOT an affix — never sent as a kept mod
           else if (tag === "enchant" || tag === "rune") it.enchants.push(txt);
-          else it.explicits.push({ text: txt, tag });
+          // prefix/suffix are just "explicit" for display; the engine resolves the side from the pool.
+          else it.explicits.push({ text: txt, tag: (tag === "prefix" || tag === "suffix") ? "" : tag });
         }
         continue;
       }
@@ -188,7 +211,7 @@ window.__viewInit["craft"] = function () {
         continue;
       }
       if (it.rarity === "unique" && !lines.some((l) => /\d/.test(l))) { it.flavour.push(...lines); continue; }
-      for (const l of lines) it.explicits.push({ text: l, tag: "" });
+      for (const l of lines) it.explicits.push({ text: stripRanges(l), tag: "" });
     }
     return it;
   }

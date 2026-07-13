@@ -187,6 +187,18 @@ function staticChecks() {
   } catch {
     check(false, "craft Monte Carlo engine probabilities are correct (craft-engine-test.js)");
   }
+  try {
+    require("child_process").execFileSync("node", [path.join(ROOT, "craft-plan-test.js")], { stdio: "ignore", env: { ...process.env, POE2_NO_OPEN: "1" } });
+    check(true, "planner covers the KB move catalog + ranks on money (craft-plan-test.js)");
+  } catch {
+    check(false, "planner covers the KB move catalog + ranks on money (craft-plan-test.js)");
+  }
+  try {
+    require("child_process").execFileSync("node", [path.join(ROOT, "craft-parse-test.js")], { stdio: "ignore", env: { ...process.env, POE2_NO_OPEN: "1" } });
+    check(true, "pasted-item parser keeps IMPLICITS out of the affixes (craft-parse-test.js)");
+  } catch {
+    check(false, "pasted-item parser keeps IMPLICITS out of the affixes (craft-parse-test.js)");
+  }
   // Resale pricing realism + expected-profit route classes (offline, pure functions)
   try {
     require("child_process").execFileSync("node", [path.join(ROOT, "craft-profit-test.js")], { stdio: "ignore", env: { ...process.env, POE2_NO_OPEN: "1" } });
