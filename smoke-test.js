@@ -466,13 +466,24 @@ async function browserChecks() {
       // Monster Effectiveness especially (it was wrongly OFF before, dumping ~div stones).
       await p.click('.toolroot-mj [data-wmatch="dump"]'); await p.waitForTimeout(150);
       const dump = await out();
-      check(/"corrupted"/.test(dump) && /revives available: 0/.test(dump) && /!monster effectiveness:/.test(dump) && /!item rarity:/.test(dump) && /!drop chance:/.test(dump), "regex forge dump derives value keeps from the curve (Effectiveness/Rarity/Drop present)");
-      // Cutoff control: crank it far above every stat's peak -> no value stat can clear it,
-      // so all value keeps drop out, leaving only corrupted + revives + the flat Drop sustain keep.
+      check(/"corrupted"/.test(dump) && /revives available: 0/.test(dump) && /!effectiveness:/.test(dump) && /!item rarity:/.test(dump) && /!drop chance:/.test(dump), "regex forge dump derives value keeps from the curve (Effectiveness/Rarity/Drop present)");
+      // EVERY value stat gets a keep — including one whose curve can never reach the cutoff.
+      // Monster Rarity peaks ~230ex (≈2.7c) under a 5c cutoff, so it used to get NO keep block at
+      // all and ANY roll of it was dumpable. A real T15 stone with Monster Rarity +78% (worth ~1
+      // divine) was selected for the dump. Above the top of the curve we have no price data, and
+      // no data must never read as worthless.
+      check(/!monster rarity:/.test(dump), "regex forge dump keeps Monster Rarity (a stat that can't reach the cutoff still gets a top-end keep)");
+      // The stash search box truncates at 250 chars, so a regex over the limit is worse than the
+      // bug it fixes — adding the Monster Rarity keep took it to 260 until the tokens were cut to
+      // their shortest unique forms ("Effectiveness", "Drop Chance").
+      check(dump.length <= 250, `regex forge dump fits the 250-char stash limit (is ${dump.length})`);
+      // Cutoff control: crank it far above every stat's peak. No stat can clear it on price, so
+      // every keep falls back to its TOP-OF-CURVE guard — the keeps must not vanish (that is the
+      // "78% is worthless" bug), they just get stricter.
       await p.evaluate(() => { const i = document.querySelector('.toolroot-mj [data-cutin]'); i.value = "200"; i.dispatchEvent(new Event("change", { bubbles: true })); });
       await p.waitForTimeout(120);
       const dumpHi = await out();
-      check(!/item rarity/.test(dumpHi) && !/monster effectiveness/.test(dumpHi) && !/pack size/.test(dumpHi) && /drop chance/.test(dumpHi), "regex forge dump cutoff drops value keeps that can't reach it");
+      check(/!item rarity:/.test(dumpHi) && /!monster rarity:/.test(dumpHi) && /drop chance/.test(dumpHi), "regex forge dump at an unreachable cutoff still guards the top of every curve");
       // back to a sane cutoff for the remaining checks
       await p.evaluate(() => { const i = document.querySelector('.toolroot-mj [data-cutin]'); i.value = "5"; i.dispatchEvent(new Event("change", { bubbles: true })); });
       await p.waitForTimeout(120);

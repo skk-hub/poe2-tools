@@ -95,27 +95,49 @@ window.__viewInit["map-juicer"]=function(){
   // Mod-Value sweep actually moves the dump. Solo-OR: a stone is kept if ANY single
   // stat clears the cutoff (stash regex can't AND-of-keeps for true combos — use the
   // paste evaluator for those). Drop Chance is priced flat, so it's a separate sustain keep.
-  const DUMP_KEYS = { itemRarity: L.itemRarity, packSize: L.packSize, monsterEffectiveness: L.monsterEffectiveness, monsterRarity: L.monsterRarity };
+  // Shortest UNIQUE substring of each stat's in-stash line. The dump regex stacks five keeps plus
+  // two requires and has to land under the stash's 250-char limit — adding the Monster Rarity keep
+  // (see dumpThreshold) pushed it to 260, and a regex that gets truncated in the search box is
+  // worse than the bug it fixes. "Effectiveness" and "Chance" each occur in exactly one waystone
+  // line, so the "Monster "/"Waystone " prefixes are pure cost. The other three need their prefix:
+  // bare "Rarity" would match BOTH Item Rarity and Monster Rarity.
+  const DUMP_KEYS = { itemRarity: L.itemRarity, packSize: L.packSize, monsterEffectiveness: "effectiveness", monsterRarity: L.monsterRarity };
+  const DUMP_DROP = "drop chance";
   function cutoffDefaultC(){ return Math.max(1, Math.round((baseEx() * 2.5) / chaosRate())); }   // ~2.5× baseline = the "good roll" tier (valTier)
   function dumpCutoffEx(){ if (dumpCutoffC == null) dumpCutoffC = cutoffDefaultC(); return dumpCutoffC * chaosRate(); }
-  // Lowest integer roll % where this stat's live curve clears the cutoff. null = can't
-  // reach it even at its ceiling → the stat can never rescue a stone, so no keep block.
+  // Lowest integer roll % where this stat's live curve clears the cutoff.
+  //
+  // A stat whose curve NEVER reaches the cutoff (Monster Rarity peaks ~230ex ≈ 2.7c, under a 5c
+  // cutoff) used to return null and get NO keep block at all — so ANY roll of it, including one
+  // off the top of the curve, was dumpable. A real T15 stone with **Monster Rarity +78%** was
+  // selected for dumping and was worth ~1 divine (user-reported, 2026-07-14). Two things were
+  // wrong at once and they compounded: the stat had zero protection, AND 78% is beyond the
+  // ceiling the curve even claims exists (60, "maxes ~55-60%") — so the tool concluded a roll it
+  // has never seen is worthless.
+  //
+  // So: `ceilingOnly` = the stat can't clear the cutoff on price, but its TOP end still gets
+  // protected. Above the highest roll the sweep has actually seen, the curve has no data — and no
+  // data must never read as "worthless". Cheap insurance: it costs one regex block and it only
+  // rescues stones carrying a roll at or above anything the market sweep has ever recorded.
   function dumpThreshold(stat, cutoffEx){
     const ceil = Math.round(stat.ceiling || 100);
-    if (curveEx(stat.curve, ceil) < cutoffEx) return null;
-    for (let p = 1; p <= ceil; p++){ if (curveEx(stat.curve, p) >= cutoffEx) return p; }
-    return null;
+    if (curveEx(stat.curve, ceil) < cutoffEx) return { p: ceil, ceilingOnly: true };
+    for (let p = 1; p <= ceil; p++){ if (curveEx(stat.curve, p) >= cutoffEx) return { p, ceilingOnly: false }; }
+    return { p: ceil, ceilingOnly: true };
   }
   function buildDump(){
     const blocks = [ `"${T.corrupted}"`, `"${T.revivesZero}"` ];
     const cutoffEx = dumpCutoffEx();
-    // Keep (exclude from dump) any stone with a stat that clears the cutoff on the live curve.
+    // Keep (exclude from dump) any stone with a stat that clears the cutoff on the live curve —
+    // or that rolls at/above the top of what the sweep has seen (see dumpThreshold).
     for (const s of ((MW() && MW().stats) || [])){
       const tok = DUMP_KEYS[s.key]; if (!tok) continue;
       const th = dumpThreshold(s, cutoffEx); if (th == null) continue;
-      blocks.push(`"!${atLeast(tok, th, s.ceiling)}"`);
+      // No upper clamp on a ceiling-only keep: clamping it to `ceiling` is exactly what let a
+      // 78% roll fall through a "maxes at 60" model.
+      blocks.push(`"!${atLeast(tok, th.p, th.ceilingOnly ? undefined : s.ceiling)}"`);
     }
-    if (dropKeep > 0) blocks.push(`"!${atLeast(L.waystoneDrop, dropKeep)}"`);   // sustain keep, not resale
+    if (dropKeep > 0) blocks.push(`"!${atLeast(DUMP_DROP, dropKeep)}"`);   // sustain keep, not resale
     return blocks.join(" ");
   }
 
@@ -259,7 +281,10 @@ window.__viewInit["map-juicer"]=function(){
       const cutoffEx = dumpCutoffEx();   // also lazy-inits dumpCutoffC
       const derived = ((MW() && MW().stats) || []).filter(s => DUMP_KEYS[s.key]).map(s => {
         const th = dumpThreshold(s, cutoffEx);
-        return `${esc(s.label)} ${th == null ? "—" : "≥" + th + "%"}`;
+        if (!th) return `${esc(s.label)} —`;
+        // A ceiling-only keep isn't a price threshold, it's an "off the top of the curve" guard.
+        // Say so, or the number reads as a market value it isn't.
+        return `${esc(s.label)} ≥${th.p}%${th.ceilingOnly ? "*" : ""}`;
       }).join(" · ");
       return `${segs}<div class="forge-steps">
         <div class="forge-step"><span class="forge-step-lbl">Dump if best stat worth under</span>
@@ -270,7 +295,7 @@ window.__viewInit["map-juicer"]=function(){
             <button class="step" type="button" data-cut="1" aria-label="increase cutoff">+</button>
           </span></div>
         ${stepper("dropKeep","Keep if Drop Chance ≥")}
-      </div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones to bulk-dump. Keeps any stone with a reward stat worth <b>≥ ${dumpCutoffC}c</b> on the <b>live market curve</b>, dumps the rest. Per-stat keep %, auto-derived from the curve: <b>${derived || "—"}</b> <span class="muted">(“—” = that stat can't reach the cutoff even maxed)</span>.${dropKeep>0?` <b>Drop Chance ≥${dropKeep}%</b> kept as your <b>sustain</b> rule (priced flat; 0 = dump any drop).`:``} Hit <b>Refresh from market</b> to reprice.</p>`;
+      </div><p class="forge-hint">Finds <b>corrupted, fully-juiced</b> waystones to bulk-dump. Keeps any stone with a reward stat worth <b>≥ ${dumpCutoffC}c</b> on the <b>live market curve</b>, dumps the rest. Per-stat keep %, auto-derived from the curve: <b>${derived || "—"}</b> <span class="muted">(<b>*</b> = that stat can't reach the cutoff at any roll, so it's kept only at the top of the curve — above what the sweep has actually seen, we don't know what it's worth, and unknown must not mean worthless)</span>.${dropKeep>0?` <b>Drop Chance ≥${dropKeep}%</b> kept as your <b>sustain</b> rule (priced flat; 0 = dump any drop).`:``} <b>It still can't see combos</b> — a stone with several medium rolls is worth more than any single one, and stash regex can't express that; paste it into the evaluator above before bulk-dumping. Hit <b>Refresh from market</b> to reprice.</p>`;
     }
     return `
       ${segs}
