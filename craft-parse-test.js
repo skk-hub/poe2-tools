@@ -17,11 +17,17 @@
 const assert = require("assert");
 const fs = require("fs");
 
-const src = fs.readFileSync(require("path").join(__dirname, "craft.js"), "utf8");
+// Normalize line endings first: git checks this repo out with CRLF on Windows, and the
+// slice below counts characters. It used to end at `indexOf(endMark) + len + 4`, where the
+// 4 assumed "\n  }\n" — under CRLF that's 6 bytes, so the slice cut mid-brace and the eval
+// died with "Unexpected end of input". Take the function's closing brace explicitly instead
+// of counting bytes.
+const src = fs.readFileSync(require("path").join(__dirname, "craft.js"), "utf8").replace(/\r\n/g, "\n");
 const start = src.indexOf("  const TAG = /");
 const endMark = "    return it;";
-const end = src.indexOf(endMark) + endMark.length + 4;
-if (start < 0 || end < endMark.length) { console.error("craft-parse-test: could not slice parseItem out of craft.js"); process.exit(1); }
+const endMarkAt = src.indexOf(endMark);
+const end = endMarkAt < 0 ? -1 : src.indexOf("}", endMarkAt + endMark.length) + 1;   // the `}` closing parseItem
+if (start < 0 || end <= start) { console.error("craft-parse-test: could not slice parseItem out of craft.js"); process.exit(1); }
 eval(src.slice(start, end).replace(/^ {2}/gm, ""));   // defines TAG, ANNOT, stripRanges, parseItem
 
 let pass = 0;
