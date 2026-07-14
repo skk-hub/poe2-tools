@@ -1157,7 +1157,14 @@ const WAYSTONE_SWEEP = {
     { key: "itemRarity", label: "Item Rarity", filter: "map_iir", prop: "Item Rarity", thresholds: [50, 60, 65, 70], tip: "The top chase by far — floor explodes past ~65%." },
     { key: "packSize", label: "Pack Size", filter: "map_packsize", prop: "Pack Size", thresholds: [30, 40], tip: "Mild — cooled to ~25ex even near cap ~50%." },
     { key: "monsterEffectiveness", label: "Monster Effectiveness", filter: "map_magic_monsters", prop: "Monster Effectiveness", thresholds: [40], tip: "Marginal ~10ex @40%." },
-    { key: "monsterRarity", label: "Monster Rarity", filter: "map_rare_monsters", prop: "Monster Rarity", thresholds: [40], tip: "Worthless even at high rolls; real cap ~55%." },
+    // Probed at 40 ONLY, and annotated "worthless even at high rolls, real cap ~55%". Both halves
+    // of that were wrong, and they fed each other: a curve with a single point at 40 peaks at
+    // ~230ex, which is under any sane cutoff, so buildDump dropped Monster Rarity's keep entirely
+    // and a stone whose ONLY good stat was Monster Rarity got dumped at any roll. A real T15 stone
+    // with **+78%** (above the "~55% cap") sold for ~1 divine (user-reported 2026-07-14). The sweep
+    // was never looking where the value is, so a refresh could never correct the assumption.
+    // Probe the top end so the curve can actually price it.
+    { key: "monsterRarity", label: "Monster Rarity", filter: "map_rare_monsters", prop: "Monster Rarity", thresholds: [40, 55, 70], tip: "Rolls well past the old ~55% 'cap' — high rolls are a real chase." },
   ],
   // COMBO probes — the same gated buyable class, but requiring TWO good stats at
   // once. Answers "are combos a sellable market, or only worth running yourself?"

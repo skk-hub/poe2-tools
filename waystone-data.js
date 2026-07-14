@@ -144,9 +144,15 @@ window.WAYSTONE_DATA = {
       { key: "waystoneDrop", label: "Waystone Drop Chance", weight: 0.1, ceiling: 125, peakEx: 171, est: true,
         curve: [[40, 171], [105, 171]],
         tip: "~baseline to BUY even at high rolls — not a sell chase. Not live-swept (est). Sustain only helps YOUR own endless-T16 farming." },
-      { key: "monsterRarity", label: "Monster Rarity", weight: 0.13, ceiling: 60, peakEx: 230,
+      // ceiling was 60 ("real cap ~55-60%") until a REAL T15 stone turned up at +78% and sold for
+      // ~1 divine (user-reported 2026-07-14). The cap was wrong, and because the sweep only ever
+      // probed 40%, the curve peaked at 230ex, never cleared the dump cutoff, and the dump filter
+      // therefore treated EVERY monster-rarity roll as worthless. Ceiling now reflects an item that
+      // actually exists; the sweep probes 40/55/70 so the curve can price the top end for itself.
+      // The 230ex@40 point stands (it was measured); everything above it is the sweep's job now.
+      { key: "monsterRarity", label: "Monster Rarity", weight: 0.13, ceiling: 85, peakEx: 230,
         curve: [[38, 171], [40, 230]],
-        tip: "Barely above baseline (~230ex @40%, 2026-07-05 securable) — not a chase. Real cap ~55-60% (old 103 was wrong)." },
+        tip: "Cheap at 40% (~230ex, measured) but it rolls to ~78%+ — high rolls are a real chase, and were being dumped. Refresh from market to price the top end." },
     ],
   },
 
