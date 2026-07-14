@@ -185,18 +185,30 @@ window.__viewInit["craft"] = function () {
       // A modifier section: legacy trailing "(implicit)" tags, OR advanced "{ Implicit Modifier }"
       // annotation lines. An annotation applies to the mod lines that FOLLOW it, and is never a mod.
       if (lines.some((l) => TAG.test(l) || ANNOT.test(l))) {
-        let cur = "";                                       // type declared by the last { ... } line
+        let cur = "", curSide = "";                         // type + side declared by the last { … } line
         for (const l of lines) {
           const a = l.match(ANNOT);
-          if (a) { cur = a[1].toLowerCase(); continue; }     // the annotation itself is NOT a modifier
+          if (a) {                                           // the annotation itself is NOT a modifier
+            cur = a[1].toLowerCase();
+            // The annotation states the SIDE, and it is the only thing that can tell two identically
+            // worded mods apart. An Ancestral Tiara can carry "% increased Rarity of Items found" as
+            // a PREFIX ("Hoarder's") *and* as a SUFFIX ("of Archaeology", what Greater Essence of
+            // Opulence grants) — same words, different groups. We used to blank the side here, so the
+            // engine collapsed the two into one and believed a suffix slot was still free.
+            // Note the side is NOT always the first keyword: "{ Crafted Suffix Modifier … }" declares
+            // kind=crafted, side=suffix. Read them independently.
+            const sm = l.match(/\b(prefix|suffix)\b/i);
+            curSide = sm ? sm[1].toLowerCase() : "";
+            continue;
+          }
           const m = l.match(TAG);
           const tag = m ? m[1].toLowerCase() : cur;
           const txt = stripRanges(l.replace(TAG, "").trim());
           if (!txt) continue;
           if (tag === "implicit") it.implicits.push(txt);    // NOT an affix — never sent as a kept mod
           else if (tag === "enchant" || tag === "rune") it.enchants.push(txt);
-          // prefix/suffix are just "explicit" for display; the engine resolves the side from the pool.
-          else it.explicits.push({ text: txt, tag: (tag === "prefix" || tag === "suffix") ? "" : tag });
+          // prefix/suffix are just "explicit" for display; `side` carries the affix side to the engine.
+          else it.explicits.push({ text: txt, tag: (tag === "prefix" || tag === "suffix") ? "" : tag, side: curSide });
         }
         continue;
       }
@@ -281,7 +293,7 @@ window.__viewInit["craft"] = function () {
     adviseBtn.disabled = true;
     adviseOut.innerHTML = `<div class="cf-simload"><span class="cf-simload-bar"></span>Enumerating routes, simulating each, and pricing them…</div>`;
     try {
-      const r = await fetch("/api/craft/advise", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base, ilvl, rarity: lastItem.rarity, currentMods: (lastItem.explicits || []).map((e) => e.text) }) });
+      const r = await fetch("/api/craft/advise", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base, ilvl, rarity: lastItem.rarity, currentMods: (lastItem.explicits || []).map((e) => ({ text: e.text, side: e.side || "" })) }) });
       renderAdvise(await r.json());
     } catch (e) { adviseOut.innerHTML = `<div class="cf-simerr">Failed: ${esc(e.message || e)}</div>`; }
     finally { adviseBtn.disabled = false; }

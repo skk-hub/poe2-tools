@@ -144,4 +144,36 @@ const ADVANCED = [
   ok(!sent.some((t) => /^-+$/.test(t)), "magic: no separator line among the kept mods");
 }
 
+// ── the affix SIDE must survive the parse ────────────────────────────────────
+// The same words can be a prefix AND a suffix. An Ancestral Tiara can carry "% increased Rarity of
+// Items found" as a prefix ("Hoarder's", 16-19%) and as a suffix ("of Archaeology", 15-18% — what
+// Greater Essence of Opulence grants). Only the annotation says which, and we used to blank it, so
+// the engine collapsed the two into one kept mod and believed a suffix slot was still free.
+// Note the side is NOT the annotation's first word: "{ Crafted Suffix Modifier … }" is kind=crafted,
+// side=suffix. Real item, user-reported 2026-07-14.
+{
+  const tiara = [
+    "Item Class: Helmets",
+    "Rarity: Rare",
+    "Honour Crown",
+    "Ancestral Tiara",
+    "--------",
+    "Item Level: 82",
+    "--------",
+    '{ Prefix Modifier "Hoarder\'s" (Tier: 1) }',
+    "17(16-19)% increased Rarity of Items found",
+    '{ Suffix Modifier "of Tzteosh" (Tier: 1) — Elemental, Fire, Resistance }',
+    "+45(41-45)% to Fire Resistance",
+    '{ Crafted Suffix Modifier "of Archaeology" (Tier: 1) }',
+    "17(15-18)% increased Rarity of Items found",
+  ].join("\n");
+  const it = parseItem(tiara);
+  ok(it.explicits.length === 3, `tiara: all 3 affixes kept, got ${it.explicits.length}`);
+  const rar = it.explicits.filter((e) => /Rarity of Items/.test(e.text));
+  ok(rar.length === 2, "tiara: BOTH rarity mods survive (same words, different affixes)");
+  ok(rar.some((e) => e.side === "prefix"), "tiara: the prefix rarity is tagged prefix");
+  ok(rar.some((e) => e.side === "suffix"), "tiara: the CRAFTED suffix rarity is tagged suffix, not 'crafted'");
+  ok(it.explicits.find((e) => /Fire Resistance/.test(e.text)).side === "suffix", "tiara: fire res is a suffix");
+}
+
 console.log(`craft-parse-test: ${pass} checks passed`);

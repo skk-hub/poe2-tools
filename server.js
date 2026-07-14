@@ -1746,7 +1746,14 @@ const UPGRADE_SEARCH_STATS = {
     { id: UPGRADE_STAT_IDS.projectileLevels, value: { min: 1 } },
     { id: UPGRADE_STAT_IDS.spirit, value: { min: 40 } },
   ],
+  // Rarity is the CHASE stat on a helmet, not an afterthought: magic-find helmets are a whole
+  // market. It was missing from this list entirely, so the advisor could not target it — which is
+  // why an MF tiara got told to Regal-and-fill-defences, and why it never proposed the Essence of
+  // Opulence route (an essence's whole job is to GUARANTEE the mod you're chasing). It goes first.
+  // The alias now resolves to BOTH rarity groups (prefix 16-19% and suffix 15-18%), so an item
+  // already holding one can still be told to add the other — the craft the user actually made.
   helmet: [
+    { key: "rarity", value: { min: 15 } },
     { key: "energyShield", value: { min: 300 } },
     { id: UPGRADE_STAT_IDS.life, value: { min: 40 } },
     { id: UPGRADE_STAT_IDS.totalElementalRes, value: { min: 50 } },
@@ -2886,17 +2893,35 @@ const craftStripTag = (l) => String(l).replace(/\s*\((?:implicit|enchant|rune|fr
 // from craftModList). Pool-scoping + single-stat + carrying type is what avoids the mis-maps a
 // global text match makes (e.g. "+X to maximum Life" hitting a suffix unique-mutation, or "Rarity"
 // hitting a fishing mod) — only mods that can actually roll on this base are in the index.
+// A stat template can belong to MORE THAN ONE group — the same words on different sides of the
+// item. An Ancestral Tiara can roll "% increased Rarity of Items found" as a PREFIX
+// (ItemFoundRarityIncreasePrefix, 16-19%) and, separately, as a SUFFIX (ItemFoundRarityIncrease,
+// 15-18% — what Greater Essence of Opulence grants). Keying only on text and keeping the FIRST
+// match meant the suffix simply did not exist to the engine: an item carrying BOTH came in as one
+// kept mod, so the planner thought a suffix slot was free when it wasn't, and mis-priced every
+// route off it. (User-reported 2026-07-14, with the item in hand.)
+// So: keep every candidate per template, and let the caller disambiguate by side.
 function buildCraftGroupIndex(poolMods) {
   const idx = new Map();
   for (const pm of poolMods) {
     const m = CRAFT_DATA.mods[pm.key];
     if (!m || !m.stats || m.stats.length !== 1) continue;   // hybrids handled separately (Phase 2)
     const t = craftNorm(m.stats[0]);
-    if (!idx.has(t)) idx.set(t, { group: pm.group, type: pm.type });
+    if (!idx.has(t)) idx.set(t, []);
+    const list = idx.get(t);
+    if (!list.some((c) => c.group === pm.group)) list.push({ group: pm.group, type: pm.type });
   }
   return idx;
 }
-const mapCraftLine = (line, idx) => idx.get(craftNorm(craftStripTag(line))) || null;
+// `side` ("prefix"/"suffix") comes from the pasted item's own annotation, which states it. Without
+// it we can only guess, so fall back to the first candidate — the pre-existing behaviour, and still
+// correct whenever a template has just one group.
+const mapCraftLine = (line, idx, side) => {
+  const list = idx.get(craftNorm(craftStripTag(line)));
+  if (!list || !list.length) return null;
+  if (side) { const hit = list.find((c) => c.type === side); if (hit) return hit; }
+  return list[0];
+};
 
 // Desirable-mod aliases (from UPGRADE_SEARCH_STATS / PRESERVE_CONTROL_STATS_BY_SLOT) → the exact
 // normalized stat template, resolved to a group via the pool index. Composite aliases expand to
@@ -2922,7 +2947,13 @@ const ALIAS_EXPAND = {
   totalFlatElementalAttack: ["flatFireAttack", "flatColdAttack", "flatLightningAttack"],
   totalFlatAttack: ["flatPhysAttack", "flatFireAttack", "flatColdAttack", "flatLightningAttack"],
 };
-const aliasCraftGroup = (alias, idx) => { const t = ALIAS_TEMPLATE[alias]; return t ? (idx.get(t) || null) : null; };
+// Every group a desirable stat can land in. Usually one — but a template with a prefix AND a suffix
+// form has two ("increased Rarity of Items found" is ItemFoundRarityIncreasePrefix 16-19% and
+// ItemFoundRarityIncrease 15-18%), and BOTH are real targets: a helmet already carrying the prefix
+// can still take the suffix, which is exactly what a Greater Essence of Opulence grants. Returning
+// only the first hid that craft from the planner entirely.
+const aliasCraftGroups = (alias, idx) => { const t = ALIAS_TEMPLATE[alias]; return t ? (idx.get(t) || []) : []; };
+const aliasCraftGroup = (alias, idx) => aliasCraftGroups(alias, idx)[0] || null;
 
 // Reverse of UPGRADE_STAT_IDS — a desirable entry that carries a trade `id` maps back to its alias.
 const STATID_TO_ALIAS = Object.fromEntries(Object.entries(UPGRADE_STAT_IDS).map(([k, v]) => [v, k]));
@@ -2963,12 +2994,16 @@ function generateCraftCandidates(slot, kept, poolMods, idx) {
     const baseAlias = d.key || STATID_TO_ALIAS[d.id];
     if (!baseAlias) continue;
     for (const a of (ALIAS_EXPAND[baseAlias] || [baseAlias])) {
-      const g = aliasCraftGroup(a, idx);
-      if (!g || !poolGroups.has(g.group) || seen.has(g.group)) continue;
-      if (g.type === "prefix" ? freeP <= 0 : freeS <= 0) continue;
-      fills.push({ group: g.group, type: g.type, alias: a, label: craftGroupLabel(g.group) });
-      seen.add(g.group);
-      if (g.type === "prefix") freeP--; else freeS--;
+      // ALL groups for the stat, not just the first: the same words can exist as a prefix and as a
+      // suffix, and holding one does not rule out the other (prefix rarity + suffix rarity is a
+      // real, common MF craft). `seen` still stops a group being targeted twice.
+      for (const g of aliasCraftGroups(a, idx)) {
+        if (!g || !poolGroups.has(g.group) || seen.has(g.group)) continue;
+        if (g.type === "prefix" ? freeP <= 0 : freeS <= 0) continue;
+        fills.push({ group: g.group, type: g.type, alias: a, label: craftGroupLabel(g.group) });
+        seen.add(g.group);
+        if (g.type === "prefix") freeP--; else freeS--;
+      }
     }
   }
   if (!fills.length) return [];
@@ -4233,11 +4268,18 @@ const server = http.createServer(async (req, res) => {
       const poolMods = craftModList(baseName, ilvl);
       const idx = buildCraftGroupIndex(poolMods);
       // Map the pasted item's explicit lines → kept mods (dedup by group; skip unmappable lines).
+      // A mod line may arrive as a bare string (legacy) or as { text, side } — the side comes from
+      // the paste's own "{ Prefix/Suffix Modifier … }" annotation and is what tells two identically
+      // worded mods apart (prefix rarity vs suffix rarity). Dedup stays keyed on GROUP: with the
+      // side known those are now two different groups, so both are kept instead of one silently
+      // swallowing the other.
       const kept = [];
       const keptGroups = new Set();
-      for (const line of (Array.isArray(input.currentMods) ? input.currentMods : [])) {
-        const g = mapCraftLine(String(line), idx);
-        if (g && !keptGroups.has(g.group)) { keptGroups.add(g.group); kept.push({ group: g.group, type: g.type, text: craftStripTag(String(line)) }); }
+      for (const raw of (Array.isArray(input.currentMods) ? input.currentMods : [])) {
+        const line = typeof raw === "string" ? raw : String((raw && raw.text) || "");
+        const side = typeof raw === "object" && raw ? String(raw.side || "").toLowerCase() : "";
+        const g = mapCraftLine(line, idx, side === "prefix" || side === "suffix" ? side : "");
+        if (g && !keptGroups.has(g.group)) { keptGroups.add(g.group); kept.push({ group: g.group, type: g.type, text: craftStripTag(line) }); }
       }
       const startRarity = String(input.rarity || "").toLowerCase() === "rare" ? "rare" : "magic";
       const candidates = generateCraftCandidates(slot, kept, poolMods, idx);
