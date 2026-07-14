@@ -175,7 +175,12 @@ window.__viewInit["craft"] = function () {
     const it = { rarity, itemClass, name: nameLines[0] || "", base: nameLines[1] || nameLines[0] || "",
       itemLevel: "", quality: "", requirements: [], props: [], enchants: [], implicits: [], explicits: [], corrupted: false, flavour: [] };
     for (const s of secs.slice(1)) {
-      const lines = s.split("\n").map((x) => x.trim()).filter(Boolean);
+      // Drop separator lines. The section split only cuts a "--------" that has a newline
+      // AFTER it, so a TRAILING separator (which the in-game copy emits) stayed glued to the
+      // last section and was read as a modifier: a Magic ring came through with 2 explicits
+      // instead of 1, so the planner saw both affix slots full and refused to offer the
+      // Augment that fills the real empty one — the entry-160 bug, re-entered via the parser.
+      const lines = s.split("\n").map((x) => x.trim()).filter((l) => l && !/^-{3,}$/.test(l));
       if (!lines.length) continue;
       // A modifier section: legacy trailing "(implicit)" tags, OR advanced "{ Implicit Modifier }"
       // annotation lines. An annotation applies to the mod lines that FOLLOW it, and is never a mod.
@@ -270,7 +275,11 @@ window.__viewInit["craft"] = function () {
     const base = baseIn.value.trim();
     if (!byName[base]) { adviseOut.innerHTML = `<div class="cf-simerr">Couldn't match this item to a known base.</div>`; return; }
     const ilvl = Math.max(1, Math.min(100, parseInt(ilvlIn.value, 10) || 100));
-    adviseBtn.disabled = true; adviseOut.innerHTML = `<div class="cf-simload">Finding the best craft…</div>`;
+    // ~10s of work (enumerate every route from the move catalog, Monte-Carlo each,
+    // price them). A static line for that long reads as a hang — say what's happening
+    // and show it moving.
+    adviseBtn.disabled = true;
+    adviseOut.innerHTML = `<div class="cf-simload"><span class="cf-simload-bar"></span>Enumerating routes, simulating each, and pricing them…</div>`;
     try {
       const r = await fetch("/api/craft/advise", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base, ilvl, rarity: lastItem.rarity, currentMods: (lastItem.explicits || []).map((e) => e.text) }) });
       renderAdvise(await r.json());
@@ -289,14 +298,18 @@ window.__viewInit["craft"] = function () {
     const jammers = r.jammers.length
       ? `<div class="cf-risk-jam">Jams it: ${r.jammers.map((j) => `${esc(j.label)} <em>${pc(j.chance)}</em>`).join(" · ")}</div>`
       : "";
+    // A 0% key must not render in the danger colour. On a Magic item the next orb
+    // CANNOT jam you (the Regal hands the slot straight back) — printing a red
+    // "jams 0%" on every such plan is the fastest way to teach someone to ignore red.
+    const key = (cls, label, v) => `<span class="cf-risk-k ${cls}${v < 0.005 ? " zero" : ""}">${label} ${pc(v)}</span>`;
     return `<div class="cf-risk"><div class="cf-risk-head">If you ${esc(r.name)} now</div>` +
       `<div class="cf-risk-bar" title="what this one orb can roll">` +
         `<span class="cf-risk-hit" style="width:${r.hit * 100}%"></span>` +
         `<span class="cf-risk-junk" style="width:${r.junk * 100}%"></span>` +
         `<span class="cf-risk-brick" style="width:${r.jam * 100}%"></span></div>` +
-      `<div class="cf-risk-legend"><span class="cf-risk-k hit">lands a target ${pc(r.hit)}</span>` +
-        `<span class="cf-risk-k junk">harmless junk ${pc(r.junk)}</span>` +
-        `<span class="cf-risk-k brick">jams a slot you need ${pc(r.jam)}</span></div>${jammers}</div>`;
+      `<div class="cf-risk-legend">${key("hit", "lands a target", r.hit)}` +
+        `${key("junk", "harmless junk", r.junk)}` +
+        `${key("brick", "jams a slot you need", r.jam)}</div>${jammers}</div>`;
   };
 
   function renderAdvise(d) {
@@ -350,7 +363,9 @@ window.__viewInit["craft"] = function () {
     const parts = Object.entries(orbs).filter(([, n]) => n > 0).map(([k, n]) => `<b>${fmtN(n)}</b> ${esc(k)}`);
     return parts.length ? parts.join(" + ") : "—";
   }
-  const fmtDiv = (d) => !isFinite(d) ? "?" : d >= 100 ? Math.round(d).toLocaleString() : d >= 10 ? d.toFixed(1) : d.toFixed(2);
+  // A route that costs a fraction of a divine must not print as "0.00 div" — that reads
+  // as free, and free is the one thing no craft is.
+  const fmtDiv = (d) => !isFinite(d) ? "?" : d >= 100 ? Math.round(d).toLocaleString() : d >= 10 ? d.toFixed(1) : d > 0 && d < 0.01 ? "<0.01" : d.toFixed(2);
   function renderMethods(r) {
     if (r.error) { simOut.innerHTML = `<div class="cf-simerr">${esc(r.error)}</div>`; return; }
     if (r.impossible) {
@@ -400,7 +415,7 @@ window.__viewInit["craft"] = function () {
     const base = baseIn.value.trim();
     if (!byName[base] || (!targets.size && !desecTargets.size)) return;
     const ilvl = Math.max(1, Math.min(100, parseInt(ilvlIn.value, 10) || 100));
-    simBtn.disabled = true; simOut.innerHTML = `<div class="cf-simload">Simulating…</div>`;
+    simBtn.disabled = true; simOut.innerHTML = `<div class="cf-simload"><span class="cf-simload-bar"></span>Simulating every route to your targets…</div>`;
     // send {group, keys} — omit keys when all tiers selected (= any tier)
     const payload = [...targets.entries()].map(([g, set]) => {
       const meta = groupMeta.get(g);

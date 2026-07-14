@@ -17,8 +17,8 @@ window.__viewInit["rune-picker"] = function () {
   // Sort state. Default = confidence tier first, then value (total), descending —
   // so the most reliable high-value picks float to the top. Headers are clickable
   // to re-sort by any column (click again to flip direction).
-  const CONF_RANK = { base: 3, high: 3, medium: 2, low: 1, none: 0, unknown: 0 };
-  const TH_LABELS = { qty: "Qty", name: "Name", category: "Category", each: "Each", total: "Total", conf: "Conf", source: "Source", change7d: "7d" };
+  const CONF_RANK = { base: 3, anchor: 3, high: 3, medium: 2, low: 1, none: 0, unknown: 0 };
+  const TH_LABELS = { qty: "Qty", name: "Name", category: "Category", each: "Each", total: "Total", conf: "Conf", source: "Source" };
   let sortKey = "conf", sortDir = -1;   // -1 = descending, 1 = ascending
 
   function fx(v){
@@ -30,14 +30,16 @@ window.__viewInit["rune-picker"] = function () {
   }
   function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]))}
   function confBadge(item){
-    const map={high:["conf-hi","High"],medium:["conf-md","Med"],low:["conf-lo","Low"],none:["conf-no","None"],base:["conf-hi","Base"]};
+    const map={high:["conf-hi","High"],medium:["conf-md","Med"],low:["conf-lo","Low"],none:["conf-no","None"],base:["conf-hi","Base"],anchor:["conf-hi","Anchor"]};
     const m=map[item.confidence]||["conf-unk","—"];
     const u=(typeof item.units==="number")?item.units:null;
     const tip=item.confidence==="base"
       ?"Base currency — 1 ex by definition (the unit every price is quoted in). Not scanned."
+      :item.confidence==="anchor"
+      ?"Divine is the currency everything else is quoted in — its value is the exchange rate itself, not a thin-market sample."
       :u!=null
-        ?u+" offers on the exchange. More = deeper market, more reliable price."
-        :"Thin/no exchange offers.";
+        ?u+" backing this price (30d trades, or live exchange offers when priced off trade). More = more reliable."
+        :"Thin/no market behind this price.";
     const suffix=(u!=null&&item.confidence!=="high")?" "+u:"";
     return '<span class="conf '+m[0]+'" title="'+esc(tip)+'">'+m[1]+suffix+'</span>';
   }
@@ -52,7 +54,6 @@ window.__viewInit["rune-picker"] = function () {
       else if(sortKey==="qty") r=numv(a.qty)-numv(b.qty);
       else if(sortKey==="each") r=numv(a.each)-numv(b.each);
       else if(sortKey==="total") r=numv(a.total)-numv(b.total);
-      else if(sortKey==="change7d") r=(parseFloat(a.change7d)||0)-(parseFloat(b.change7d)||0);
       else r=String(a[sortKey]||"").toLowerCase().localeCompare(String(b[sortKey]||"").toLowerCase());
       return r*sortDir;
     });
@@ -111,7 +112,7 @@ window.__viewInit["rune-picker"] = function () {
 
   function renderRows(){
     if(!runeResultData.length){
-      runeRows.innerHTML='<tr><td colspan="8" class="muted">No results yet — check the pasted text and Evaluate again.</td></tr>';
+      runeRows.innerHTML='<tr><td colspan="7" class="muted">No results yet — check the pasted text and Evaluate again.</td></tr>';
       updateSortIndicators();
       return;
     }
@@ -125,31 +126,25 @@ window.__viewInit["rune-picker"] = function () {
         '<td class="num">'+(missing?"":fx(item.total))+'</td>'+
         '<td>'+confBadge(item)+'</td>'+
         '<td>'+esc(item.source||"")+(item.rawPrice?'<div class="muted">'+esc(item.rawPrice)+'</div>':'')+'</td>'+
-        '<td class="num">'+esc(item.change7d||"")+'</td>'+
       '</tr>';
     }).join("");
     updateSortIndicators();
   }
 
-  const EMPTY_PICKS="No priced picks yet — paste reward lines or item choices above, then Evaluate.";
+  // The "best pick" box only exists once there IS a best pick. It used to render an
+  // empty placeholder that said the same thing as the table's empty row, so the empty
+  // view carried the same message twice.
   function renderRuneResults(data){
     runeResultData=data.results||[];
-    if(!runeResultData.length){
-      runeBest.className="bestbox empty";
-      runeBest.textContent=EMPTY_PICKS;
-      renderRows();
-      return;
-    }
-
-    const best=data.best||runeResultData.find(item=>Number(item.total)>0);
+    const best=runeResultData.length ? (data.best||runeResultData.find(item=>Number(item.total)>0)) : null;
     if(best){
+      runeBest.hidden=false;
       runeBest.className="bestbox";
       runeBest.innerHTML='<b>Best pick: '+esc(best.qty)+'x '+esc(best.name)+'</b><span>'+fx(best.total)+' total / '+fx(best.each)+' each - '+esc(best.category)+' via '+esc(best.source)+'</span>'+(best.rawPrice?'<div class="muted">Raw listing: '+esc(best.rawPrice)+'</div>':'');
     }else{
-      runeBest.className="bestbox empty";
-      runeBest.textContent=EMPTY_PICKS;
+      runeBest.hidden=true;
+      runeBest.innerHTML="";
     }
-
     renderRows();
   }
 

@@ -13,7 +13,7 @@
   /* Cheat-sheet cards */
   .toolroot-mj .mj-sheet{display:flex;flex-direction:column;gap:14px}
   .toolroot-mj .rxcard{border:1px solid var(--border);background:linear-gradient(180deg,var(--surface-1),var(--bg-deep));border-radius:var(--r-md);box-shadow:var(--shadow-sm);overflow:hidden}
-  .toolroot-mj .rxcard-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);border-left:3px solid var(--gold)}
+  .toolroot-mj .rxcard-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border)}
   .toolroot-mj .rxcard-title{color:var(--gold);font:700 13px var(--font-ui);text-transform:uppercase;letter-spacing:.05em}
   .toolroot-mj .rxcard-kind{margin-left:auto;color:var(--text-muted);font:10px var(--font-mono);text-transform:uppercase;border:1px solid var(--border);padding:1px 6px;border-radius:var(--r-sm)}
   .toolroot-mj .rxcard-body{padding:14px}
@@ -48,13 +48,13 @@
   .toolroot-mj .forge-steps{display:flex;gap:24px;flex-wrap:wrap}
   .toolroot-mj .forge-step{display:flex;align-items:center;gap:8px}
   .toolroot-mj .forge-step-lbl{color:var(--text-muted);font:11px var(--font-mono);text-transform:uppercase;letter-spacing:.04em}
-  .toolroot-mj .step{width:26px;height:26px;display:grid;place-items:center;border:1px solid var(--border);background:var(--bg-deep);color:var(--gold);font:700 15px var(--font-mono);line-height:1}
+  .toolroot-mj .step{width:28px;height:28px;display:grid;place-items:center;border:1px solid var(--border);background:var(--bg-deep);color:var(--gold);font:700 15px var(--font-mono);line-height:1}
   .toolroot-mj .step:hover:not(:disabled){border-color:var(--border-gold)}
   .toolroot-mj .step:disabled{opacity:.35;cursor:default}
   .toolroot-mj .forge-step-val{min-width:44px;text-align:center;color:var(--text);font:700 13px var(--font-mono)}
   /* typeable value: number input you can type into OR nudge with the −/+ buttons */
   .toolroot-mj .forge-step-ctl{display:inline-flex;align-items:center;gap:6px}
-  .toolroot-mj .forge-step-in{width:52px;height:26px;text-align:center;border:1px solid var(--border);background:var(--bg-deep);color:var(--text);font:700 13px var(--font-mono);border-radius:var(--r-sm);padding:0 4px;-moz-appearance:textfield}
+  .toolroot-mj .forge-step-in{width:52px;height:28px;text-align:center;border:1px solid var(--border);background:var(--bg-deep);color:var(--text);font:700 13px var(--font-mono);border-radius:var(--r-sm);padding:0 4px;-moz-appearance:textfield}
   .toolroot-mj .forge-step-in:focus{outline:none;border-color:var(--border-gold);box-shadow:0 0 0 2px var(--gold-glow)}
   .toolroot-mj .forge-step-in::-webkit-outer-spin-button,.toolroot-mj .forge-step-in::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   .toolroot-mj .forge-step-unit{color:var(--text-muted);font:11px var(--font-mono);margin-left:-2px}
@@ -142,7 +142,7 @@
   .toolroot-mj #mjAsideT{margin-top:18px}
   .toolroot-mj .tv-group{margin-top:6px;border-top:1px solid var(--border);padding-top:6px}
   .toolroot-mj .tv-group:first-child{margin-top:0;border-top:0;padding-top:0}
-  .toolroot-mj .tv-grouphead{display:flex;align-items:baseline;gap:8px;color:var(--gold);font:700 11px var(--font-mono);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;cursor:pointer;list-style:none;padding:4px 0}
+  .toolroot-mj .tv-grouphead{display:flex;align-items:baseline;gap:8px;color:var(--gold);font:700 11px var(--font-mono);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;cursor:pointer;list-style:none;padding:6px 0;min-height:24px}
   .toolroot-mj .tv-grouphead::-webkit-details-marker{display:none}
   .toolroot-mj .tv-grouphead::before{content:"▸";display:inline-block;color:var(--text-muted);transition:transform .15s}
   .toolroot-mj details[open]>.tv-grouphead{margin-bottom:6px}

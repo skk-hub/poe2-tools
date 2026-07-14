@@ -1,6 +1,8 @@
 /* Filter Helper — scoped under .toolroot-fh. Reuses the shared tool-view baseline
    (.pagehead/.controls/.status/.tablewrap/table/.muted) from index's <style>. */
-.toolroot-fh { max-width: 980px; margin: 0 auto; }
+/* left-aligned to the shell gutter like every other tool view (it used to centre
+   itself, so switching to it visibly shifted the page) */
+.toolroot-fh { max-width: 980px; }
 .toolroot-fh .fh-bad { font-weight: 700; color: var(--red); letter-spacing: .03em; }
 .toolroot-fh .fh-ok { color: var(--green); }
 .toolroot-fh .fh-blockwrap { margin-top: 1.1rem; }

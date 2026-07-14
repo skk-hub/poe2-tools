@@ -41,6 +41,15 @@
 .toolroot-craft .cf-tchip button:hover{background:var(--red);color:#fff}
 .toolroot-craft .cf-simout{margin-bottom:20px}
 .toolroot-craft .cf-simload,.toolroot-craft .cf-simerr{padding:14px;border:1px dashed var(--border);border-radius:var(--r);color:var(--text-muted);font:500 13px var(--font-ui)}
+/* Indeterminate progress: the plan takes ~10s and we can't know a fraction of it, so
+   show motion that says "working", not a fake percentage. */
+.toolroot-craft .cf-simload{position:relative;overflow:hidden}
+.toolroot-craft .cf-simload-bar{position:absolute;left:0;top:0;height:2px;width:35%;border-radius:2px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);animation:cf-sweep 1.4s var(--ease) infinite}
+@keyframes cf-sweep{0%{transform:translateX(-100%)}100%{transform:translateX(386%)}}
+@media(prefers-reduced-motion:reduce){
+  .toolroot-craft .cf-simload-bar{animation:none;width:100%;background:var(--gold-soft)}
+}
 .toolroot-craft .cf-simerr{color:var(--gold-bright);border-color:var(--border-gold);background:var(--gold-soft)}
 .toolroot-craft .cf-simresult{border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
 .toolroot-craft .cf-simresult-head{padding:9px 14px;background:oklch(100% 0 0 / .03);color:var(--text-faint);font:600 10px var(--font-ui);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
@@ -87,6 +96,9 @@
 .toolroot-craft .cf-risk-k.hit::before{background:var(--gold-bright)}
 .toolroot-craft .cf-risk-k.brick::before{background:var(--red)}
 .toolroot-craft .cf-risk-k.brick{color:var(--red)}
+/* a 0% outcome is not a warning — mute it so red always means "this can happen to you" */
+.toolroot-craft .cf-risk-k.zero{color:var(--text-faint)}
+.toolroot-craft .cf-risk-k.zero::before{background:var(--surface-3)}
 .toolroot-craft .cf-risk-jam{margin-top:6px;color:var(--text-muted);font:400 11.5px var(--font-ui);line-height:1.5}
 .toolroot-craft .cf-risk-jam em{font-style:normal;color:var(--red);font:600 11.5px var(--font-mono)}
 .toolroot-craft .cf-resale-btn{padding:5px 10px;border:1px solid var(--border-gold);background:transparent;color:var(--gold-bright);border-radius:var(--r-sm,6px);font:600 12px var(--font-ui);cursor:pointer}
