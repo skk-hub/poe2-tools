@@ -775,7 +775,11 @@ function parseProxyOverview(j) {
   }
   // Exalted is the base unit (1 ex by definition); divine/chaos from the rate table.
   items[normalizeName("Exalted Orb")] = { ex: 1, div: divineEx > 0 ? round4(1 / divineEx) : 0, volume: 0, type: "Currency", name: "Exalted Orb", base: true };
-  if (divineEx > 0) items[normalizeName("Divine Orb")] = { ex: divineEx, div: 1, volume: 0, type: "Currency", name: "Divine Orb" };
+  // Divine carries no volume of its own here: it IS the quote currency, so its value is
+  // the exchange rate, not a sampled trade. Without this flag it fell through to the
+  // volume test and the Rune Picker badged the most liquid currency in the game
+  // "LOW 0 — thin market, price unreliable".
+  if (divineEx > 0) items[normalizeName("Divine Orb")] = { ex: divineEx, div: 1, volume: 0, type: "Currency", name: "Divine Orb", anchor: true };
   return { divineEx, chaosEx, items, updated: new Date().toISOString() };
 }
 let proxyMem = null, proxyInFlight = null;
@@ -1394,8 +1398,7 @@ async function fetchRunePrices(text, league, forceFresh) {
           source: fromProxy ? "poe.ninja (EE2)" : "trade2 exchange",
           rawPrice: sideLine ? "live: " + sideLine : "", sides: bulk ? bulk.sides : [], sideLine,
           divineValue: currencyRates.divine ? roundPriceExalted(each / currencyRates.divine) : 0,
-          change7d: "",
-          confidence: (pv && pv.base) ? "base" : vol >= 100 ? "high" : vol >= 10 ? "medium" : "low",
+          confidence: (pv && pv.base) ? "base" : (pv && pv.anchor) ? "anchor" : vol >= 100 ? "high" : vol >= 10 ? "medium" : "low",
           units: Number.isFinite(vol) ? Math.round(vol) : null,
         });
         continue;
@@ -1403,23 +1406,23 @@ async function fetchRunePrices(text, league, forceFresh) {
       // Known exchange item but no value yet (proxy miss + over the live budget / no offers).
       if (cat) {
         const pending = liveExchangeCalls >= MAX_LIVE_EXCHANGE && !tradeStatus().limited;
-        results.push({ qty: parsed.qty, name: (cat.name) || cleanName, category: pending ? "pricing…" : "no price", each: "", total: "", currency: "", source: "ee2", rawPrice: pending ? "fetching — check again shortly" : "", change7d: "", confidence: "none", units: null });
+        results.push({ qty: parsed.qty, name: (cat.name) || cleanName, category: pending ? "pricing…" : "no price", each: "", total: "", currency: "", source: "ee2", rawPrice: pending ? "fetching — check again shortly" : "", confidence: "none", units: null });
         continue;
       }
       // Not in the proxy or the exchange catalog → fall through to Not found below.
     }
 
     if (isSkillOrSupport && tradePaused) {
-      results.push({ qty: parsed.qty, name: cleanName, category: "Trade queued", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — live-trade is best-effort", change7d: "" });
+      results.push({ qty: parsed.qty, name: cleanName, category: "Trade queued", each: "", total: "", currency: "", source: "trade2", rawPrice: "shared trade limit hit — live-trade is best-effort" });
       continue;
     }
 
     if (isSkillOrSupport) {
-      results.push({ qty: parsed.qty, name: cleanName, category: "Trade queued", each: "", total: "", currency: "", source: "trade2", rawPrice: "queued — shared rate-limit bucket, live-trade is best-effort", change7d: "" });
+      results.push({ qty: parsed.qty, name: cleanName, category: "Trade queued", each: "", total: "", currency: "", source: "trade2", rawPrice: "queued — shared rate-limit bucket, live-trade is best-effort" });
       continue;
     }
 
-    results.push({ qty: parsed.qty, name: cleanName, category: "Not found", each: "", total: "", currency: "", source: "", rawPrice: "", change7d: "" });
+    results.push({ qty: parsed.qty, name: cleanName, category: "Not found", each: "", total: "", currency: "", source: "", rawPrice: "" });
   }
 
   // Background-fill EE2 prices for items shown "pricing…" this check (over the live

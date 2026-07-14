@@ -110,4 +110,32 @@ const ADVANCED = [
   ok(!sent.some((t) => /Cold Resistance/.test(t)), "rare: the implicit must not be kept as an affix");
 }
 
+// ── a TRAILING separator is not a modifier ───────────────────────────────────
+// The in-game copy ends the block with "--------". The section splitter only cuts a
+// separator followed by a newline, so the trailing one rode along inside the last
+// section and was parsed as an affix. On a MAGIC item that phantom mod filled the
+// second slot, so the planner saw 1 prefix + 1 suffix (full) and would never offer the
+// Augmentation that fills the genuinely empty one. Found by rendering the real UI, 2026-07-14.
+{
+  const magic = [
+    "Item Class: Rings",
+    "Rarity: Magic",
+    "Sapphire Ring of the Fox",
+    "--------",
+    "Item Level: 82",
+    "--------",
+    "{ Implicit Modifier — Elemental, Cold, Resistance }",
+    "+22(20-30)% to Cold Resistance (implicit)",
+    "--------",
+    '{ Prefix Modifier "Hale" — Life }',
+    "+45(40-49) to maximum Life",
+    "--------",                    // <- trailing separator, exactly as the game emits it
+  ].join("\n");
+  const it = parseItem(magic);
+  const sent = it.explicits.map((e) => e.text);
+  ok(sent.length === 1, `magic: trailing separator must not become an affix, got ${JSON.stringify(sent)}`);
+  ok(/maximum Life/.test(sent[0]), "magic: the one real affix survives");
+  ok(!sent.some((t) => /^-+$/.test(t)), "magic: no separator line among the kept mods");
+}
+
 console.log(`craft-parse-test: ${pass} checks passed`);

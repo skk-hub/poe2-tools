@@ -38,7 +38,6 @@ a:hover{text-decoration:underline}
 .navbtn.active{color:var(--gold-bright);background:var(--gold-soft)}
 .navbtn.active::after{content:"";position:absolute;left:13px;right:13px;bottom:-9px;height:2px;border-radius:2px;background:var(--gold)}
 .vpnpill{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 11px;border-radius:var(--r);background:var(--surface-2);border:1px solid var(--border);cursor:pointer;transition:border-color var(--t),background var(--t)}
-.vpnpill[hidden]{display:none}
 .vpnpill:hover{border-color:var(--gold);background:var(--gold-soft)}
 .vpnpill-globe{display:grid;place-items:center;color:var(--text-muted)}
 .vpnpill-globe svg{width:15px;height:15px;display:block}
@@ -54,7 +53,9 @@ a:hover{text-decoration:underline}
 .sesspill input{appearance:none;background:transparent;border:0;outline:0;color:var(--text);font:600 12px var(--font-ui);width:13em}
 .sesspill input[hidden]{display:none}
 .vpnpill.warn .vpnpill-dot{background:oklch(78% 0.15 85)}
-.sess-help{appearance:none;border:1px solid var(--border);background:transparent;color:var(--text-muted);width:16px;height:16px;border-radius:50%;font:700 10px var(--font-ui);line-height:1;cursor:pointer;padding:0;display:grid;place-items:center}
+.sess-help{position:relative;appearance:none;border:1px solid var(--border);background:transparent;color:var(--text-muted);width:16px;height:16px;border-radius:50%;font:700 10px var(--font-ui);line-height:1;cursor:pointer;padding:0;display:grid;place-items:center}
+/* 16px dot, 24px hit area — the glyph stays small without the target being a dart throw */
+.sess-help::after{content:"";position:absolute;inset:-4px}
 .sess-help:hover{border-color:var(--gold);color:var(--text)}
 .sess-pop{position:absolute;right:14px;top:46px;z-index:30;max-width:24em;padding:10px 12px;border-radius:var(--r);background:var(--surface-2);border:1px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.35);font:400 12px/1.5 var(--font-ui);color:var(--text)}
 .sess-pop[hidden]{display:none}
@@ -64,7 +65,6 @@ h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;l
 
 /* Shared background-scan bar — shows on every page while any tool is scanning in
    the background (e.g. Rune Picker price fill), so you can navigate away. */
-.bg-bar[hidden]{display:none}
 .bg-bar{position:sticky;top:0;z-index:99;display:flex;align-items:center;gap:10px;padding:5px 16px;
   background:oklch(15% 0.006 270 / 0.92);border-bottom:1px solid var(--border-gold,var(--border));
   font:600 11.5px var(--font-mono);color:var(--gold-bright);text-decoration:none;
@@ -80,7 +80,6 @@ h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;l
 /* Pinned-regex quick dock — floats on every page (except the Regex sheet itself, where
    the full pins UI already lives) so a saved stash filter is one click from the clipboard
    anywhere in the app. Reads the same localStorage pins the Regex Forge writes. */
-.rxdock[hidden]{display:none}
 .rxdock{position:fixed;right:16px;bottom:16px;z-index:90;width:min(280px,calc(100vw - 32px));
   background:oklch(16% 0.006 270 / 0.92);border:1px solid var(--border-gold);border-radius:var(--r-lg);
   box-shadow:var(--shadow-lg);backdrop-filter:saturate(140%) blur(12px);-webkit-backdrop-filter:saturate(140%) blur(12px);
@@ -176,7 +175,7 @@ h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;l
 .econ-card-val small{color:var(--text-faint);font-size:12px;font-weight:500}
 .econ-card-ex{display:block;color:var(--text-faint);font:500 11px var(--font-mono);margin-top:2px}
 .econ-card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;min-height:22px}
-.econ-card-chg{font:600 12px var(--font-mono);color:var(--text-faint)}
+.econ-card-chg{font:600 12px var(--font-mono);color:var(--text-faint);white-space:nowrap}
 .econ-card-chg small{font-weight:500;font-size:10px}
 .econ-card-chg.up{color:var(--green)} .econ-card-chg.down{color:var(--red)}
 .econ-spark{width:76px;height:22px;flex:none;opacity:.85}
@@ -212,6 +211,24 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
 
 @media(max-width:860px){
   .pagehead{display:block}.controls{justify-content:flex-start;margin-top:12px}.status{text-align:left}
+}
+/* Narrow: the brand + 6 tool links + 2 pills can't share one row. They used to be
+   squeezed until the tail of the nav (Gear Finder, Crafter) was clipped off-screen
+   with no way to reach it. Wrap the nav to its own row and let it scroll sideways —
+   every tool stays reachable. */
+@media(max-width:900px){
+  .appbarin{flex-wrap:wrap;row-gap:8px}
+  .brand{flex:1 1 auto}
+  .nav{width:100%;flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;overscroll-behavior-x:contain;
+    scrollbar-width:none;-ms-overflow-style:none;padding-bottom:2px;
+    /* fade the right edge so "there is more nav over there" is visible, not guessed */
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
+    mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
+  .nav::-webkit-scrollbar{display:none}
+  .navbtn{flex:none}
+  /* the active underline hangs 9px below the button; inside a scroll container that
+     would be clipped (and add phantom scroll height) — tuck it to the button edge */
+  .navbtn.active::after{bottom:0}
 }
 @media(max-width:560px){
   .shell{padding:20px 14px 40px}.appbarin{padding:10px 14px}
@@ -283,7 +300,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       <div class="fxstrip-head">
         <span class="fxstrip-title">Currency</span>
         <span class="fxstrip-meta" id="fxStripMeta">Loading…</span>
-        <button class="fxstrip-refresh" id="fxStripRefresh" type="button" title="Refresh currency values from Trade2" aria-label="Refresh currency values">↻</button>
+        <button class="fxstrip-refresh" id="fxStripRefresh" type="button" title="Refresh currency values" aria-label="Refresh currency values">↻</button>
       </div>
       <div class="fxstrip-chips" id="fxStripChips"></div>
     </div>
@@ -314,7 +331,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     <div class="pagehead">
       <div>
         <h1>Rune Picker</h1>
-        <p class="sub">Paste reward lines or item choices. The server prices Trade2 matches and ranks the best pick.</p>
+        <p class="sub">Paste reward lines or item choices. Priced off poe.ninja values (live trade offers shown alongside) and ranked best-pick first.</p>
         <p class="sub">Or skip the paste: <a href="https://github.com/skk-hub/poe2-overlay/releases/latest" target="_blank" rel="noreferrer"><b>download the PoE2 Overlay</b></a> — hit Scan with the rune book open and it draws each reward's price beside its row, in game. Portable exe, no install; PoE2 must be in borderless windowed.</p>
       </div>
       <div class="controls">
@@ -339,22 +356,21 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
             <img id="pastePreview" alt="">
           </div>
           <textarea id="runeInput" spellcheck="false" placeholder="Example:&#10;3x Desert Rune&#10;Soul Core of Tacati&#10;Greater Essence of Enhancement"></textarea>
-          <p class="sample">Paste a screenshot with Ctrl+V anywhere on the page, drop an image into the box above, or type item names manually.</p>
         </div>
       </div>
       <div class="toolpanel">
         <div class="toolbar">
           <div>
             <div class="tooltitle">Results</div>
-            <p class="sub">Sorted by confidence, then value — click any column header to re-sort. Conf = how many sold in the last 7 days (more sales = more reliable price): <span class="conf conf-hi">High</span> ≥300, <span class="conf conf-md">Med</span> ≥30, <span class="conf conf-lo">Low</span> &lt;30 (thin market, price unreliable).</p>
+            <p class="sub">Sorted by confidence, then value — click any column header to re-sort. Conf = how much market backs the price (30d trade volume, or exchange depth when the price came from trade): <span class="conf conf-hi">High</span> ≥100, <span class="conf conf-md">Med</span> ≥10, <span class="conf conf-lo">Low</span> &lt;10 (thin market, price unreliable).</p>
           </div>
         </div>
         <div class="toolbody">
-          <div id="runeBest" class="bestbox empty">No priced picks yet.</div>
+          <div id="runeBest" class="bestbox" hidden></div>
           <div class="tablewrap">
             <table>
-              <thead><tr><th data-sort="qty">Qty</th><th data-sort="name">Name</th><th data-sort="category">Category</th><th data-sort="each">Each</th><th data-sort="total">Total</th><th data-sort="conf">Conf</th><th data-sort="source">Source</th><th data-sort="change7d">7d</th></tr></thead>
-              <tbody id="runeRows"><tr><td colspan="8" class="muted">Checked picks appear here.</td></tr></tbody>
+              <thead><tr><th data-sort="qty">Qty</th><th data-sort="name">Name</th><th data-sort="category">Category</th><th data-sort="each">Each</th><th data-sort="total">Total</th><th data-sort="conf">Conf</th><th data-sort="source">Source</th></tr></thead>
+              <tbody id="runeRows"><tr><td colspan="7" class="muted">Paste your reward choices on the left, then Evaluate.</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -435,7 +451,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <div id="gfTreeOut" class="gf-tree-out"></div>
       </details>
       <div id="gfSets" class="gf-sets" hidden></div>
-      <p class="sub gf-pickhint">Pick <b>one</b> slot to rank the best buyable items for it, or <b>two or more</b> to optimize a set that holds your breakpoints (it can break a resist on one slot and recover it on another for a net gain).</p>
+      <p class="sub gf-pickhint" id="gfPickHint" hidden>Pick <b>one</b> slot to rank the best buyable items for it, or <b>two or more</b> to optimize a set that holds your breakpoints (it can break a resist on one slot and recover it on another for a net gain).</p>
       <div id="gfSlots" class="gf-slots"></div>
       <div class="gf-findbar" id="gfFindBar" hidden>
         <div class="gf-row">
@@ -479,7 +495,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
           <div id="gfScoreOut" class="gf-scoreout"></div>
         </div>
       </div>
-      <p class="gf-foot">Path of Building works out which stats actually help <i>your</i> build, then hands you a <b>build-weighted trade search</b>. The snippet runs in your own logged-in browser (no rate limit, and it unlocks the weighted search the API can't do anonymously); the basic search is a one-call fallback. Headless weighting needs PoB + LuaJIT installed locally.</p>
+      <p class="gf-foot" id="gfFoot" hidden>Every number here comes from running <b>your</b> build through Path of Building: candidates are fetched, scored, and ranked by the DPS/EHP they actually add, not by a stat heuristic. Needs PoB + LuaJIT reachable (the badge by the title reads <i>Stat-only</i> if not).</p>
     </div>
   </section>
   <section id="filter-helper" class="view" data-view="filter-helper">
@@ -490,7 +506,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
         <p class="sub">Paste your loot filter and it tells you which <b>currency</b> it hides. It reads the filter top to bottom the way the game does (first matching rule wins), so it catches a Hide sitting above your currency Show. Stays in your browser; no prices, no rate limits.</p>
       </div>
       <div class="controls">
-        <div id="fhStatus" class="status">Paste your .filter below to check it.</div>
+        <div id="fhStatus" class="status"></div>
       </div>
     </div>
     <div class="fh-filterbox">
@@ -517,7 +533,7 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
     <div class="pagehead">
       <div>
         <h1>Crafter</h1>
-        <p class="sub">Pick a base and item level to see every prefix and suffix it can roll — grouped by modifier, with tiers, spawn weights, and each tier's roll chance. Offline: reads Path of Building's game data, no trade calls.</p>
+        <p class="sub">Pick a base and item level to see every prefix and suffix it can roll — grouped by modifier, with tiers, spawn weights, and each tier's roll chance. Or paste an item and get the cheapest route to the mods you want, costed in divine. Mod pools are offline (Path of Building's game data); only the prices are live.</p>
       </div>
       <div class="controls">
         <label>Base <input id="cfBase" list="cfBaseList" placeholder="e.g. Sapphire Ring" autocomplete="off" style="width:15em"></label>

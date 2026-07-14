@@ -5,7 +5,7 @@ window.__viewInit["gear-finder"] = function () {
     mode: $("gfMode"),
     saved: $("gfSaved"), savedRow: $("gfSavedRow"), myBuilds: $("gfMyBuilds"), loadSaved: $("gfLoadSaved"), delSaved: $("gfDelSaved"),
     code: $("gfCode"), importBtn: $("gfImport"), paste: $("gfPaste"), saveName: $("gfSaveName"), saveBuild: $("gfSaveBuild"), saveBox: $("gfSaveBox"), saveConfirm: $("gfSaveConfirm"),
-    build: $("gfBuild"), sets: $("gfSets"), slots: $("gfSlots"),
+    build: $("gfBuild"), sets: $("gfSets"), slots: $("gfSlots"), pickHint: $("gfPickHint"), foot: $("gfFoot"),
     scanRow: $("gfScanRow"), scanAll: $("gfScanAll"), scanMin: $("gfScanMin"), scanOut: $("gfScanOut"),
     panel: $("gfSearchPanel"), slot: $("gfSlot"), budget: $("gfBudget"), budgetMin: $("gfBudgetMin"), minRoi: $("gfMinRoi"),
     findBar: $("gfFindBar"), find: $("gfFind"), findHint: $("gfFindHint"), rarityChk: $("gfRarityChk"), rarityVal: $("gfRarityVal"), rakiataRow: $("gfRakiataRow"), ignoreRakiata: $("gfIgnoreRakiata"),
@@ -166,10 +166,13 @@ window.__viewInit["gear-finder"] = function () {
     } else { els.sets.hidden = true; els.sets.innerHTML = ""; }
     els.slots.innerHTML = Object.entries(state.slots).map(([id, s]) =>
       `<button class="gf-slot" type="button" data-slot="${esc(id)}">${esc(slotLabel(id))}<span class="gf-slot-name">${esc(s.name || "—")}</span></button>`).join("");
-    els.scanRow.hidden = !Object.keys(state.slots).length;
+    const hasSlots = Boolean(Object.keys(state.slots).length);
+    els.scanRow.hidden = !hasSlots;
+    if (els.pickHint) els.pickHint.hidden = !hasSlots;   // hint + footer explain the SLOT
+    if (els.foot) els.foot.hidden = !hasSlots;           // picker; before a build they're noise
     state.sel = new Set();
     renderBreaks(b);
-    els.findBar.hidden = !Object.keys(state.slots).length;
+    els.findBar.hidden = !hasSlots;
     els.optOut.innerHTML = "";
     updateFindUI();
     if (els.treeRow) { els.treeRow.hidden = false; els.treeOut.innerHTML = ""; }

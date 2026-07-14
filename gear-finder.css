@@ -1,7 +1,10 @@
 /* .toolroot-gear — Gear Upgrade Finder (prefixed scope) */
   .toolroot-gear{display:block;max-width:1100px}
   .toolroot-gear h1{margin:0;color:var(--gd);font:700 22px/1.1 var(--ff-display);letter-spacing:.04em}
-  .toolroot-gear .sub{color:var(--mu);font:12px var(--ff-mono);margin:6px 0 0}
+  /* prose is UI-font; mono is reserved for data (prices, stats, item text). The whole
+     view's helper copy used to render monospace, which reads as terminal output, not
+     instructions. */
+  .toolroot-gear .sub{color:var(--mu);font:12.5px/1.55 var(--font-ui);margin:6px 0 0;max-width:72ch}
   .toolroot-gear .gf-badge{display:inline-block;font:700 10px var(--ff-mono);text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:var(--r-pill);border:1px solid var(--bd);margin-left:6px}
   .toolroot-gear .gf-badge.live{color:var(--gr);border-color:oklch(67% 0.14 148 / .5)}
   .toolroot-gear .gf-badge.fallback{color:var(--gd);border-color:var(--gd-b)}
