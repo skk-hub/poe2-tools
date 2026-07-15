@@ -540,11 +540,19 @@ window.__viewInit["map-juicer"]=function(){
   function detectContent(t){ for (const c of D.contentTypes){ if (c.id!=="general" && new RegExp(c.tabletToken,"i").test(t)) return c; } return null; }
   function curveEx(curve, pct){
     if (!curve || !curve.length || pct <= 0) return 0;
-    if (pct <= curve[0][0]) return curve[0][1] * (pct / curve[0][0]);
+    // Below the lowest roll the sweep actually OBSERVED, there is no price data. The old
+    // `curve[0][1]*(pct/curve[0][0])` drew a line to the origin, inventing real value for
+    // floor rolls — a 1-point live curve like Effectiveness [[40,1000]] priced a 12% roll at
+    // ~5c, so the dump filter "kept" worthless stones. No data = bulk floor (the documented
+    // intent), NOT a line to zero. At the point itself, use its measured value.
+    if (pct < curve[0][0]) return baseEx();
+    if (pct === curve[0][0]) return curve[0][1];
     for (let i = 1; i < curve.length; i++){ if (pct <= curve[i][0]){ const [x0,y0] = curve[i-1], [x1,y1] = curve[i]; return y0 + (y1 - y0) * (pct - x0) / (x1 - x0); } }
-    const a = curve[curve.length-2] || curve[0], b = curve[curve.length-1];
-    const slope = (b[1]-a[1]) / Math.max(1, b[0]-a[0]);
-    return Math.max(b[1], b[1] + slope * (pct - b[0]));
+    // Above the highest observed roll we likewise have no data — hold flat at the last
+    // measured floor. The old code ramped the last segment's slope off unbounded, so a
+    // noisy ceiling (Monster Rarity read as 103%) turned a 716ex point into ~1850ex of
+    // fantasy value in both the dump threshold and the paste evaluator.
+    return curve[curve.length-1][1];
   }
   // Value scale is anchored to baselineEx (~2 chaos = the floor for ANY usable stone).
   // Tiers are multiples of that floor so they auto-rescale if the baseline moves.
