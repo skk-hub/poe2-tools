@@ -168,7 +168,9 @@ window.__viewInit["home"] = function () {
   // cards read AGAINST, so it's not in the per-point ex map. Its value in exalted lives
   // in p.chaosEx, recorded on every historical point, so we can plot chaos's own trend
   // (in exalted) straight from the existing history. valOf routes chaos to chaosEx.
-  const valOf = (p, id) => id === "chaos" ? (p && p.chaosEx) : (p && p.ex && p.ex[id]);
+  // Exalted is the base unit everything is priced in, so its value in exalted is
+  // always 1 — it never lands in p.ex. Return 1 so it can still be a card/series/pair.
+  const valOf = (p, id) => id === "chaos" ? (p && p.chaosEx) : id === "exalted" ? (p && 1) : (p && p.ex && p.ex[id]);
 
   function fmtDur(s) {
     s = Math.max(0, Math.round(s));
@@ -375,6 +377,9 @@ window.__viewInit["home"] = function () {
     if ((latest && latest.chaosEx > 0) || points.some(p => p.chaosEx > 0)) {
       items = items.concat([{ id: "chaos", name: "Chaos Orb" }]);
     }
+    // Exalted (base unit) as a card/series/pair option — its exalted value is a flat
+    // 100 on the relative chart (the anchor); its gain shows when paired vs Chaos/Divine.
+    items = items.concat([{ id: "exalted", name: "Exalted Orb" }]);
     if (!latest) {
       econChartWrap.hidden = true; econCards.innerHTML = ""; econHeadline.innerHTML = "";
       econEmpty.hidden = false;
