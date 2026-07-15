@@ -151,6 +151,9 @@ window.__viewInit["home"] = function () {
   const econLegend = document.getElementById("econLegend");
   const econCards = document.getElementById("econCards");
   const econEmpty = document.getElementById("econEmpty");
+  const econMain = document.getElementById("econMain");
+  const econCmp = document.getElementById("econCmp");
+  const econChartTitle = document.getElementById("econChartTitle");
   if (!econ) return;
   // Divine = gold, then distinct hues in ECONOMY_ITEMS order.
   const COLORS = ["#e8b23a", "#5aa9e6", "#7ed957", "#e06c9f", "#b98cff", "#46d0c0", "#f2784b"];
@@ -158,6 +161,7 @@ window.__viewInit["home"] = function () {
   let econLimited = false;        // rate-limited right now → keep ↻ disabled
   let econLimitTimer = null;      // 1s ticker for the "clears in …" countdown
   let econSelId = null;           // clicked card → isolate that series, grey the rest
+  let econMainId = null, econCmpId = null;   // pair mode: plot cmp priced in main over time
   let econView = null;            // last-painted {series, points, latest, ...} for re-paint on select
 
   // Every point is priced in exalted; chaos is the exception — it's the base unit the
@@ -202,6 +206,26 @@ window.__viewInit["home"] = function () {
       points.forEach((p, i) => { const v = valOf(p, it.id); if (v > 0) pts.push({ i, v }); });
       return { it, idx, pts };
     }).filter(s => s.pts.length);
+  }
+
+  // Pair mode: exchange rate cmp/main over time (both are in exalted, so units
+  // cancel → "how many main is one cmp worth"). Only points where both traded.
+  function buildRatio(points, mainId, cmpId) {
+    const pts = [];
+    points.forEach((p, i) => { const m = valOf(p, mainId), c = valOf(p, cmpId); if (m > 0 && c > 0) pts.push({ i, v: c / m }); });
+    return pts;
+  }
+  const nameOf = id => { const it = ((econView && econView.items) || []).find(x => x.id === id); return it ? shortName(it.name) : id; };
+  // Fill both selects once per item set; keep the current selection.
+  function fillPairSelects(items) {
+    const sig = items.map(i => i.id).join(",");
+    if (econMain.dataset.sig !== sig) {
+      const rest = items.map(it => '<option value="' + esc(it.id) + '">' + esc(shortName(it.name)) + '</option>').join("");
+      econMain.innerHTML = '<option value="">Base…</option>' + rest;
+      econCmp.innerHTML = '<option value="">pick…</option>' + rest;
+      econMain.dataset.sig = econCmp.dataset.sig = sig;
+    }
+    econMain.value = econMainId || ""; econCmp.value = econCmpId || "";
   }
 
   // A date tick: "Jun 24", plus the hour when the whole window is under ~2 days
@@ -367,6 +391,8 @@ window.__viewInit["home"] = function () {
     const series = hasChart ? buildSeries(points, items) : null;
     // Drop a stale selection if that currency isn't in the current data.
     if (econSelId && !items.some(it => it.id === econSelId)) econSelId = null;
+    if (econMainId && !items.some(it => it.id === econMainId)) econMainId = null;
+    if (econCmpId && !items.some(it => it.id === econCmpId)) econCmpId = null;
     econView = { series, points, latest, exPerDiv, chaosEx, items, hasChart };
     paintEcon();
     if (!hasChart) {
@@ -383,9 +409,24 @@ window.__viewInit["home"] = function () {
   function paintEcon() {
     if (!econView) return;
     const v = econView;
-    if (v.hasChart) {
+    fillPairSelects(v.items);
+    const pairOn = econMainId && econCmpId && econMainId !== econCmpId;
+    if (v.hasChart && pairOn) {
+      const pts = buildRatio(v.points, econMainId, econCmpId);
+      if (pts.length >= 2) {
+        const series = [{ it: { id: econCmpId, name: nameOf(econCmpId) }, idx: 0, pts }];
+        econChart.innerHTML = lineChart(series, v.points, null);
+        econLegend.innerHTML = legend(series, null);       // needs s.norm from lineChart — call after
+        const rate = valOf(v.latest, econCmpId) / valOf(v.latest, econMainId);
+        econChartTitle.innerHTML = '1 ' + esc(nameOf(econCmpId)) + ' <small>= ' + fmtDiv(rate) + ' ' + esc(nameOf(econMainId)) + ' now · trend indexed to 100</small>';
+      } else {
+        econChart.innerHTML = ""; econLegend.innerHTML = "";
+        econChartTitle.innerHTML = 'Not enough shared history <small>these two haven’t both traded on 2+ samples yet</small>';
+      }
+    } else if (v.hasChart) {
       econChart.innerHTML = lineChart(v.series, v.points, econSelId);
       econLegend.innerHTML = legend(v.series, econSelId);   // legend needs s.norm from lineChart — call after
+      econChartTitle.innerHTML = 'Relative value <small>each currency vs. where it started</small>';
     }
     econCards.innerHTML = cards(v.latest, v.exPerDiv, v.chaosEx, v.items, v.points, econSelId);
   }
@@ -409,6 +450,8 @@ window.__viewInit["home"] = function () {
     econSelId = econSelId === id ? null : id;
     paintEcon();
   }
+  econMain.addEventListener("change", () => { econMainId = econMain.value || null; paintEcon(); });
+  econCmp.addEventListener("change", () => { econCmpId = econCmp.value || null; paintEcon(); });
   econCards.addEventListener("click", e => toggleSel(e.target.closest(".econ-card")));
   econCards.addEventListener("keydown", e => {
     if (e.key !== "Enter" && e.key !== " ") return;

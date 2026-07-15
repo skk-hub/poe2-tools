@@ -154,6 +154,9 @@ h1{font-family:var(--font-ui);color:var(--text);font-size:38px;font-weight:700;l
 .econ-chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:10px}
 .econ-chart-title{color:var(--gold);font:600 11px var(--font-mono);letter-spacing:.1em;text-transform:uppercase}
 .econ-chart-title small{color:var(--text-faint);font-weight:500;letter-spacing:.04em;text-transform:none;margin-left:6px}
+.econ-pair{display:flex;align-items:center;gap:6px}
+.econ-sel{background:var(--surface-1);color:var(--text);border:1px solid var(--border);border-radius:6px;font:500 11.5px var(--font-mono);padding:3px 6px}
+.econ-pair-vs{color:var(--text-faint);font:500 11px var(--font-mono)}
 .econ-legend{display:flex;flex-wrap:wrap;gap:6px 14px}
 .econ-leg{display:inline-flex;align-items:center;gap:6px;color:var(--text-muted);font:500 11.5px var(--font-ui)}
 .econ-leg i{width:9px;height:9px;border-radius:50%;flex:none}
@@ -316,7 +319,12 @@ td.num{text-align:right;white-space:nowrap;font-family:var(--font-mono)}
       </div>
       <div class="econ-chartwrap" id="econChartWrap">
         <div class="econ-chart-head">
-          <span class="econ-chart-title">Relative value <small>each currency vs. where it started</small></span>
+          <span class="econ-chart-title" id="econChartTitle">Relative value <small>each currency vs. where it started</small></span>
+          <div class="econ-pair">
+            <select class="econ-sel" id="econMain" aria-label="Base currency"><option value="">Base…</option></select>
+            <span class="econ-pair-vs">vs</span>
+            <select class="econ-sel" id="econCmp" aria-label="Compare currency"><option value="">pick…</option></select>
+          </div>
           <div class="econ-legend" id="econLegend"></div>
         </div>
         <div class="econ-chart" id="econChart"></div>
