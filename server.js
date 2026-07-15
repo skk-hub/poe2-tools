@@ -2176,6 +2176,11 @@ function pobItemFromTradeEntry(entry, extraImplicits, runeFill) {
   const item = (entry && entry.item) || {};
   const base = item.typeLine || item.baseType || "";
   if (!base) return null;
+  // Sanctified items are unmodifiable (like Corrupted/Mirrored): instilling/anointing and
+  // rune-swapping all fail on them. So DON'T graft your anoint or rune onto a Sanctified
+  // candidate — score it exactly as listed. Otherwise a Sanctified neck with a useless (or
+  // no) anoint gets credited with YOUR anoint it can never actually hold, over-ranking it.
+  if (item.sanctified) { extraImplicits = null; runeFill = null; }
   const name = item.name || "";
   const ilvl = item.ilvl || item.itemLevel || 81;
   // PoE2 trade2 returns each mod as an OBJECT ({description, hash, mods:[...]}), not a

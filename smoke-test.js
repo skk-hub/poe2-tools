@@ -116,6 +116,13 @@ function staticChecks() {
     const sample = "<PathOfBuilding2><Build/></PathOfBuilding2>";
     const code = zlib.deflateSync(Buffer.from(sample)).toString("base64").replace(/\+/g, "-").replace(/\//g, "_");
     check(require("./server.js").decodePobCode(code) === sample, "PoB code decode (base64url + zlib) round-trips");
+    // Sanctified necks can't be re-instilled — the anoint graft must be refused on them, but
+    // still applied to a normal amulet (else un-anointed necks under-rank, the 2026-06-28 fix).
+    const pobFromEntry = require("./server.js").pobItemFromTradeEntry;
+    const neck = (sanctified) => ({ item: { typeLine: "Lunar Amulet", ilvl: 81, sanctified, explicitMods: [{ description: "+50 to maximum Life" }] } });
+    const myAnoint = ["Allocates Acceleration"];
+    check(pobFromEntry(neck(false), myAnoint).includes("Allocates Acceleration"), "anoint graft applies to a normal amulet");
+    check(!pobFromEntry(neck(true), myAnoint).includes("Allocates Acceleration"), "anoint graft refused on a Sanctified amulet (locked instill)");
   }
   // Retired tools are fully gone (UI + files): user is rebuilding them from scratch.
   check(["craft-pricer", "gear-search", "arbitrage"].every(t => !idx.includes(`data-view-link="${t}"`) && !idx.includes(`id="${t}" class="view"`)), "retired tools removed from index (nav + views)");
