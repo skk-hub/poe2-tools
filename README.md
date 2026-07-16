@@ -63,7 +63,7 @@ Server endpoints are grouped under: `/api/currency`, `/api/economy`, `/api/rune-
 
 ## Trade rate limits
 
-The server makes live trade2 lookups (`pathofexile.com/api/trade2`) for the Rune Picker, Gear Finder, and the Regex Cheat Sheet's mod-value sweep. **Every call routes through one shared adaptive queue (`trade-queue.js`)** — it spaces calls (3s+ gap, adapts under load), parses the official `X-Rate-Limit-*` headers, and honors `Retry-After` on `429`. While a cooldown is active, endpoints return the timer instead of probing again. The public IP is **shared** with prod + real users, so the queue budgets conservatively — see `RATE-LIMITS.md` before any Trade2 work.
+The server makes live trade2 lookups (`pathofexile.com/api/trade2`) for the Rune Picker, Gear Finder, and the Regex Cheat Sheet's mod-value sweep. **Every call routes through one shared adaptive queue (`trade-queue.js`)** — it spaces calls (3s+ gap, adapts under load), parses the official `X-Rate-Limit-*` headers, and honors `Retry-After` on `429`. While a cooldown is active, endpoints return the timer instead of probing again. The egress IP is **shared among this app's own instances and users** (the deployed server, a dev instance, and anyone browsing it spend one budget — that is what the VPN egress isolates from the operator's game client), so the queue budgets conservatively, at half the advertised cap — see `RATE-LIMITS.md` before any Trade2 work.
 
 ## Scope & constraints
 
