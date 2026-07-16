@@ -64,3 +64,18 @@ Server endpoints are grouped under: `/api/currency`, `/api/economy`, `/api/rune-
 ## Trade rate limits
 
 The server makes live trade2 lookups (`pathofexile.com/api/trade2`) for the Rune Picker, Gear Finder, and the Regex Cheat Sheet's mod-value sweep. **Every call routes through one shared adaptive queue (`trade-queue.js`)** — it spaces calls (3s+ gap, adapts under load), parses the official `X-Rate-Limit-*` headers, and honors `Retry-After` on `429`. While a cooldown is active, endpoints return the timer instead of probing again. The public IP is **shared** with prod + real users, so the queue budgets conservatively — see `RATE-LIMITS.md` before any Trade2 work.
+
+## Scope & constraints
+
+This is a personal, read-only market tool. Its operating constraints, stated plainly because the code should match them:
+
+- **All Trade2 traffic goes through one shared, adaptive, header-respecting queue** (`trade-queue.js`, rules in `RATE-LIMITS.md`) that deliberately budgets *half* of GGG's advertised cap. No parallel fetch pools, no limit multiplication.
+- **The VPN egress (gluetun sidecar in `docker-compose.yml`) exists to separate this server's API traffic from the home connection a game client plays on** — one egress at a time, same single queue behind it. The exit-country control (`gluetun-auth.toml`, local-only inside the network namespace) is a manual switch, not rotation automation; there is no IP rotation, no ban evasion, no multi-identity fetching.
+- **No game-client automation.** The tool reads (OCR of on-screen reward lists, clipboard item text) and never sends input to the game.
+- `POESESSID` support is optional, off by default, and only used for the build-weighted trade sort on your own account.
+
+## How this was built
+
+Solo project, pair-programmed with Claude Code — the commit history carries the co-author trailers, and the dense commit notes are the actual design log. The division of labor: architecture, priorities, and verification are mine; a large share of the implementation is AI-generated and human-reviewed before it ships.
+
+One example of why the human stays load-bearing: the 2026-06-21 currency-pricing investigation (see that commit's notes). The AI-built order-book estimator priced illiquid currencies wrong by 14-300x while looking perfectly plausible; I caught it against known market values, we proved *no* order-book estimator reproduces GGG's traded ratios, and the fix became a deliberately scoped two-sided geometric-mid band-aid for exactly three currencies plus a plan to move to GGG's official cxapi. The model writes code fast; deciding what's *true* is still my job.
