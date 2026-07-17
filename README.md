@@ -76,6 +76,6 @@ This is a personal, read-only market tool. Its operating constraints, stated pla
 
 ## How this was built
 
-Solo project, pair-programmed with Claude Code — the commit history carries the co-author trailers, and the dense commit notes are the actual design log. The division of labor: architecture, priorities, and verification are mine; a large share of the implementation is AI-generated and human-reviewed before it ships.
+Solo project, pair-programmed with Claude Code — the commit history carries the co-author trailers, and the dense commit notes are the actual design log. The division of labor: architecture, priorities, and verification are mine; the implementation is AI-generated and verified against real behavior (tests, live probes, known market values) before it ships.
 
 One example of why the human stays load-bearing: the 2026-06-21 currency-pricing investigation (see that commit's notes). The AI-built order-book estimator priced illiquid currencies wrong by 14-300x while looking perfectly plausible; I caught it against known market values, we proved *no* order-book estimator reproduces GGG's traded ratios, and the fix became a deliberately scoped two-sided geometric-mid band-aid for exactly three currencies plus a plan to move to GGG's official cxapi. The model writes code fast; deciding what's *true* is still my job.
